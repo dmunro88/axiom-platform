@@ -27,8 +27,14 @@ import json
 import shutil
 import datetime
 import html as html_lib
+import hashlib
 from pathlib import Path
 
+from field_registry import (
+    audit_assignment_contract,
+    load_registry,
+    registry_version,
+)
 from fill_engine import fill_document, load_variables
 from comp_builder import inject_comp_section
 from dilmore import dilmore_factor, dilmore_adj_pct
@@ -47,6 +53,8 @@ with open(BASE_DIR / "config.json", encoding="utf-8") as _f:
 TEMPLATES_DIR   = BASE_DIR / CONFIG["templates_dir"]
 ASSIGNMENTS_DIR = BASE_DIR / CONFIG["assignments_dir"]
 WORKBOOK_TPL    = BASE_DIR / CONFIG["workbook_template"]
+FIELD_REGISTRY  = BASE_DIR / CONFIG["field_registry"]
+APP_VERSION     = CONFIG.get("app_version", "unversioned")
 STAGES          = CONFIG["stages"]
 
 ASSIGNMENTS_DIR.mkdir(exist_ok=True)
@@ -125,6 +133,8 @@ def cmd_new(args):
         "created":   _today(),
         "engaged":   None,
         "delivered": None,
+        "app_version": APP_VERSION,
+        "schema_version": registry_version(FIELD_REGISTRY),
     })
 
     print(f"\n  Created: {folder_name}")
@@ -287,6 +297,17 @@ def cmd_deliver(args):
         if not template_path.exists():
             print(f"    ✗  Template not found: {doc_cfg['template']}")
             continue
+
+        state = _load_state(adir)
+        state["delivery_provenance"] = {
+            "app_version": APP_VERSION,
+            "schema_version": registry_version(FIELD_REGISTRY),
+            "template": doc_cfg["template"],
+            "template_sha256": hashlib.sha256(
+                template_path.read_bytes()
+            ).hexdigest(),
+        }
+        _save_state(adir, state)
 
         result = fill_document(template_path, output_path, variables)
         print(f"    ✓  {output_name}")
@@ -609,6 +630,7 @@ def check_delivery_readiness(adir):
         assignment_dir=adir,
         templates_dir=TEMPLATES_DIR,
         deliver_config=STAGES.get('deliver', {}),
+        registry_path=FIELD_REGISTRY,
     )
 
 
@@ -627,6 +649,8 @@ def cmd_validate(args):
     result = check_delivery_readiness(adir)
     print(f'\n  Delivery validation: {adir.name}')
     print('  ' + '-' * 60)
+    if result.get("schema_version"):
+        print(f'  Field registry: v{result["schema_version"]}')
 
     for error in result['errors']:
         print(f'  [ERROR] {error}')
@@ -657,6 +681,45 @@ def cmd_validate(args):
 
     print('\n  [X] NOT READY TO DELIVER')
     return False
+
+
+def cmd_contract(args):
+    """Audit workbook and template keys against the versioned field registry."""
+    template_paths = []
+    for stage in STAGES.values():
+        for document in stage.get("documents", []):
+            template_path = TEMPLATES_DIR / document.get("template", "")
+            if template_path.exists():
+                template_paths.append(template_path)
+
+    result = audit_assignment_contract(
+        registry_path=FIELD_REGISTRY,
+        workbook_path=WORKBOOK_TPL,
+        template_paths=template_paths,
+        variables={},
+    )
+
+    print(f"\n  Field contract: v{result['schema_version'] or 'unavailable'}")
+    try:
+        registry = load_registry(FIELD_REGISTRY)
+    except Exception:
+        registry = None
+    if registry:
+        print(
+            f"  Registered: {len(registry['fields'])} fields, "
+            f"{len(registry['blocks'])} blocks"
+        )
+    for error in result["errors"]:
+        print(f"  [ERROR] {error}")
+    for warning in result["warnings"]:
+        print(f"  [!] {warning}")
+
+    if result["errors"]:
+        print("\n  [X] CONTRACT DRIFT DETECTED")
+        return False
+
+    print("\n  [OK] Workbook and configured templates match the registry.")
+    return True
 
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -972,6 +1035,7 @@ COMMANDS = {
     'engage':    cmd_engage,
     'deliver':   cmd_deliver,
     'validate':  cmd_validate,
+    'contract':  cmd_contract,
     'dilmore':   cmd_dilmore,
     'extract':   cmd_extract,
     'list':      cmd_list,

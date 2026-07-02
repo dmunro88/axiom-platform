@@ -58,6 +58,9 @@ Open a terminal, navigate to the axiom_platform folder, then:
   python axiom.py validate 2026-001
       Checks delivery readiness without changing assignment files or state.
 
+  python axiom.py contract
+      Checks workbook and template keys against the versioned field registry.
+
   python axiom.py list
       Shows all assignments and their current stage.
 
@@ -103,6 +106,7 @@ these names before final delivery (JPG and PNG are supported):
   assets/maps/aerial.jpg
   assets/maps/parcel.jpg
   assets/maps/sca-sale-location.jpg
+  assets/maps/land-sale-location.jpg
   assets/maps/lease-comp-location.jpg
   assets/building-sketch.jpg
 
@@ -154,7 +158,9 @@ ADDING A NEW TEMPLATE
        "template": "your_template.docx",
        "output":   "your_output.docx"
      }
-4. That's it — the platform picks it up automatically.
+4. Add any new placeholders to schemas/field_registry.v1.json and increment
+   its schema version under the rules in docs/FIELD_REGISTRY.md.
+5. Run: python axiom.py contract
 
 
 ADDING A NEW STAGE

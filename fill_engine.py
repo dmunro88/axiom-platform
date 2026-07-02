@@ -73,7 +73,7 @@ def load_variables(json_path=None, workbook_path=None):
                 val_d = str(row[3]).strip() if row[3] is not None else ''
                 val_c = str(row[2]).strip() if row[2] is not None else ''
                 val   = val_d if val_d and val_d != 'None' else val_c
-                if (key and key != 'None' and ' ' not in key
+                if (key and re.fullmatch(r'[A-Z][A-Z0-9_]*', key)
                         and val and val != 'None'):
                     variables[key] = val
 

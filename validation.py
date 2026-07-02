@@ -12,6 +12,7 @@ from pathlib import Path
 import openpyxl
 
 from comp_builder import load_comp_data
+from field_registry import audit_assignment_contract
 from fill_engine import fill_document, load_variables
 from media_blocks import MEDIA_BLOCKS, media_files_for_block, missing_media_reason
 from structured_blocks import (
@@ -210,7 +211,12 @@ def find_docx_placeholders(docx_path):
     return sorted(placeholders)
 
 
-def validate_assignment(assignment_dir, templates_dir, deliver_config):
+def validate_assignment(
+    assignment_dir,
+    templates_dir,
+    deliver_config,
+    registry_path=None,
+):
     """
     Validate delivery readiness without writing assignment files or state.
 
@@ -230,6 +236,7 @@ def validate_assignment(assignment_dir, templates_dir, deliver_config):
         "blocks": [],
         "handled_blocks": [],
         "unresolved_blocks": {},
+        "schema_version": None,
     }
 
     if not assignment_dir.is_dir():
@@ -280,6 +287,17 @@ def validate_assignment(assignment_dir, templates_dir, deliver_config):
     except Exception as exc:
         result["errors"].append(f"Template fill validation failed: {exc}")
         return result
+
+    if registry_path:
+        contract = audit_assignment_contract(
+            registry_path=registry_path,
+            workbook_path=workbook_path,
+            template_paths=[template_path],
+            variables=variables,
+        )
+        result["schema_version"] = contract["schema_version"]
+        result["errors"].extend(contract["errors"])
+        result["warnings"].extend(contract["warnings"])
 
     result["checked"] = True
     result["missing"] = fill_result["missing"]

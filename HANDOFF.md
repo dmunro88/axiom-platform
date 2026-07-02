@@ -2,7 +2,7 @@
 
 - Last updated: 2026-07-01
 - Current agent: Codex
-- Last commit: `3ef3378` — Add report media and ownership block handlers.
+- Last commit: `717d9a9` — Honor configured narrative model routing.
 
 ## Current objective
 
@@ -59,19 +59,30 @@ blocks before connecting external services.
 - Fixed nested narrative model configuration and routed adjustment and
   reconciliation prose through their configured command models.
 - Expanded the automated baseline to eight passing tests.
+- Added versioned field registry v1 with 220 scalar fields and 20 pipeline
+  blocks.
+- Added `axiom.py contract` to detect workbook/template contract drift.
+- Assignment creation now records application and schema versions; delivery
+  records the template filename and SHA-256 hash.
+- Corrected variable loading so numeric comp rows cannot leak into the scalar
+  field dictionary.
+- Added the previously missing land-sale location-map media convention.
+- Expanded the automated baseline to nine passing tests.
 
 ## In progress
 
-- Narrative model routing is ready for a source checkpoint.
+- Field registry v1 and contract auditing are ready for a source checkpoint.
 
 ## Exact next step
 
-Define the versioned field/data contract. Fixture media and comp rows should be
-added when representative fictional assets are available.
+Derive presentation variants from canonical facts instead of entering duplicate
+values. Fixture media and comp rows should be added when representative
+fictional assets are available.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 8 tests passed.
+- `python -m unittest discover -s tests -v`: 9 tests passed.
+- `python axiom.py contract`: passed with 220 fields and 20 blocks.
 - `axiom.py --help`: passed with the warning corrected.
 - `DEMO-001` fixture validation: 0 ordinary missing fields and 17 unresolved
   blocks (eight missing media inputs, eight AI narratives, and comp data).

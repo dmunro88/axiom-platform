@@ -54,6 +54,10 @@ created.
   account for stale or missing cached results.
 - Presentation variants such as lowercase text or words-formal values should be
   derived from canonical facts where practical, not entered independently.
+- `schemas/field_registry.v1.json` is the field contract. Register and version a
+  key before adding it to a workbook, JSON export, template, or block handler.
+- Run `python axiom.py contract` after any workbook, template, or registry
+  change.
 
 ## Git and handoff discipline
 

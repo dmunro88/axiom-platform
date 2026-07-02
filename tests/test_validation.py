@@ -11,6 +11,11 @@ import openpyxl
 from docx import Document
 
 import axiom
+from field_registry import (
+    audit_assignment_contract,
+    build_registry,
+    load_registry,
+)
 from media_blocks import inject_media_blocks
 from narrative_generator import _get_model
 from structured_blocks import inject_ownership_history
@@ -233,6 +238,50 @@ class ValidateAssignmentTests(unittest.TestCase):
                 "default-model",
                 _get_model(config_path, command="unconfigured"),
             )
+
+    def test_committed_field_registry_matches_baseline_sources(self):
+        project_root = Path(__file__).resolve().parents[1]
+        with open(project_root / "config.json", encoding="utf-8") as config_file:
+            config = json.load(config_file)
+
+        built = build_registry(
+            workbook_path=project_root / config["workbook_template"],
+            templates_dir=project_root / config["templates_dir"],
+            stages=config["stages"],
+            fixture_json_path=(
+                project_root
+                / "tests"
+                / "fixtures"
+                / "DEMO-001"
+                / "DEMO-001_variables.json"
+            ),
+        )
+        committed = load_registry(project_root / config["field_registry"])
+        self.assertTrue(set(built["fields"]).issubset(committed["fields"]))
+        self.assertTrue(set(built["blocks"]).issubset(committed["blocks"]))
+
+        template_paths = [
+            project_root / config["templates_dir"] / document["template"]
+            for stage in config["stages"].values()
+            for document in stage["documents"]
+        ]
+        with open(
+            project_root
+            / "tests"
+            / "fixtures"
+            / "DEMO-001"
+            / "DEMO-001_variables.json",
+            encoding="utf-8",
+        ) as fixture_file:
+            fixture_variables = json.load(fixture_file)
+        audit = audit_assignment_contract(
+            project_root / config["field_registry"],
+            project_root / config["workbook_template"],
+            template_paths,
+            fixture_variables,
+        )
+        self.assertEqual([], audit["errors"])
+        self.assertEqual([], audit["warnings"])
 
 
 if __name__ == "__main__":

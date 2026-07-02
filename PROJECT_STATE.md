@@ -26,14 +26,17 @@ the signed deliverable.
 2. `*_variables.json`
    - Exported from the workbook by a VBA macro
    - Loaded before workbook output values
-3. Python orchestration
+3. `schemas/field_registry.v1.json`
+   - Versioned contract for scalar fields and pipeline blocks
+   - Records producers, source of truth, value kind, and consuming stages
+4. Python orchestration
    - `axiom.py`: assignment commands and dashboard
    - `fill_engine.py`: Word substitution and conditional removal
    - `comp_builder.py`: comparable-sale page injection
    - `narrative_generator.py`: Anthropic-backed narrative drafting
    - `db.py`, `extractor.py`, `ingest.py`: comp extraction/review/database
    - `axiom_ui.py`, `comp_review.py`: Streamlit interfaces
-4. Local integrations
+5. Local integrations
    - `adobe_sign.py`: Acrobat Sign OAuth client
    - `xero_client.py`: Xero custom-connection client
 
@@ -45,6 +48,7 @@ the signed deliverable.
 | `engage` | Locally generates engagement letter, document request, and invoice |
 | `deliver` | Generates a final report only after validation passes; `--draft` generates a distinctly named draft without changing delivery stage |
 | `validate` | Checks fields, block handlers, workbook formula caches, and possible JSON staleness without changing assignment files or state |
+| `contract` | Audits workbook and configured template keys against field registry v1 |
 | `dilmore` | Writes size-adjustment calculations into the assignment workbook |
 | `extract` | Extracts comparable and narrative data from supported source documents |
 | `list` / `status` | Reads assignment metadata and files |
@@ -59,7 +63,7 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Eight automated validation, delivery-state, media, structured-block, and
+- Nine automated validation, delivery-state, media, structured-block, and
   model-routing tests pass.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
@@ -84,6 +88,11 @@ Checks were performed without regenerating or modifying assignment outputs.
   transfer-history, and prior-price fields.
 - Narrative generation honors `models.per_command`: drafting, adjustment
   justification, and reconciliation can use separate configured models.
+- Field registry v1 contains 220 scalar fields and 20 pipeline blocks.
+- Contract auditing detects unregistered workbook keys, template placeholders,
+  assignment JSON keys, and pipeline blocks without handlers.
+- New assignments record application/schema versions; delivery records the
+  template filename and SHA-256 hash.
 - Cached Excel formula values are loaded with `openpyxl(data_only=True)`.
   Validation warns when the JSON predates the workbook, but that file-level
   heuristic cannot distinguish Intake edits from normal calculation work.
@@ -139,10 +148,12 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 ### P1 — Data contract
 
-1. Introduce a versioned field registry/schema independent of Word templates.
+1. **Completed:** introduce a versioned field registry/schema independent of
+   Word templates.
 2. Derive presentation variants rather than entering duplicate facts.
 3. Detect stale JSON and stale Excel calculation caches.
-4. Record template, schema, and application versions per assignment.
+4. **Completed for new assignments and delivery attempts:** record template,
+   schema, and application versions per assignment.
 
 ### P2 — Integrations
 

@@ -15,6 +15,7 @@ SINGLE_MEDIA_BLOCKS = {
     "AERIAL_MAP_IMAGE": "assets/maps/aerial",
     "PARCEL_MAP_IMAGE": "assets/maps/parcel",
     "SCA_SALE_LOCATION_MAP": "assets/maps/sca-sale-location",
+    "LAND_SALE_LOCATION_MAP": "assets/maps/land-sale-location",
     "LEASE_COMP_LOCATION_MAP": "assets/maps/lease-comp-location",
     "BUILDING_SKETCH_BLOCK": "assets/building-sketch",
 }

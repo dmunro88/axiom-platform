@@ -2,6 +2,8 @@
   "templates_dir": "templates",
   "assignments_dir": "assignments",
   "workbook_template": "templates/workbook.xlsx",
+  "field_registry": "schemas/field_registry.v1.json",
+  "app_version": "0.2.0",
   "models": {
     "_notes": [
       "Model routing for Claude API calls (Phase 7+).",

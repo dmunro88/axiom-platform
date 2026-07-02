@@ -1,0 +1,2579 @@
+{
+  "contract_id": "axiom.appraisal.fields",
+  "schema_version": "1.0.0",
+  "status": "baseline",
+  "load_order": [
+    "json_export",
+    "workbook_output"
+  ],
+  "precedence_rule": "last_nonblank_value_wins",
+  "fields": {
+    "ACTUAL_TAX": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "ADDL_FEE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "Leave blank if N/A"
+    },
+    "ADDL_SERVICES": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "Leave blank if N/A"
+    },
+    "ADJACENT_USES": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Office, Retail, Residential"
+    },
+    "APPROACHES_LIST": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "ASSESSED_VALUE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "ASSESSMENT_RATIO": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. 20%"
+    },
+    "ASSESSOR_VALUE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "ASSIGNMENT": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": []
+    },
+    "BUILDINGS_STORIES": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "CAP_RATE": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. 9.50%"
+    },
+    "CAP_RATE_METHOD1": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": []
+    },
+    "CA_DEVELOPED": {
+      "value_kind": "yes_no_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "CA_DEVELOPED_FULL": {
+      "value_kind": "yes_no_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "CA_VALUE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": []
+    },
+    "CA_WEIGHT": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. 0 or N/A"
+    },
+    "CEILING": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Drop Tile / Exposed / Drywall"
+    },
+    "CLIENT_ADDR1": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "Street address"
+    },
+    "CLIENT_ADDR2": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "City, State ZIP"
+    },
+    "CLIENT_NAME": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "Legal entity name"
+    },
+    "COMMON_AREA": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Lobby, Restrooms, Hallways"
+    },
+    "CONTACT_NAME": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "Full name"
+    },
+    "CONTACT_SALUTATION": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "e.g. Mr. Smith"
+    },
+    "COST_APPROACH_VALUE_ROUNDED": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "CURRENT_CONTRACT_PRICE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [],
+      "description": "Leave blank if not under contract"
+    },
+    "DEFERRED_MAINTENANCE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "Brief description or None"
+    },
+    "DELIVERY_DATE": {
+      "value_kind": "date_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. July 10, 2026"
+    },
+    "DEPRECIATED_BLDG_COST": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "DEPRECIATED_SITE_IMP": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "DEVELOPED_APPROACHES": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "DEVELOPER_PROFIT_AMOUNT": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "DEVELOPER_PROFIT_RATE": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "DOORS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Hollow Core / Solid Core / Glass"
+    },
+    "DUE_DATE": {
+      "value_kind": "date_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. July 24, 2026"
+    },
+    "EFFECTIVE_DATE": {
+      "value_kind": "date_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "e.g. June 1, 2026"
+    },
+    "EGI": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output"
+      ],
+      "used_in": [],
+      "description": "e.g. $231,214"
+    },
+    "ELEVATOR": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Present / None"
+    },
+    "ENGAGEMENT_DATE": {
+      "value_kind": "date_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. June 26, 2026"
+    },
+    "EXPOSURE_TIME": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Six to Twelve Months"
+    },
+    "EXTERIOR_WALLS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Brick / EIFS / Metal Panel"
+    },
+    "EXTRAORDINARY_ASSUMPTION": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "Leave blank if none"
+    },
+    "FEE_AMOUNT": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. $3,500"
+    },
+    "FEMA_PANEL": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. 01073C0159E"
+    },
+    "FFE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "Furniture/Fixtures/Equipment included? Yes/No"
+    },
+    "FILE_NO": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "e.g. DEMO-001"
+    },
+    "FIRE_PROTECTION": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Municipal / Volunteer"
+    },
+    "FLOOD_ZONE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Zone X (No) / Zone AE (Yes)"
+    },
+    "FLOORS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Carpet / VCT / Hardwood"
+    },
+    "FOUNDATION": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Slab / Crawl Space / Basement"
+    },
+    "FRAME": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Steel / Wood Frame / Masonry"
+    },
+    "FRONTAGE_STREET": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Example Commerce Way (100 LF)"
+    },
+    "GBA": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "Gross Building Area"
+    },
+    "HBU_BUYER_IMPROVED": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "Likely buyer if improved"
+    },
+    "HBU_BUYER_VACANT": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "Likely buyer if vacant"
+    },
+    "HBU_IMPROVED": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Continued Office Use"
+    },
+    "HBU_TIMING": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "HBU_USER": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "Likely user description"
+    },
+    "HBU_VACANT": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Office Development"
+    },
+    "HOURLY_RATE": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. $200/hour"
+    },
+    "HVAC": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Central / Package Units / Split"
+    },
+    "HYPOTHETICAL_CONDITION": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "Leave blank if none"
+    },
+    "IA_CAP_RATE": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": []
+    },
+    "IA_DEVELOPED": {
+      "value_kind": "yes_no_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "IA_DEVELOPED_FULL": {
+      "value_kind": "yes_no_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "IA_STABILIZED_VALUE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "If different"
+    },
+    "IA_VALUE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "IA_WEIGHT": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. 40%"
+    },
+    "INCOME": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": []
+    },
+    "INDICATED_TAX": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "INSPECTION_DATE": {
+      "value_kind": "date_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [],
+      "description": "Date of physical inspection"
+    },
+    "INSPECTION_DURATION": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. one to two hours"
+    },
+    "INTENDED_USE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "e.g. Mortgage financing"
+    },
+    "INTERIOR_WALLS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Drywall / Painted CMU"
+    },
+    "INVOICE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": []
+    },
+    "INVOICE_DATE": {
+      "value_kind": "date_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. July 10, 2026"
+    },
+    "INVOICE_NO": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. INV-DEMO-001"
+    },
+    "INVOICE_NOTES": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "Optional note to client"
+    },
+    "INVOICE_TOTAL": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "Usually = FEE_AMOUNT"
+    },
+    "LAND_ADJ_RELEVANT_MEAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_ADJ_RELEVANT_MEDIAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_ADJ_UNIT_HIGH": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_ADJ_UNIT_LOW": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_ADJ_UNIT_MEAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_ADJ_UNIT_MEDIAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_AREA_AC": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": []
+    },
+    "LAND_AREA_ACRES": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_AREA_SF": {
+      "value_kind": "number_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_COMP_SIZE_HIGH": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_COMP_SIZE_LOW": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_COMP_SIZE_MEAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_COMP_SIZE_MEDIAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_CONCLUDED_RANGE": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_CONCLUDED_UNIT": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_PRIMARY_SALES": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_SALE_HIGH_UNIT": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_SALE_LOW_UNIT": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_SALE_MEAN_UNIT": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_UNIT_OF_COMPARISON": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_VALUE_CONCLUDED": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LEGAL_DESCRIPTION": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LIGHTING": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Fluorescent / LED"
+    },
+    "LOAN_RATE": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "MARKETING_TIME": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Six to Twelve Months"
+    },
+    "MARKET_RENT": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "MARKET_RENT_PSF": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output"
+      ],
+      "used_in": [],
+      "description": "e.g. $12.00"
+    },
+    "MARKET_RENT_RANGE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "MARSHALL_AREA_ADJ": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "MARSHALL_BASE_COST": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "MARSHALL_CURRENT_ADJ": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "MARSHALL_LOCAL_ADJ": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "MARSHALL_SECTION_DESC": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "MARSHALL_SECTION_REF": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "MILLAGE_RATE": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "NLA": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "Net Leasable Area (SF)"
+    },
+    "NOI": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output"
+      ],
+      "used_in": [],
+      "description": "e.g. $130,484"
+    },
+    "NRA": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": [],
+      "description": "Net Rentable Area"
+    },
+    "NUM_FLOORS": {
+      "value_kind": "number_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": []
+    },
+    "NUM_UNITS": {
+      "value_kind": "number_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": []
+    },
+    "OCCUPANCY_PERCENT": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": [],
+      "description": "e.g. 85%"
+    },
+    "OCCUPANCY_RATE": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": [],
+      "description": "e.g. 85%"
+    },
+    "OWNER_NAME": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "Current owner of record"
+    },
+    "OWNER_OCC_SF": {
+      "value_kind": "number_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "0 if none"
+    },
+    "PARCEL_ID": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "Tax parcel number"
+    },
+    "PARKING_SPACES": {
+      "value_kind": "number_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": []
+    },
+    "PARKING_TYPE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Surface Lot / Structured / Street"
+    },
+    "PAYMENT_TERMS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. Due upon delivery"
+    },
+    "PERMITTED_USES": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Office, Retail, Light Industrial"
+    },
+    "PGI": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output"
+      ],
+      "used_in": [],
+      "description": "e.g. $272,016"
+    },
+    "PGI_MONTHLY": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "PRIOR_SALE_DATE": {
+      "value_kind": "date_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [],
+      "description": "Most recent prior sale date"
+    },
+    "PRIOR_SALE_PRICE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [],
+      "description": "Most recent prior sale price"
+    },
+    "PROPERTY": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": []
+    },
+    "PROPERTY_ADDRESS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "Street address"
+    },
+    "PROPERTY_CITY": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "e.g. Test Metro"
+    },
+    "PROPERTY_CLASS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [],
+      "description": "e.g. Class A / Class B / Class C"
+    },
+    "PROPERTY_CLASS_LOWER": {
+      "value_kind": "text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": []
+    },
+    "PROPERTY_COUNTY": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "e.g. Example"
+    },
+    "PROPERTY_RIGHTS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "e.g. Fee Simple"
+    },
+    "PROPERTY_STATE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Alabama"
+    },
+    "PROPERTY_SUBTYPE_FULL": {
+      "value_kind": "text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "PROPERTY_SUBTYPE_LOWER": {
+      "value_kind": "text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "PROPERTY_SUBTYPE_TABLE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "e.g. Multi-Tenant Office"
+    },
+    "PROPERTY_ZIP": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver",
+        "engage"
+      ],
+      "description": "e.g. 35203"
+    },
+    "RCN_PSF": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": []
+    },
+    "RCN_TOTAL": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": []
+    },
+    "REMIT_ADDRESS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. P.O. Box..."
+    },
+    "REPORT_DATE": {
+      "value_kind": "date_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. June 26, 2026"
+    },
+    "REPORT_TYPE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ]
+    },
+    "ROOF": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Built-Up / TPO / Metal"
+    },
+    "SCA_ADJ_NARROW_HIGH": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_ADJ_NARROW_LOW": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_ADJ_NARROW_MEAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_ADJ_NARROW_MEDIAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_ADJ_RELEVANT_MEAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_ADJ_RELEVANT_MEDIAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_ADJ_UNIT_HIGH": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_ADJ_UNIT_LOW": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_ADJ_UNIT_MEAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_ADJ_UNIT_MEDIAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_COMP_SIZE_HIGH": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_COMP_SIZE_LOW": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_COMP_SIZE_MEAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_COMP_SIZE_MEDIAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_COMP_UNIT_HIGH": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_COMP_UNIT_LOW": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_COMP_UNIT_MEAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_COMP_UNIT_MEDIAN": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_CONCLUDED_PSF": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": []
+    },
+    "SCA_DEVELOPED": {
+      "value_kind": "yes_no_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_DEVELOPED_FULL": {
+      "value_kind": "yes_no_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_QUAL_CONCLUSION": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_VALUE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_WEIGHT": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. 60%"
+    },
+    "SERVICE_DESCRIPTION": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "One-line service desc"
+    },
+    "SHORT_LIVED_DEPRECIATION_TOTAL": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SIGNAGE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Present / None"
+    },
+    "SITE_AREA_ACRES": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SITE_AREA_SF": {
+      "value_kind": "number_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SITE_IMPROVEMENT_DEPRECIATION_TOTAL": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SITE_IMP_COST_NEW": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SITE_LIGHTING": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Present / None"
+    },
+    "SITE_SHAPE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Rectangular / Irregular"
+    },
+    "SUBJECT_ACCESS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Good / Average / Inferior"
+    },
+    "SUBJECT_CONDITION": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Good / Average / Fair / Poor"
+    },
+    "SUBJECT_CURB": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Present / None"
+    },
+    "SUBJECT_INGRESS_EGRESS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Two-way access off Example Commerce Way"
+    },
+    "SUBJECT_SEWER": {
+      "value_kind": "text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SUBJECT_SIDEWALK": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Present / None"
+    },
+    "SUBJECT_STREETLIGHT": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Present / None"
+    },
+    "SUBJECT_VISIBILITY": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Good / Average / Inferior"
+    },
+    "SUBMARKET": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Sample City / Demo Hills / Downtown"
+    },
+    "TAX_VS_MARKET": {
+      "value_kind": "currency_text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "TAX_YEAR": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. 2024"
+    },
+    "TOPOGRAPHY": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Level / Gently Rolling / Sloping"
+    },
+    "TOTAL_EXPENSES": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output"
+      ],
+      "used_in": []
+    },
+    "TURNAROUND_DAYS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": [
+        "engage"
+      ],
+      "description": "e.g. 10"
+    },
+    "UNIT_COUNT": {
+      "value_kind": "number_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "UNIT_OF_COMPARISON": {
+      "value_kind": "text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Price per SF / Price per Unit"
+    },
+    "UTILITY_ELECTRIC": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Example Electric Cooperative"
+    },
+    "UTILITY_GAS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Example Gas Utility"
+    },
+    "UTILITY_SEWER": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Example County"
+    },
+    "UTILITY_TELECOM": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Example Telecom"
+    },
+    "UTILITY_WATER": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Test Metro Water Works"
+    },
+    "VACANCY_RATE": {
+      "value_kind": "percentage_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "VALUE_CONCLUSION": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. $1,375,000"
+    },
+    "VALUE_INTEREST": {
+      "value_kind": "currency_text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "VALUE_INTEREST_LOWER": {
+      "value_kind": "currency_text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "VALUE_TYPE": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. As-Is Market Value"
+    },
+    "VALUE_TYPE_SHORT": {
+      "value_kind": "currency_text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. As-Is"
+    },
+    "VALUE_WORDS": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. ONE MILLION..."
+    },
+    "VALUE_WORDS_FORMAL": {
+      "value_kind": "currency_text",
+      "source_of_truth": "workbook_output",
+      "producers": [
+        "intake",
+        "workbook_output",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "WINDOWS": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Single-pane / Double-pane / Tinted"
+    },
+    "YEAR_BUILT": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. 1985"
+    },
+    "YEAR_RENOVATED": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": [],
+      "description": "Leave blank if N/A"
+    },
+    "ZONING": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake"
+      ],
+      "used_in": [],
+      "description": "e.g. B-2"
+    },
+    "ZONING_CLASS": {
+      "value_kind": "text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "ZONING_CLASS_TABLE": {
+      "value_kind": "text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "ZONING_CODE": {
+      "value_kind": "text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "ZONING_CODE_TABLE": {
+      "value_kind": "text",
+      "source_of_truth": "json_export",
+      "producers": [
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "ZONING_COMPLIANCE": {
+      "value_kind": "text",
+      "source_of_truth": "intake",
+      "producers": [
+        "intake",
+        "json_export"
+      ],
+      "used_in": [
+        "deliver"
+      ],
+      "description": "e.g. Legal Conforming / Legal Non-Conforming"
+    }
+  },
+  "blocks": {
+    "AERIAL_MAP_IMAGE": {
+      "handler": "media",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "BUILDING_SKETCH_BLOCK": {
+      "handler": "media",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "CAP_RATE_NARRATIVE": {
+      "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "COMP_SHEETS_BLOCK": {
+      "handler": "comparables",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "ENCUMBRANCES_NARRATIVE": {
+      "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "INSPECTION_NARRATIVE": {
+      "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_ADJUSTMENT_NARRATIVE": {
+      "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_SALE_LOCATION_MAP": {
+      "handler": "media",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LEASE_COMP_LOCATION_MAP": {
+      "handler": "media",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LEASE_COMP_PHOTOS_BLOCK": {
+      "handler": "media",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "MARKET_AREA_OVERVIEW": {
+      "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "OWNERSHIP_HISTORY_TABLE": {
+      "handler": "structured",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "PARCEL_MAP_IMAGE": {
+      "handler": "media",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "RECONCILIATION_NARRATIVE": {
+      "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "REGIONAL_MAP_IMAGE": {
+      "handler": "media",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_ADJUSTMENT_NARRATIVE": {
+      "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_APPROACH_NARRATIVE": {
+      "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_CONCLUSION_NARRATIVE": {
+      "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_SALE_LOCATION_MAP": {
+      "handler": "media",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SUBJECT_PHOTOS_BLOCK": {
+      "handler": "media",
+      "used_in": [
+        "deliver"
+      ]
+    }
+  }
+}
