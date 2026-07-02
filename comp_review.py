@@ -26,6 +26,7 @@ import streamlit as st
 
 from ingest import STAGED_DIR, run_extraction, commit_confirmed
 from extractor import _coerce as _extractor_coerce
+from comparable_contract import confirm_extraction_result
 import db as db_module
 
 CONFIRMED_DIR = STAGED_DIR.parent / "confirmed"
@@ -150,17 +151,30 @@ def _collect_confirmed(staged_name, kind, records, edit_fields):
             continue
         d = dict(record["data"])
         edited = False
+        edits = []
         for field, label in edit_fields:
             edit_key = f"edit_{staged_name}_{kind}_{idx}_{field}"
             new_val = st.session_state.get(edit_key)
             original_display = _fmt(d.get(field), field) if d.get(field) is not None else ""
-            if new_val is not None and new_val.strip() and new_val != original_display:
-                d[field] = _extractor_coerce(field, new_val.strip())
+            if new_val is not None and new_val != original_display:
+                stripped = new_val.strip()
+                corrected = (
+                    _extractor_coerce(field, stripped)
+                    if stripped
+                    else None
+                )
+                edits.append({
+                    "field": field,
+                    "before": d.get(field),
+                    "after": corrected,
+                })
+                d[field] = corrected
                 edited = True
         new_record = dict(record)
         new_record["data"] = d
         if edited:
             new_record["reviewed"] = True
+            new_record["review_edits"] = edits
         confirmed.append(new_record)
     return confirmed
 
@@ -171,6 +185,7 @@ def _distinct_values(column, table="properties"):
     db_path = db_module.DB_PATH
     if not db_path.exists():
         return []
+    db_module.init_db(db_path, quiet=True)
     conn = sqlite3.connect(str(db_path))
     try:
         rows = conn.execute(
@@ -195,7 +210,7 @@ _SALE_BROWSE_SQL = """
     FROM comps c
     LEFT JOIN properties p ON c.property_id = p.property_id
     LEFT JOIN source_documents sd ON c.source_doc_id = sd.doc_id
-    WHERE 1=1
+    WHERE c.review_status = 'confirmed'
 """
 _LEASE_BROWSE_SQL = """
     SELECT lc.lease_comp_id, p.address_street AS "Address", p.address_city AS "City",
@@ -209,7 +224,7 @@ _LEASE_BROWSE_SQL = """
     FROM lease_comps lc
     LEFT JOIN properties p ON lc.property_id = p.property_id
     LEFT JOIN source_documents sd ON lc.source_doc_id = sd.doc_id
-    WHERE 1=1
+    WHERE lc.review_status = 'confirmed'
 """
 
 
@@ -219,6 +234,7 @@ def _browse_query(kind, property_types, cities, address_search):
     db_path = db_module.DB_PATH
     if not db_path.exists():
         return pd.DataFrame()
+    db_module.init_db(db_path, quiet=True)
 
     sql = _SALE_BROWSE_SQL if kind == "sale" else _LEASE_BROWSE_SQL
     params = []
@@ -323,7 +339,10 @@ def render_comp_library():
                     confirmed_leases = _collect_confirmed(choice, "lease", leases, _LEASE_EDIT_FIELDS)
                     result["comps"] = confirmed_comps
                     result["lease_comps"] = confirmed_leases
-                    result["reviewed"] = True
+                    result = confirm_extraction_result(
+                        result,
+                        reviewer="streamlit",
+                    )
                     confirmed_path = CONFIRMED_DIR / staged_path.name
                     with open(confirmed_path, "w", encoding="utf-8") as f:
                         json.dump(result, f, indent=2, default=str)

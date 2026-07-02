@@ -26,26 +26,37 @@ STAGED_DIR = BASE_DIR / "ingest" / "staged"
 STAGED_DIR.mkdir(parents=True, exist_ok=True)
 
 from extractor import scan_projects_root, scan_assignment_folder, extract_assignment
+from comparable_contract import (
+    SCHEMA_VERSION,
+    canonicalize_extraction_result,
+    confirm_extraction_result,
+    source_metadata,
+    validate_record,
+)
 from db        import (init_db, get_conn, already_ingested,
                        insert_source_document, insert_property,
                        insert_comp, insert_lease_comp,
-                       insert_assignment, insert_income_snapshot)
+                       insert_assignment, insert_income_snapshot,
+                       comparable_id_by_identity)
 
 
 # ─── Staging ──────────────────────────────────────────────────────────────────
 
-def stage_assignment(extraction_result):
+def stage_assignment(extraction_result, staged_dir=None):
     """
     Write one extraction result to ingest/staged/ as a JSON file.
     File is named by folder name + timestamp to avoid collisions.
     Returns the path to the staged file.
     """
+    extraction_result = canonicalize_extraction_result(extraction_result)
+    staged_dir = Path(staged_dir) if staged_dir else STAGED_DIR
+    staged_dir.mkdir(parents=True, exist_ok=True)
     folder_name = extraction_result["folder_name"]
     safe_name   = "".join(c if c.isalnum() or c in "-_ " else "_"
                           for c in folder_name).strip()
-    ts          = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts          = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     filename    = f"{safe_name}__{ts}.json"
-    path        = STAGED_DIR / filename
+    path        = staged_dir / filename
 
     with open(path, "w", encoding="utf-8") as f:
         json.dump(extraction_result, f, indent=2, default=str)
@@ -53,7 +64,7 @@ def stage_assignment(extraction_result):
     return path
 
 
-def run_extraction(root_path):
+def run_extraction(root_path, staged_dir=None):
     """
     Scan root_path, extract all assignments, write staged JSON files.
     Skips folders that have already been staged (checks staged dir).
@@ -85,38 +96,45 @@ def run_extraction(root_path):
         }
         found = [f"{v} {k}" for k, v in counts.items() if v > 0]
         if found:
-            print(f"         → {', '.join(found)}")
+            print(f"         - {', '.join(found)}")
         else:
-            print(f"         → no extractable files found, skipping")
+            print(f"         - no extractable files found, skipping")
             continue
 
         # Extract
         try:
             result = extract_assignment(scan)
         except Exception as e:
-            print(f"         ✗ Extraction error: {e}")
+            print(f"         ERROR: Extraction failed: {e}")
             continue
 
         n_comps  = len(result["comps"])
         n_leases = len(result["lease_comps"])
-        print(f"         → {n_comps} sale comp(s), {n_leases} lease comp(s) extracted")
+        print(
+            f"         - {n_comps} sale comp(s), "
+            f"{n_leases} lease comp(s) extracted"
+        )
 
         if result["warnings"]:
             for w in result["warnings"][:3]:  # show first 3 warnings only
-                print(f"         ⚠  {w.strip()}")
+                print(f"         WARNING: {w.strip()}")
             if len(result["warnings"]) > 3:
-                print(f"         ⚠  ... {len(result['warnings']) - 3} more warning(s)")
+                print(
+                    f"         WARNING: ... "
+                    f"{len(result['warnings']) - 3} more warning(s)"
+                )
 
         if n_comps == 0 and n_leases == 0 and not result["narrative"].get("data"):
-            print(f"         → nothing useful extracted, skipping")
+            print(f"         - nothing useful extracted, skipping")
             continue
 
-        staged = stage_assignment(result)
+        staged = stage_assignment(result, staged_dir=staged_dir)
         staged_paths.append(staged)
-        print(f"         ✓ Staged: {staged.name}")
+        print(f"         OK: Staged: {staged.name}")
         print()
 
-    print(f"\n  {len(staged_paths)} staged file(s) ready in {STAGED_DIR}")
+    output_dir = Path(staged_dir) if staged_dir else STAGED_DIR
+    print(f"\n  {len(staged_paths)} staged file(s) ready in {output_dir}")
     print(f"  Run: python axiom.py review-staged\n")
     return staged_paths
 
@@ -165,7 +183,7 @@ def _print_comp(comp, idx, total):
         if val is None:
             continue
         conf = c.get(field, "?")
-        flag = "" if conf == "high" else " ⚠ " if conf == "medium" else " ✗ "
+        flag = "" if conf == "high" else " [CHECK] " if conf == "medium" else " [LOW] "
         print(f"      {label:<20} {_fmt(val, field)}{flag}")
 
     src = comp.get("source", "")
@@ -199,7 +217,7 @@ def _print_lease_comp(lc, idx, total):
         if val is None:
             continue
         conf = c.get(field, "?")
-        flag = "" if conf == "high" else " ⚠ " if conf == "medium" else " ✗ "
+        flag = "" if conf == "high" else " [CHECK] " if conf == "medium" else " [LOW] "
         print(f"      {label:<20} {_fmt(val, field)}{flag}")
 
     src = lc.get("source", "")
@@ -287,12 +305,22 @@ def review_staged(interactive=True):
                 confirmed_comps.append(comp)
             elif action == "e":
                 d = comp["data"]
+                before = dict(d)
                 print("    Enter corrections (press Enter to keep current value):")
                 for field in ["address_street", "address_city", "address_county",
                                "sale_price", "sale_date", "gba_sf", "cap_rate"]:
                     _edit_field(d, field, field)
                 comp["data"]      = d
                 comp["reviewed"]  = True
+                comp["review_edits"] = [
+                    {
+                        "field": field,
+                        "before": before.get(field),
+                        "after": d.get(field),
+                    }
+                    for field in d
+                    if before.get(field) != d.get(field)
+                ]
                 confirmed_comps.append(comp)
             elif action == "q":
                 print("\n  Review paused. Run again to continue.\n")
@@ -314,12 +342,22 @@ def review_staged(interactive=True):
                 confirmed_leases.append(lc)
             elif action == "e":
                 d = lc["data"]
+                before = dict(d)
                 print("    Enter corrections (press Enter to keep current value):")
                 for field in ["address_street", "address_city", "sf_leased",
                                "base_rent_psf", "rent_structure", "lease_date"]:
                     _edit_field(d, field, field)
                 lc["data"]     = d
                 lc["reviewed"] = True
+                lc["review_edits"] = [
+                    {
+                        "field": field,
+                        "before": before.get(field),
+                        "after": d.get(field),
+                    }
+                    for field in d
+                    if before.get(field) != d.get(field)
+                ]
                 confirmed_leases.append(lc)
             elif action == "q":
                 print("\n  Review paused. Run again to continue.\n")
@@ -328,7 +366,7 @@ def review_staged(interactive=True):
         # ── Save confirmed ─────────────────────────────────────────────────
         result["comps"]       = confirmed_comps
         result["lease_comps"] = confirmed_leases
-        result["reviewed"]    = True
+        result = confirm_extraction_result(result, reviewer="cli")
 
         confirmed_path = confirmed_dir / staged_path.name
         with open(confirmed_path, "w", encoding="utf-8") as f:
@@ -337,7 +375,7 @@ def review_staged(interactive=True):
         confirmed_paths.append(confirmed_path)
         staged_path.rename(staged_path.with_suffix(".done"))
 
-        print(f"\n  ✓ {len(confirmed_comps)} sale comp(s), "
+        print(f"\n  OK: {len(confirmed_comps)} sale comp(s), "
               f"{len(confirmed_leases)} lease comp(s) confirmed\n")
 
     return confirmed_paths
@@ -364,12 +402,218 @@ def _upsert_property(data, conn):
     return insert_property(data, conn)
 
 
-def commit_confirmed():
+def _source_doc_type(source_path):
+    path = Path(source_path)
+    extension = path.suffix.lower()
+    name = path.stem.lower()
+    if extension == ".xlsx":
+        return "comp_workbook"
+    if "report" in name:
+        return "report"
+    if "exhibit" in name:
+        return "exhibits"
+    return "document"
+
+
+def commit_extraction_result(result, conn):
+    """Commit one confirmed canonical batch inside the caller's transaction."""
+    result = canonicalize_extraction_result(result)
+    if result.get("review", {}).get("status") != "confirmed":
+        raise ValueError("Extraction batch has not been confirmed for commit.")
+    counts = {
+        "assignments": 0,
+        "sale_comps": 0,
+        "lease_comps": 0,
+        "duplicate_sale_comps": 0,
+        "duplicate_lease_comps": 0,
+        "sources": 0,
+    }
+
+    records = result.get("comps", []) + result.get("lease_comps", [])
+    provenance_by_source = {
+        record.get("provenance", {}).get("source_path"): record.get(
+            "provenance",
+            {},
+        )
+        for record in records
+        if record.get("provenance", {}).get("source_path")
+    }
+    sources = list(dict.fromkeys(
+        list(result.get("sources", []))
+        + [
+            record.get("provenance", {}).get("source_path")
+            for record in records
+            if record.get("provenance", {}).get("source_path")
+        ]
+    ))
+
+    doc_ids = {}
+    for source in sources:
+        source = str(source)
+        provenance = dict(provenance_by_source.get(source, {}))
+        if Path(source).is_file():
+            current_metadata = source_metadata(source)
+            staged_hash = provenance.get("source_sha256")
+            if (
+                staged_hash
+                and staged_hash != current_metadata["source_sha256"]
+            ):
+                raise ValueError(
+                    f"Source changed after extraction: {source}. "
+                    "Re-extract before committing."
+                )
+            provenance.update(current_metadata)
+        source_hash = provenance.get("source_sha256")
+        existing = already_ingested(
+            source,
+            conn,
+            content_sha256=source_hash,
+        )
+        if existing:
+            doc_ids[source] = existing
+            continue
+        doc_ids[source] = insert_source_document(
+            source,
+            _source_doc_type(source),
+            conn=conn,
+            content_sha256=source_hash,
+            file_size=provenance.get("source_size"),
+            modified_ns=provenance.get("source_modified_ns"),
+            contract_version=SCHEMA_VERSION,
+        )
+        counts["sources"] += 1
+
+    for doc_id in set(doc_ids.values()):
+        conn.execute(
+            "UPDATE source_documents SET reviewed = 1 WHERE doc_id = ?",
+            (doc_id,),
+        )
+
+    primary_doc_id = next(iter(doc_ids.values()), None)
+    narrative = result.get("narrative", {}).get("data", {})
+    metadata = result.get("folder_meta", {})
+    property_data = {
+        "address_street": narrative.get("address_street"),
+        "address_city": narrative.get("address_city") or metadata.get("city"),
+        "address_state": "AL",
+        "property_type": (
+            narrative.get("property_type") or metadata.get("property_type")
+        ),
+    }
+    subject_property_id = (
+        _upsert_property(property_data, conn)
+        if property_data.get("address_street")
+        else None
+    )
+
+    assignment_data = {
+        "file_no": narrative.get("file_no") or metadata.get("file_no"),
+        "client": narrative.get("client"),
+        "report_date": narrative.get("report_date"),
+        "effective_date": narrative.get("effective_date"),
+        "reconciled_value": narrative.get("reconciled_value"),
+        "sca_value": narrative.get("sca_value"),
+        "ia_value": narrative.get("ia_value"),
+        "ca_value": narrative.get("ca_value"),
+    }
+    if primary_doc_id and any(assignment_data.values()):
+        existing_assignment = conn.execute(
+            """
+            SELECT assignment_id FROM assignments
+            WHERE source_doc_id = ? AND coalesce(file_no, '') = coalesce(?, '')
+            """,
+            (primary_doc_id, assignment_data.get("file_no")),
+        ).fetchone()
+        if not existing_assignment:
+            insert_assignment(
+                assignment_data,
+                subject_property_id,
+                primary_doc_id,
+                conn,
+            )
+            counts["assignments"] += 1
+
+    income = dict(result.get("income_data", {}))
+    if income and primary_doc_id:
+        income["market_cap_rate_low"] = narrative.get("market_cap_rate_low")
+        income["market_cap_rate_high"] = narrative.get("market_cap_rate_high")
+        existing_snapshot = conn.execute(
+            """
+            SELECT snapshot_id FROM income_snapshots
+            WHERE source_doc_id = ? AND coalesce(period_year, -1) = coalesce(?, -1)
+              AND coalesce(period_type, '') = coalesce(?, '')
+            """,
+            (
+                primary_doc_id,
+                income.get("period_year"),
+                income.get("period_type"),
+            ),
+        ).fetchone()
+        if not existing_snapshot:
+            insert_income_snapshot(
+                income,
+                subject_property_id,
+                primary_doc_id,
+                conn,
+            )
+
+    for record_kind, key, counter, duplicate_counter, insert_function in (
+        (
+            "sale",
+            "comps",
+            "sale_comps",
+            "duplicate_sale_comps",
+            insert_comp,
+        ),
+        (
+            "lease",
+            "lease_comps",
+            "lease_comps",
+            "duplicate_lease_comps",
+            insert_lease_comp,
+        ),
+    ):
+        for record in result.get(key, []):
+            if record.get("review", {}).get("status") != "confirmed":
+                continue
+            findings = validate_record(record)
+            if findings["errors"]:
+                raise ValueError(
+                    f"{record_kind} comp {record.get('identity_key')} failed "
+                    f"validation: {'; '.join(findings['errors'])}"
+                )
+            identity_key = record["identity_key"]
+            if comparable_id_by_identity(record_kind, identity_key, conn):
+                counts[duplicate_counter] += 1
+                continue
+            data = record["data"]
+            property_id = _upsert_property(data, conn)
+            source = record.get("provenance", {}).get("source_path")
+            source_doc_id = doc_ids.get(source, primary_doc_id)
+            insert_function(
+                data,
+                property_id,
+                source_doc_id,
+                record.get("confidence", {}),
+                conn,
+                identity_key=identity_key,
+                review=record.get("review"),
+                source_record=record,
+            )
+            counts[counter] += 1
+    return counts
+
+
+def commit_confirmed(confirmed_dir=None, db_path=None):
     """
     Read all confirmed JSON files and write records to axiom.db.
     Marks each file as .committed when done.
     """
-    confirmed_dir  = STAGED_DIR.parent / "confirmed"
+    confirmed_dir = (
+        Path(confirmed_dir)
+        if confirmed_dir
+        else STAGED_DIR.parent / "confirmed"
+    )
     confirmed_files = list(confirmed_dir.glob("*.json"))
 
     if not confirmed_files:
@@ -377,8 +621,8 @@ def commit_confirmed():
         print(f"  Run: python axiom.py review-staged first.\n")
         return
 
-    init_db()
-    conn = get_conn()
+    init_db(db_path)
+    conn = get_conn(db_path)
 
     total_comps  = 0
     total_leases = 0
@@ -393,85 +637,27 @@ def commit_confirmed():
         folder_name = result.get("folder_name", conf_path.stem)
         print(f"  {folder_name}")
 
-        # ── Register source documents ──────────────────────────────────────
-        sources = result.get("sources", [])
-        doc_ids = {}
-        for src in sources:
-            existing = already_ingested(src, conn)
-            if existing:
-                doc_ids[src] = existing
-            else:
-                ext = Path(src).suffix.lower()
-                doc_type = ("comp_workbook" if ext == ".xlsx"
-                            else "report" if "report" in Path(src).stem.lower()
-                            else "exhibits" if "exhibit" in Path(src).stem.lower()
-                            else "document")
-                doc_ids[src] = insert_source_document(
-                    src, doc_type, conn=conn
-                )
+        try:
+            with conn:
+                counts = commit_extraction_result(result, conn)
+        except Exception as exc:
+            print(f"         ERROR: commit failed: {exc}")
+            continue
 
-        primary_doc_id = list(doc_ids.values())[0] if doc_ids else None
-
-        # ── Narrative / assignment ─────────────────────────────────────────
-        narr = result.get("narrative", {}).get("data", {})
-        meta = result.get("folder_meta", {})
-
-        # Property from narrative + folder meta
-        prop_data = {
-            "address_street":  narr.get("address_street"),
-            "address_city":    narr.get("address_city") or meta.get("city"),
-            "address_state":   "AL",
-            "property_type":   narr.get("property_type") or meta.get("property_type"),
-        }
-        subject_property_id = _upsert_property(prop_data, conn) if any(prop_data.values()) else None
-
-        # Assignment row
-        if subject_property_id and primary_doc_id:
-            asgn_data = {
-                "file_no":         narr.get("file_no") or meta.get("file_no"),
-                "client":          narr.get("client"),
-                "report_date":     narr.get("report_date"),
-                "effective_date":  narr.get("effective_date"),
-                "reconciled_value": narr.get("reconciled_value"),
-                "sca_value":       narr.get("sca_value"),
-                "ia_value":        narr.get("ia_value"),
-                "ca_value":        narr.get("ca_value"),
-            }
-            insert_assignment(asgn_data, subject_property_id, primary_doc_id, conn)
-            total_asgn += 1
-
-        # Income snapshot
-        income = result.get("income_data", {})
-        if income and subject_property_id and primary_doc_id:
-            income["market_cap_rate_low"]  = narr.get("market_cap_rate_low")
-            income["market_cap_rate_high"] = narr.get("market_cap_rate_high")
-            insert_income_snapshot(income, subject_property_id, primary_doc_id, conn)
-
-        # ── Sale comps ────────────────────────────────────────────────────
-        for comp in result.get("comps", []):
-            d    = comp["data"]
-            conf = comp.get("confidence", {})
-            src  = comp.get("source", sources[0] if sources else "")
-            doc_id = doc_ids.get(src, primary_doc_id)
-
-            prop_id = _upsert_property(d, conn)
-            insert_comp(d, prop_id, doc_id, conf, conn)
-            total_comps += 1
-
-        # ── Lease comps ───────────────────────────────────────────────────
-        for lc in result.get("lease_comps", []):
-            d    = lc["data"]
-            conf = lc.get("confidence", {})
-            src  = lc.get("source", sources[0] if sources else "")
-            doc_id = doc_ids.get(src, primary_doc_id)
-
-            prop_id = _upsert_property(d, conn)
-            insert_lease_comp(d, prop_id, doc_id, conf, conn)
-            total_leases += 1
-
-        conn.commit()
+        total_asgn += counts["assignments"]
+        total_comps += counts["sale_comps"]
+        total_leases += counts["lease_comps"]
         conf_path.rename(conf_path.with_suffix(".committed"))
-        print(f"         ✓ committed")
+        duplicate_count = (
+            counts["duplicate_sale_comps"]
+            + counts["duplicate_lease_comps"]
+        )
+        duplicate_note = (
+            f", {duplicate_count} duplicate(s) skipped"
+            if duplicate_count
+            else ""
+        )
+        print(f"         OK: committed{duplicate_note}")
 
     conn.close()
 
@@ -480,6 +666,11 @@ def commit_confirmed():
     print(f"    {total_comps}  sale comp(s) added to database")
     print(f"    {total_leases}  lease comp(s) added to database")
     print(f"\n  Run: python axiom.py comp-search   to query the database\n")
+    return {
+        "assignments": total_asgn,
+        "sale_comps": total_comps,
+        "lease_comps": total_leases,
+    }
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────

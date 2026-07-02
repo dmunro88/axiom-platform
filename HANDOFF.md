@@ -2,7 +2,7 @@
 
 - Last updated: 2026-07-01
 - Current agent: Codex
-- Last commit: Generated DOCX structural QA checkpoint (the commit containing
+- Last commit: Comparable intelligence vertical-slice checkpoint (the commit containing
   this handoff; use `git log -1 --oneline` for its immutable hash).
 
 ## Current objective
@@ -128,19 +128,37 @@ blocks before connecting external services.
   to 0; 65 table-header findings remain for semantic/manual review.
 - Advanced the application to v0.5.1 and expanded the baseline to forty-one
   passing tests.
+- Added comparable-record contract v1.0.0 with canonical numeric/date
+  semantics, stable sale/lease identities, content-hash provenance, explicit
+  review status, reviewer/timestamp/edit history, and validation findings.
+- Replaced sale-price-only deduplication with transaction identity; distinct
+  properties at the same price are retained.
+- Added SQLite migrations and unique indexes for source hashes and comparable
+  identities.
+- Confirmed batches now commit transactionally; unreviewed/invalid batches
+  roll back, moved identical sources deduplicate, and changed sources require
+  re-extraction.
+- Added reviewed sale/lease search plus CSV and workbook `comp_data` export.
+- Added CLI entry points for ingest, review, commit, and search.
+- Verified a fictional historical workbook through extraction, review,
+  database commit, repeat commit, search, CSV export, and report-workbook
+  export.
+- Replaced extraction CLI status glyphs that crashed Windows CP-1252 consoles.
+- Advanced the application to v0.6.0 and expanded the baseline to forty-seven
+  passing tests.
 
 ## In progress
 
-- Generated DOCX structural QA is ready for a source checkpoint.
+- Comparable intelligence vertical slice is ready for a source checkpoint.
 
 ## Exact next step
 
-Perform desktop Word visual QA on representative generated output, then
-classify true data tables before applying semantic header-row flags.
+Extend the canonical harvesting model to assignment conclusions and income
+snapshots, then to rent rolls/expenses and reusable narrative/chart artifacts.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 41 tests passed.
+- `python -m unittest discover -s tests -v`: 47 tests passed.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000
@@ -151,6 +169,9 @@ classify true data tables before applying semantic header-row flags.
 - Document accessibility audit: 0 high, 65 medium table-header findings.
 - Document render attempt: blocked because LibreOffice/`soffice` is not
   installed; no visual page-render claim is made.
+- Fictional historical-workbook vertical slice: 2 sale comps, 1 lease comp,
+  source-move idempotency, source-change rejection, rollback, reviewed search,
+  CSV export, and workbook export passed.
 - Registry-aware fixture freshness check: 0 stale Intake fields and 0 cache
   warnings.
 - `axiom.py --help`: passed with the warning corrected.
@@ -179,6 +200,8 @@ classify true data tables before applying semantic header-row flags.
   Python runtime was used for checks.
 - DOCX media layout has structural test coverage but still needs visual QA with
   representative landscape and portrait photos.
+- Streamlit comparable review/browse behavior has service-level coverage but
+  still needs an interactive browser pass.
 - Missing/error Excel caches are detectable. A valid-looking but stale cached
   value cannot be proven stale from XLSX alone without an Excel-side
   calculation stamp or automation.

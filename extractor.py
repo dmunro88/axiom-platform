@@ -21,6 +21,8 @@ import json
 from pathlib import Path
 from datetime import datetime
 
+from comparable_contract import comparable_identity
+
 
 # ─── Try importing document libraries ────────────────────────────────────────
 
@@ -487,6 +489,7 @@ def extract_from_xlsx(path):
             else:
                 results["comps"].append(entry)
 
+    wb.close()
     return results
 
 
@@ -1204,29 +1207,32 @@ def extract_assignment(scan):
     }
 
     def _add_comps(extracted, source_path):
-        """Merge extracted comps, deduplicating by sale_price."""
-        existing_prices = {c["data"].get("sale_price") for c in result["comps"]
-                           if c["data"].get("sale_price")}
+        """Merge extracted comps using stable transaction identity."""
+        existing_keys = {
+            comparable_identity("sale", comp["data"])
+            for comp in result["comps"]
+        }
         for comp in extracted:
-            price = comp["data"].get("sale_price")
-            if price and price in existing_prices:
+            identity_key = comparable_identity("sale", comp["data"])
+            if identity_key in existing_keys:
                 continue
             comp["source"] = str(source_path)
             result["comps"].append(comp)
-            if price:
-                existing_prices.add(price)
+            existing_keys.add(identity_key)
 
     def _add_lease_comps(extracted, source_path):
-        """Merge extracted lease comps, deduplicating by rent_psf + address."""
-        existing = {(c["data"].get("base_rent_psf"), c["data"].get("address_street"))
-                    for c in result["lease_comps"]}
+        """Merge extracted lease comps using stable transaction identity."""
+        existing_keys = {
+            comparable_identity("lease", comp["data"])
+            for comp in result["lease_comps"]
+        }
         for lc in extracted:
-            key = (lc["data"].get("base_rent_psf"), lc["data"].get("address_street"))
-            if key in existing and key[0] is not None:
+            identity_key = comparable_identity("lease", lc["data"])
+            if identity_key in existing_keys:
                 continue
             lc["source"] = str(source_path)
             result["lease_comps"].append(lc)
-            existing.add(key)
+            existing_keys.add(identity_key)
 
     # ── 1. Cap rate / market Excel files (highest confidence for IA data) ────
     for xls_path in scan["cap_rate_xls"] + scan["market_xls"]:

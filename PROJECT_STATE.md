@@ -51,6 +51,9 @@ the signed deliverable.
 | `contract` | Audits workbook and configured template keys against field registry v1 |
 | `dilmore` | Writes size-adjustment calculations into the assignment workbook |
 | `extract` | Extracts comparable and narrative data from supported source documents |
+| `comp-ingest` | Scans historical assignment folders and stages versioned sale/lease records for review |
+| `review-staged` / `comp-commit` | Confirms staged records and transactionally commits reviewed evidence |
+| `comp-search` | Searches reviewed sale or lease comps by canonical database fields |
 | `list` / `status` | Reads assignment metadata and files |
 | `dashboard` | Regenerates a local HTML assignment dashboard |
 
@@ -63,7 +66,8 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Forty-one automated validation, delivery-state, stress, golden-DOCX, media, comp-page,
+- Forty-seven automated validation, delivery-state, stress, golden-DOCX, comparable,
+  media, comp-page,
   structured-block, model-routing, contract, and presentation-derivation tests
   pass.
 - The platform folder arrived without dedicated Git history. A dedicated
@@ -98,6 +102,15 @@ Checks were performed without regenerating or modifying assignment outputs.
 - Comp-template images now copy their relationships into the report package;
   cloned drawings receive unique IDs and all output images receive baseline
   alt text. Application version is v0.5.1.
+- Comparable contract v1.0.0 defines canonical sale/lease data, decimal rate
+  semantics, stable transaction identity, immutable source hashes, review
+  provenance, and validation.
+- Historical extraction now stages versioned records, commits only confirmed
+  batches in SQLite transactions, deduplicates moved sources by content and
+  comps by identity, and rejects sources changed after extraction.
+- Reviewed comp search and CSV/workbook `comp_data` export are verified through
+  a fictional historical-workbook vertical slice. Application version is
+  v0.6.0. See `docs/COMPARABLE_INTELLIGENCE.md`.
 - Maps, building sketches, and photo blocks use documented assignment asset
   paths; validation identifies missing files and delivery embeds available
   JPG/PNG assets.
@@ -186,6 +199,17 @@ Checks were performed without regenerating or modifying assignment outputs.
    Valid-but-stale cache proof still requires an Excel-side calculation stamp.
 4. **Completed for new assignments and delivery attempts:** record template,
    schema, and application versions per assignment.
+
+### P1 — Comparable intelligence
+
+1. **Completed:** define canonical sale/lease record contract, provenance,
+   review status, identity, and database idempotency.
+2. **Completed:** verify fictional extract → stage → review → commit → search →
+   CSV/workbook export.
+3. Extend the same provenance/review model to assignment conclusions, income
+   snapshots, rent rolls, expenses, narratives, charts, and maps.
+4. Add database migrations/backfills for any legacy local comp rows before
+   importing a real historical archive.
 
 ### P2 — Integrations
 

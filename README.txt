@@ -65,6 +65,19 @@ Open a terminal, navigate to the axiom_platform folder, then:
   python axiom.py contract
       Checks workbook and template keys against the versioned field registry.
 
+  python axiom.py comp-ingest "C:\Path\To\Historical Projects"
+      Extracts historical sale and lease comps into review staging.
+
+  python axiom.py review-staged
+      Reviews staged records in the terminal. The Comp Library UI provides the
+      visual review alternative.
+
+  python axiom.py comp-commit
+      Commits confirmed, validated records to the local comparable database.
+
+  python axiom.py comp-search --city "Demo City" --type Office
+      Searches reviewed sale comps. Add --lease to search lease comps.
+
   python axiom.py list
       Shows all assignments and their current stage.
 

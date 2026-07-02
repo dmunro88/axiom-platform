@@ -1,0 +1,66 @@
+{
+  "contract_id": "axiom.comparable.record",
+  "schema_version": "1.0.0",
+  "record_kinds": {
+    "sale": {
+      "required": [
+        "address_street",
+        "sale_price"
+      ],
+      "recommended": [
+        "address_city",
+        "sale_date",
+        "gba_sf",
+        "verification_source"
+      ],
+      "identity_fields": [
+        "address_street",
+        "address_city",
+        "sale_date",
+        "sale_price"
+      ]
+    },
+    "lease": {
+      "required": [
+        "address_street",
+        "base_rent_psf"
+      ],
+      "recommended": [
+        "address_city",
+        "tenant_name",
+        "lease_date",
+        "sf_leased",
+        "rent_structure"
+      ],
+      "identity_fields": [
+        "address_street",
+        "address_city",
+        "tenant_name",
+        "lease_date",
+        "sf_leased",
+        "base_rent_psf"
+      ]
+    }
+  },
+  "confidence_values": [
+    "high",
+    "medium",
+    "low",
+    "unknown"
+  ],
+  "review_statuses": [
+    "unreviewed",
+    "confirmed",
+    "rejected"
+  ],
+  "provenance_required": [
+    "source_path",
+    "source_sha256"
+  ],
+  "numeric_semantics": {
+    "currency": "decimal dollars",
+    "area": "square feet",
+    "rates": "decimal fractions; 0.085 means 8.5 percent",
+    "dates": "ISO 8601 YYYY-MM-DD"
+  }
+}

@@ -735,7 +735,7 @@ def cmd_extract(args):
         price = d.get('sale_price')
         psf   = d.get('price_per_sf')
         date  = d.get('sale_date', '-')
-        src   = c.get('source_file', '')
+        src   = c.get('source', '')
         price_str = f'${price:,.0f}' if isinstance(price, (int, float)) else '-'
         psf_str   = f'${psf:.2f}/SF' if isinstance(psf, (int, float)) else '-'
         print(f'    {i}. {addr}')
@@ -748,7 +748,7 @@ def cmd_extract(args):
         rent = d.get('base_rent_psf')
         sf   = d.get('sf_leased')
         date = d.get('lease_date', '-')
-        src  = c.get('source_file', '')
+        src  = c.get('source', '')
         rent_str = f'${rent:.2f}/SF' if isinstance(rent, (int, float)) else '-'
         sf_str   = f'{sf:,.0f} SF' if isinstance(sf, (int, float)) else '-'
         print(f'    {i}. {addr}')
@@ -763,6 +763,86 @@ def cmd_extract(args):
         print(f'  Warnings ({len(warnings)}):')
         for w in warnings:
             print(f'    ! {w}')
+
+
+def cmd_comp_ingest(args):
+    """Extract and stage historical assignment folders for human review."""
+    if not args:
+        print("Usage: python axiom.py comp-ingest <historical-projects-root>")
+        return False
+    root = Path(args[0])
+    if not root.is_dir():
+        print(f"  Historical projects folder not found: {root}")
+        return False
+    from ingest import run_extraction
+
+    run_extraction(root)
+    return True
+
+
+def cmd_review_staged(args):
+    """Review staged comparable records in the terminal."""
+    from ingest import review_staged
+
+    review_staged()
+    return True
+
+
+def cmd_comp_commit(args):
+    """Commit confirmed comparable batches to the canonical database."""
+    from ingest import commit_confirmed
+
+    commit_confirmed()
+    return True
+
+
+def cmd_comp_search(args):
+    """Search reviewed sale or lease comparables in the local database."""
+    kind = "sale"
+    filters = {}
+    index = 0
+    while index < len(args):
+        option = args[index]
+        if option == "--lease":
+            kind = "lease"
+            index += 1
+            continue
+        if option in {"--city", "--type", "--address"}:
+            if index + 1 >= len(args):
+                print(f"  Missing value for {option}")
+                return False
+            filters[{
+                "--city": "city",
+                "--type": "property_type",
+                "--address": "address_contains",
+            }[option]] = args[index + 1]
+            index += 2
+            continue
+        print(f"  Unknown comp-search option: {option}")
+        return False
+
+    from db import search_lease_comps, search_sale_comps
+
+    records = (
+        search_lease_comps(**filters)
+        if kind == "lease"
+        else search_sale_comps(**filters)
+    )
+    print(f"\n  {len(records)} reviewed {kind} comp(s) found")
+    for number, record in enumerate(records, 1):
+        address = record.get("address_street") or "(no address)"
+        city = record.get("address_city") or ""
+        if kind == "sale":
+            amount = record.get("sale_price")
+            metric = f"${amount:,.0f}" if amount is not None else "-"
+            date = record.get("sale_date") or "-"
+        else:
+            amount = record.get("base_rent_psf")
+            metric = f"${amount:,.2f}/SF" if amount is not None else "-"
+            date = record.get("lease_date") or "-"
+        print(f"    {number}. {address}, {city}")
+        print(f"       {metric}  {date}")
+    return True
 
 
 def cmd_list(args):
@@ -1244,6 +1324,10 @@ COMMANDS = {
     'contract':  cmd_contract,
     'dilmore':   cmd_dilmore,
     'extract':   cmd_extract,
+    'comp-ingest': cmd_comp_ingest,
+    'review-staged': cmd_review_staged,
+    'comp-commit': cmd_comp_commit,
+    'comp-search': cmd_comp_search,
     'list':      cmd_list,
     'status':    cmd_status,
     'dashboard': cmd_dashboard,

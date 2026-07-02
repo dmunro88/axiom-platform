@@ -18,6 +18,7 @@ Usage
   conn = get_conn()          # sqlite3 connection with Row factory
 """
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -33,6 +34,10 @@ CREATE TABLE IF NOT EXISTS source_documents (
     doc_type            TEXT,           -- report / comp_workbook / lease / rent_roll / os
     report_date         TEXT,
     effective_date      TEXT,
+    content_sha256      TEXT,
+    file_size           INTEGER,
+    modified_ns         INTEGER,
+    contract_version    TEXT,
     processed_at        TEXT    DEFAULT (datetime('now')),
     extraction_notes    TEXT,           -- unmapped headers, warnings, etc.
     reviewed            INTEGER DEFAULT 0,  -- 1 once Derek has confirmed
@@ -81,7 +86,11 @@ CREATE TABLE IF NOT EXISTS comps (
     deed_ref            TEXT,
     verification_source TEXT,
     submarket           TEXT,
+    identity_key        TEXT,
     confidence          TEXT,           -- JSON: {"sale_price": "high", "cap_rate": "medium", ...}
+    review_status       TEXT    DEFAULT 'unreviewed',
+    reviewed_at         TEXT,
+    source_record_json  TEXT,
     reviewed            INTEGER DEFAULT 0,
     notes               TEXT,
     created_at          TEXT    DEFAULT (datetime('now'))
@@ -108,7 +117,11 @@ CREATE TABLE IF NOT EXISTS lease_comps (
     escalations         TEXT,           -- "3% annual", "CPI", "5% every 3 years", etc.
     renewal_options     TEXT,           -- "two 5-year options at fair market rent"
     submarket           TEXT,
+    identity_key        TEXT,
     confidence          TEXT,           -- JSON per-field confidence
+    review_status       TEXT    DEFAULT 'unreviewed',
+    reviewed_at         TEXT,
+    source_record_json  TEXT,
     reviewed            INTEGER DEFAULT 0,
     notes               TEXT,
     created_at          TEXT    DEFAULT (datetime('now'))
@@ -165,7 +178,77 @@ CREATE INDEX IF NOT EXISTS idx_source_filepath    ON source_documents(filepath);
 """
 
 
-def init_db(db_path=None):
+MIGRATION_COLUMNS = {
+    "source_documents": {
+        "content_sha256": "TEXT",
+        "file_size": "INTEGER",
+        "modified_ns": "INTEGER",
+        "contract_version": "TEXT",
+    },
+    "comps": {
+        "identity_key": "TEXT",
+        "review_status": "TEXT DEFAULT 'unreviewed'",
+        "reviewed_at": "TEXT",
+        "source_record_json": "TEXT",
+    },
+    "lease_comps": {
+        "identity_key": "TEXT",
+        "review_status": "TEXT DEFAULT 'unreviewed'",
+        "reviewed_at": "TEXT",
+        "source_record_json": "TEXT",
+    },
+}
+
+IDENTITY_INDEXES = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_source_content_sha256
+    ON source_documents(content_sha256)
+    WHERE content_sha256 IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_comps_identity_key
+    ON comps(identity_key)
+    WHERE identity_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_lease_comps_identity_key
+    ON lease_comps(identity_key)
+    WHERE identity_key IS NOT NULL;
+"""
+
+
+def _apply_migrations(conn):
+    for table, columns in MIGRATION_COLUMNS.items():
+        existing = {
+            row[1]
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for column, definition in columns.items():
+            if column not in existing:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                )
+    conn.execute(
+        """
+        UPDATE comps
+        SET review_status = CASE
+            WHEN reviewed = 1 THEN 'confirmed'
+            ELSE 'unreviewed'
+        END
+        WHERE review_status IS NULL OR review_status = ''
+           OR (review_status = 'unreviewed' AND reviewed = 1)
+        """
+    )
+    conn.execute(
+        """
+        UPDATE lease_comps
+        SET review_status = CASE
+            WHEN reviewed = 1 THEN 'confirmed'
+            ELSE 'unreviewed'
+        END
+        WHERE review_status IS NULL OR review_status = ''
+           OR (review_status = 'unreviewed' AND reviewed = 1)
+        """
+    )
+    conn.executescript(IDENTITY_INDEXES)
+
+
+def init_db(db_path=None, quiet=False):
     """
     Create the database and all tables if they don't exist.
     Safe to call multiple times (CREATE TABLE IF NOT EXISTS).
@@ -174,9 +257,11 @@ def init_db(db_path=None):
     path = Path(db_path) if db_path else DB_PATH
     conn = sqlite3.connect(str(path))
     conn.executescript(SCHEMA)
+    _apply_migrations(conn)
     conn.commit()
     conn.close()
-    print(f"  Database ready: {path}")
+    if not quiet:
+        print(f"  Database ready: {path}")
     return path
 
 
@@ -192,7 +277,7 @@ def get_conn(db_path=None):
     return conn
 
 
-def already_ingested(filepath, conn=None):
+def already_ingested(filepath=None, conn=None, content_sha256=None):
     """
     Check if a file has already been processed (by filepath).
     Returns the doc_id if found, None otherwise.
@@ -200,17 +285,34 @@ def already_ingested(filepath, conn=None):
     close_after = conn is None
     if conn is None:
         conn = get_conn()
-    row = conn.execute(
-        "SELECT doc_id FROM source_documents WHERE filepath = ?",
-        (str(filepath),)
-    ).fetchone()
+    row = None
+    if content_sha256:
+        row = conn.execute(
+            "SELECT doc_id FROM source_documents WHERE content_sha256 = ?",
+            (content_sha256,),
+        ).fetchone()
+    if row is None and filepath is not None:
+        row = conn.execute(
+            "SELECT doc_id FROM source_documents WHERE filepath = ?",
+            (str(filepath),),
+        ).fetchone()
     if close_after:
         conn.close()
     return row["doc_id"] if row else None
 
 
-def insert_source_document(filepath, doc_type, report_date=None,
-                           effective_date=None, extraction_notes=None, conn=None):
+def insert_source_document(
+    filepath,
+    doc_type,
+    report_date=None,
+    effective_date=None,
+    extraction_notes=None,
+    conn=None,
+    content_sha256=None,
+    file_size=None,
+    modified_ns=None,
+    contract_version=None,
+):
     """
     Insert a new source_documents row and return its doc_id.
     """
@@ -219,10 +321,13 @@ def insert_source_document(filepath, doc_type, report_date=None,
         conn = get_conn()
     cur = conn.execute(
         """INSERT INTO source_documents
-           (filename, filepath, doc_type, report_date, effective_date, extraction_notes)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+           (filename, filepath, doc_type, report_date, effective_date,
+            extraction_notes, content_sha256, file_size, modified_ns,
+            contract_version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (Path(filepath).name, str(filepath), doc_type,
-         report_date, effective_date, extraction_notes)
+         report_date, effective_date, extraction_notes, content_sha256,
+         file_size, modified_ns, contract_version)
     )
     doc_id = cur.lastrowid
     if close_after:
@@ -238,6 +343,7 @@ def insert_property(data, conn):
               "site_area_sf", "year_built", "stories", "construction_type",
               "condition", "zoning", "flood_zone", "parcel_id"]
     row = {f: data.get(f) for f in fields}
+    row["address_state"] = row["address_state"] or "AL"
     cols = ", ".join(row.keys())
     placeholders = ", ".join("?" for _ in row)
     cur = conn.execute(
@@ -247,9 +353,17 @@ def insert_property(data, conn):
     return cur.lastrowid
 
 
-def insert_comp(data, property_id, source_doc_id, confidence, conn):
+def insert_comp(
+    data,
+    property_id,
+    source_doc_id,
+    confidence,
+    conn,
+    identity_key=None,
+    review=None,
+    source_record=None,
+):
     """Insert a comps row and return comp_id."""
-    import json
     fields = ["sale_price", "sale_date", "price_per_sf", "cap_rate", "noi",
               "noi_per_sf", "grantor", "grantee", "deed_ref",
               "verification_source", "submarket"]
@@ -257,6 +371,14 @@ def insert_comp(data, property_id, source_doc_id, confidence, conn):
     row["property_id"] = property_id
     row["source_doc_id"] = source_doc_id
     row["confidence"] = json.dumps(confidence)
+    row["identity_key"] = identity_key
+    review = review or {}
+    row["review_status"] = review.get("status", "unreviewed")
+    row["reviewed_at"] = review.get("reviewed_at")
+    row["reviewed"] = 1 if row["review_status"] == "confirmed" else 0
+    row["source_record_json"] = (
+        json.dumps(source_record, default=str) if source_record else None
+    )
     cols = ", ".join(row.keys())
     placeholders = ", ".join("?" for _ in row)
     cur = conn.execute(
@@ -266,9 +388,17 @@ def insert_comp(data, property_id, source_doc_id, confidence, conn):
     return cur.lastrowid
 
 
-def insert_lease_comp(data, property_id, source_doc_id, confidence, conn):
+def insert_lease_comp(
+    data,
+    property_id,
+    source_doc_id,
+    confidence,
+    conn,
+    identity_key=None,
+    review=None,
+    source_record=None,
+):
     """Insert a lease_comps row and return lease_comp_id."""
-    import json
     fields = ["tenant_name", "tenant_use", "lease_date", "lease_expiration",
               "term_years", "sf_leased",
               "base_rent_psf", "base_rent_monthly", "rent_structure", "expense_stop_psf",
@@ -278,6 +408,14 @@ def insert_lease_comp(data, property_id, source_doc_id, confidence, conn):
     row["property_id"] = property_id
     row["source_doc_id"] = source_doc_id
     row["confidence"] = json.dumps(confidence)
+    row["identity_key"] = identity_key
+    review = review or {}
+    row["review_status"] = review.get("status", "unreviewed")
+    row["reviewed_at"] = review.get("reviewed_at")
+    row["reviewed"] = 1 if row["review_status"] == "confirmed" else 0
+    row["source_record_json"] = (
+        json.dumps(source_record, default=str) if source_record else None
+    )
     cols = ", ".join(row.keys())
     placeholders = ", ".join("?" for _ in row)
     cur = conn.execute(
@@ -318,6 +456,131 @@ def insert_income_snapshot(data, property_id, source_doc_id, conn):
         list(row.values())
     )
     return cur.lastrowid
+
+
+def comparable_id_by_identity(record_kind, identity_key, conn):
+    table = "comps" if record_kind == "sale" else "lease_comps"
+    id_column = "comp_id" if record_kind == "sale" else "lease_comp_id"
+    row = conn.execute(
+        f"SELECT {id_column} FROM {table} WHERE identity_key = ?",
+        (identity_key,),
+    ).fetchone()
+    return row[id_column] if row else None
+
+
+def search_sale_comps(
+    db_path=None,
+    *,
+    city=None,
+    property_type=None,
+    address_contains=None,
+    sale_date_from=None,
+    sale_date_to=None,
+    include_unreviewed=False,
+):
+    """Return canonical sale-comp rows for application and workbook reuse."""
+    path = Path(db_path) if db_path else DB_PATH
+    if not path.exists():
+        return []
+    init_db(path, quiet=True)
+    conn = get_conn(db_path)
+    sql = """
+        SELECT c.comp_id, c.identity_key, c.review_status,
+               c.sale_price, c.sale_date, c.price_per_sf, c.cap_rate,
+               c.noi, c.noi_per_sf, c.grantor, c.grantee, c.deed_ref,
+               c.verification_source, c.submarket, c.confidence,
+               p.address_street, p.address_city, p.address_county,
+               p.address_state, p.address_zip, p.property_type,
+               p.property_subtype, p.gba_sf, p.nla_sf, p.site_area_sf,
+               p.year_built, p.stories, p.construction_type, p.condition,
+               p.zoning, p.flood_zone, p.parcel_id,
+               sd.filename AS source_filename,
+               sd.content_sha256 AS source_sha256
+        FROM comps c
+        JOIN properties p ON p.property_id = c.property_id
+        LEFT JOIN source_documents sd ON sd.doc_id = c.source_doc_id
+        WHERE 1=1
+    """
+    params = []
+    if not include_unreviewed:
+        sql += " AND c.review_status = 'confirmed'"
+    if city:
+        sql += " AND lower(p.address_city) = lower(?)"
+        params.append(city)
+    if property_type:
+        sql += " AND lower(p.property_type) = lower(?)"
+        params.append(property_type)
+    if address_contains:
+        sql += " AND lower(p.address_street) LIKE lower(?)"
+        params.append(f"%{address_contains}%")
+    if sale_date_from:
+        sql += " AND c.sale_date >= ?"
+        params.append(sale_date_from)
+    if sale_date_to:
+        sql += " AND c.sale_date <= ?"
+        params.append(sale_date_to)
+    sql += " ORDER BY c.sale_date DESC, c.comp_id DESC"
+    try:
+        rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+    for row in rows:
+        row["confidence"] = json.loads(row.get("confidence") or "{}")
+    return rows
+
+
+def search_lease_comps(
+    db_path=None,
+    *,
+    city=None,
+    property_type=None,
+    address_contains=None,
+    include_unreviewed=False,
+):
+    """Return canonical lease-comp rows for market-rent analysis."""
+    path = Path(db_path) if db_path else DB_PATH
+    if not path.exists():
+        return []
+    init_db(path, quiet=True)
+    conn = get_conn(db_path)
+    sql = """
+        SELECT lc.lease_comp_id, lc.identity_key, lc.review_status,
+               lc.tenant_name, lc.tenant_use, lc.lease_date,
+               lc.lease_expiration, lc.term_years, lc.sf_leased,
+               lc.base_rent_psf, lc.base_rent_monthly, lc.rent_structure,
+               lc.expense_stop_psf, lc.ti_allowance_psf,
+               lc.free_rent_months, lc.escalations, lc.renewal_options,
+               lc.submarket, lc.confidence,
+               p.address_street, p.address_city, p.address_county,
+               p.address_state, p.address_zip, p.property_type,
+               p.property_subtype, p.gba_sf,
+               sd.filename AS source_filename,
+               sd.content_sha256 AS source_sha256
+        FROM lease_comps lc
+        JOIN properties p ON p.property_id = lc.property_id
+        LEFT JOIN source_documents sd ON sd.doc_id = lc.source_doc_id
+        WHERE 1=1
+    """
+    params = []
+    if not include_unreviewed:
+        sql += " AND lc.review_status = 'confirmed'"
+    if city:
+        sql += " AND lower(p.address_city) = lower(?)"
+        params.append(city)
+    if property_type:
+        sql += " AND lower(p.property_type) = lower(?)"
+        params.append(property_type)
+    if address_contains:
+        sql += " AND lower(p.address_street) LIKE lower(?)"
+        params.append(f"%{address_contains}%")
+    sql += " ORDER BY lc.lease_date DESC, lc.lease_comp_id DESC"
+    try:
+        rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+    for row in rows:
+        row["confidence"] = json.loads(row.get("confidence") or "{}")
+    return rows
 
 
 if __name__ == "__main__":
