@@ -3,7 +3,8 @@
 - Date: 2026-07-01
 - Scope: local, deterministic testing against temporary fictional assignments
 - External systems: not called
-- Result: 39 automated tests pass, including 21 torture cases
+- Result: 41 automated tests pass, including 21 torture cases and 2 complete
+  generated-report golden checks
 
 ## What was attacked
 
@@ -35,6 +36,10 @@
 12. Non-string conditional flags could crash section processing.
 13. Missing engagement templates could still mark an assignment engaged.
 14. Engagement generation wrote directly over prior documents.
+15. Cloned comp-template images retained source relationship IDs and resolved
+    to `settings.xml` instead of image parts.
+16. Cloned comp drawings reused duplicate Word drawing IDs.
+17. All generated-report images lacked baseline alt text.
 
 Engagement and delivery now generate in same-directory temporary files and
 replace prior output only after generation steps succeed. Failures preserve
@@ -61,3 +66,27 @@ an actionable failure status.
 - Freshness of valid-looking Excel formula caches without an Excel-side
   calculation stamp.
 - Performance beyond 50 comps, 50 photos, and the tested long-text case.
+
+## Follow-up generated-report QA
+
+A complete deterministic report was assembled from `DEMO-001`, including
+three comp pages, eleven fixture images, ownership history, deterministic
+narratives, and safe formula overrides.
+
+- Metadata-normalized package/text/style/media/relationship geometry is stored
+  in `tests/golden/demo_report_structure.json`.
+- After an intentional template/layout change, regenerate it with
+  `python scripts/update_demo_report_golden.py` and review the JSON diff before
+  committing.
+- The golden test verifies package CRCs, normalized OOXML hashes, relationships,
+  media hashes, paragraph/style counts, tables, shapes, page breaks, and
+  sections.
+- All 40 inline drawings now have unique IDs, valid image relationships, and
+  nonblank alt text.
+- Accessibility high-severity findings fell from 40 to 0.
+- Sixty-five medium table-header findings remain. Many report tables are
+  key-value or layout constructs rather than row/column datasets, so automatic
+  first-row marking was intentionally not applied without visual Word QA.
+- The style audit found extensive direct formatting inherited from the branded
+  template. It was not normalized because doing so could erase intentional
+  design choices without a renderer available.

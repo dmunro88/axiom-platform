@@ -185,10 +185,14 @@ def _inject_files(paragraph, marker, files, multi_image):
 
     for index, image_path in enumerate(files):
         width, height = _fitted_dimensions(image_path, max_width, max_height)
-        paragraph.add_run().add_picture(
+        shape = paragraph.add_run().add_picture(
             str(image_path),
             width=width,
             height=height,
+        )
+        shape._inline.docPr.set(
+            "descr",
+            image_path.stem.replace("-", " ").replace("_", " ").title(),
         )
         if index < len(files) - 1:
             paragraph.add_run().add_break()
@@ -230,6 +234,20 @@ def inject_media_blocks(doc_path, assignment_dir):
             injected[block] = len(files)
             break
 
-    if injected:
+    alt_updates = 0
+    for shape in doc.inline_shapes:
+        properties = shape._inline.docPr
+        if properties.get("descr") or properties.get("title"):
+            continue
+        name = properties.get("name", "")
+        description = (
+            name
+            if name and not name.lower().startswith("picture ")
+            else "Report image"
+        )
+        properties.set("descr", description)
+        alt_updates += 1
+
+    if injected or alt_updates:
         doc.save(str(doc_path))
     return injected

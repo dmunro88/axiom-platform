@@ -9,10 +9,11 @@ Can also be run standalone:
     python comp_builder.py <report_path> <workbook_path> <template_dir>
 """
 
-import copy, sys
+import copy, io, sys
 from pathlib import Path
 
 from docx import Document
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
 import openpyxl
 
@@ -168,6 +169,52 @@ def fill_comp_block(block_elements, comp):
 
 # ── Page break paragraph ──────────────────────────────────────────────────────
 
+def _remap_relationships(elements, source_part, target_part):
+    """Copy image/hyperlink relationships referenced by cloned XML."""
+    relationship_attributes = (
+        qn('r:embed'),
+        qn('r:link'),
+        qn('r:id'),
+    )
+    for element in elements:
+        for descendant in element.iter():
+            for attribute in relationship_attributes:
+                old_id = descendant.get(attribute)
+                if not old_id or old_id not in source_part.rels:
+                    continue
+                relationship = source_part.rels[old_id]
+                if relationship.reltype == RT.IMAGE:
+                    new_id, _ = target_part.get_or_add_image(
+                        io.BytesIO(relationship.target_part.blob)
+                    )
+                elif relationship.is_external:
+                    new_id = target_part.relate_to(
+                        relationship.target_ref,
+                        relationship.reltype,
+                        is_external=True,
+                    )
+                else:
+                    continue
+                descendant.set(attribute, new_id)
+
+
+def _normalize_drawing_metadata(elements, next_drawing_id):
+    """Assign unique drawing IDs and baseline alt text to cloned images."""
+    for element in elements:
+        for drawing_properties in element.iter(qn('wp:docPr')):
+            drawing_properties.set('id', str(next_drawing_id))
+            next_drawing_id += 1
+            if not (
+                drawing_properties.get('descr')
+                or drawing_properties.get('title')
+            ):
+                drawing_properties.set(
+                    'descr',
+                    'Comparable sale exhibit',
+                )
+    return next_drawing_id
+
+
 def make_page_break_para():
     """Create an empty paragraph with a page break."""
     from lxml import etree
@@ -230,6 +277,12 @@ def inject_comp_section(report_path, comp_template_path, workbook_path):
     # (we insert at the same index each time, pushing earlier inserts down)
     # Actually insert forward: increment insert_pos after each block
     current_pos = insert_pos
+    existing_drawing_ids = [
+        int(element.get('id'))
+        for element in report_body.iter(qn('wp:docPr'))
+        if str(element.get('id', '')).isdigit()
+    ]
+    next_drawing_id = max(existing_drawing_ids, default=0) + 1
 
     for comp_idx, comp in enumerate(comps):
         # Page break before comp 2, 3, ... (not before comp 1)
@@ -240,6 +293,15 @@ def inject_comp_section(report_path, comp_template_path, workbook_path):
 
         # Fill and insert this comp's block elements
         filled = fill_comp_block(tmpl_elements, comp)
+        _remap_relationships(
+            filled,
+            tmpl_doc.part,
+            report_doc.part,
+        )
+        next_drawing_id = _normalize_drawing_metadata(
+            filled,
+            next_drawing_id,
+        )
         for el in filled:
             parent.insert(current_pos, el)
             current_pos += 1

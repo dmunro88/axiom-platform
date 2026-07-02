@@ -2,7 +2,7 @@
 
 - Last updated: 2026-07-01
 - Current agent: Codex
-- Last commit: Adversarial delivery hardening checkpoint (the commit containing
+- Last commit: Generated DOCX structural QA checkpoint (the commit containing
   this handoff; use `git log -1 --oneline` for its immutable hash).
 
 ## Current objective
@@ -117,24 +117,40 @@ blocks before connecting external services.
 - Engagement now uses temporary outputs and cannot transition to `engaged`
   when templates are missing or document generation fails.
 - Expanded the automated baseline to thirty-nine passing tests.
+- Added a complete deterministic DEMO-001 report builder and normalized
+  structural golden fingerprint.
+- Fixed cloned comp images whose source relationship IDs incorrectly resolved
+  to the report's `settings.xml`; comp image relationships are now copied.
+- Comp drawings now receive unique IDs, assignment media receives descriptive
+  filename-derived alt text, and remaining template images receive baseline
+  alt text.
+- Accessibility high-severity findings on the generated report fell from 40
+  to 0; 65 table-header findings remain for semantic/manual review.
+- Advanced the application to v0.5.1 and expanded the baseline to forty-one
+  passing tests.
 
 ## In progress
 
-- Adversarial delivery hardening is ready for a source checkpoint.
+- Generated DOCX structural QA is ready for a source checkpoint.
 
 ## Exact next step
 
-Perform desktop Word visual QA on representative generated output, then add a
-metadata-normalized golden DOCX comparison.
+Perform desktop Word visual QA on representative generated output, then
+classify true data tables before applying semantic header-row flags.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 39 tests passed.
+- `python -m unittest discover -s tests -v`: 41 tests passed.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000
   Unicode characters, malformed JSON/XLSX, corrupt/oversized media, split-run
   placeholders, simulated generation failure, and a simulated locked output.
+- Complete generated-report golden: passed with 40 valid image relationships,
+  unique drawing IDs, 8 sections, and zero unresolved placeholders.
+- Document accessibility audit: 0 high, 65 medium table-header findings.
+- Document render attempt: blocked because LibreOffice/`soffice` is not
+  installed; no visual page-render claim is made.
 - Registry-aware fixture freshness check: 0 stale Intake fields and 0 cache
   warnings.
 - `axiom.py --help`: passed with the warning corrected.

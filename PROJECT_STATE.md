@@ -63,7 +63,7 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Thirty-nine automated validation, delivery-state, stress, media, comp-page,
+- Forty-one automated validation, delivery-state, stress, golden-DOCX, media, comp-page,
   structured-block, model-routing, contract, and presentation-derivation tests
   pass.
 - The platform folder arrived without dedicated Git history. A dedicated
@@ -88,10 +88,16 @@ Checks were performed without regenerating or modifying assignment outputs.
 - Delivery documents are generated to same-directory temporary files and
   atomically replace prior output only after all insertion steps succeed.
 - Contract v1.2.0 distinguishes required fields from two explicitly optional
-  blank assumption/condition fields; application version is v0.5.0.
+  blank assumption/condition fields; this behavior was introduced in
+  application v0.5.0.
 - Stress coverage includes malformed inputs, split-run placeholders, corrupt
   and oversized media, unsafe paths, locked outputs, 50 comps, 50 photos, and
   long Unicode text. See `docs/STRESS_TEST_REPORT.md`.
+- Complete-report structural golden coverage detects normalized OOXML, package,
+  relationship, media, text/style, table, section, and page-break drift.
+- Comp-template images now copy their relationships into the report package;
+  cloned drawings receive unique IDs and all output images receive baseline
+  alt text. Application version is v0.5.1.
 - Maps, building sketches, and photo blocks use documented assignment asset
   paths; validation identifies missing files and delivery embeds available
   JPG/PNG assets.
@@ -165,8 +171,8 @@ Checks were performed without regenerating or modifying assignment outputs.
 3. **Completed for adversarial structural behavior:** add temporary-assignment
    torture tests covering malformed, extreme, interrupted, and path-safety
    cases.
-4. Add a golden-output or structural DOCX comparison that ignores unstable
-   package metadata.
+4. **Completed:** add a metadata-normalized structural DOCX golden comparison.
+   Desktop Word visual comparison remains.
 
 ### P1 — Data contract
 

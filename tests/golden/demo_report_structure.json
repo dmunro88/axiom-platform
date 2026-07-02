@@ -1,0 +1,1316 @@
+{
+  "word_parts": [
+    "word/_rels/document.xml.rels",
+    "word/document.xml",
+    "word/endnotes.xml",
+    "word/fontTable.xml",
+    "word/footer1.xml",
+    "word/footnotes.xml",
+    "word/header1.xml",
+    "word/media/image1.png",
+    "word/media/image10.png",
+    "word/media/image11.png",
+    "word/media/image12.png",
+    "word/media/image13.png",
+    "word/media/image14.png",
+    "word/media/image15.png",
+    "word/media/image16.png",
+    "word/media/image17.png",
+    "word/media/image18.png",
+    "word/media/image19.png",
+    "word/media/image2.png",
+    "word/media/image20.png",
+    "word/media/image21.png",
+    "word/media/image22.png",
+    "word/media/image23.png",
+    "word/media/image24.png",
+    "word/media/image25.png",
+    "word/media/image26.png",
+    "word/media/image27.png",
+    "word/media/image28.png",
+    "word/media/image29.png",
+    "word/media/image3.png",
+    "word/media/image30.png",
+    "word/media/image31.png",
+    "word/media/image32.png",
+    "word/media/image33.png",
+    "word/media/image34.png",
+    "word/media/image35.png",
+    "word/media/image36.png",
+    "word/media/image37.png",
+    "word/media/image38.png",
+    "word/media/image4.png",
+    "word/media/image5.png",
+    "word/media/image6.png",
+    "word/media/image7.png",
+    "word/media/image8.png",
+    "word/media/image9.png",
+    "word/numbering.xml",
+    "word/settings.xml",
+    "word/styles.xml",
+    "word/theme/theme1.xml",
+    "word/webSettings.xml"
+  ],
+  "xml_hashes": {
+    "word/document.xml": "3ecde654f608c73d5238e9873f4d9286dca393cf7ac96741268bc64f986c749f",
+    "word/endnotes.xml": "1fc6ea1da63fe72d26ea5d6799a524d2dd375dcc5b43e2ca2b49eafe0f4be75f",
+    "word/fontTable.xml": "e9db5af99936474506ac9cc3bbf86ee42b6f2dbe56e4d6de52241234522d5c38",
+    "word/footer1.xml": "e93f4f09f8f420a008611d4dc3afb91edcad3b5b9e55115c4c0ed5f800a7463a",
+    "word/footnotes.xml": "32d9720c0a037febab92924f8e39f492c00a1bdd4a56365b498b5b79fb22cb99",
+    "word/header1.xml": "8873edff53406c43316c689689df6c0a3921f94b64cc69cd5d0ae8389d8062d1",
+    "word/numbering.xml": "02e53eb6e097dcb3c4bf98c02a587335e4dfbc7f12761db18ac4b741d7c4b406",
+    "word/settings.xml": "119775012d526e74d0b4db19eddf258b004be1efd7912e2bc9576a83ead54f6e",
+    "word/styles.xml": "8bc5bdc71916f139c653c5977ec10bd7b8e9c60b78c463d8492c904738a2477d",
+    "word/theme/theme1.xml": "bb670eb25d1434f21a63c8a065089404a990b105eb0af7d14ce47e2632822cc6",
+    "word/webSettings.xml": "6ceceb1cf66b753636e1b869f615279e0502c42366ec0da734f9c38aaadd705c"
+  },
+  "media_hashes": {
+    "word/media/image1.png": "8a39ae3d7227912830c492768d93ae466b31f7681b98d8ccb6ea9bc1329a1c88",
+    "word/media/image10.png": "5082eacc1435863e5815d4d992c6de4f6620837da957fff109020af006a0a6b4",
+    "word/media/image11.png": "79994c3232e2298500e3899658562583e6706d824f303866f48798e4f8253142",
+    "word/media/image12.png": "8c149539a33677efba284a31c1fea5dd311fb1d375cebaac37e9530f6f3f8a69",
+    "word/media/image13.png": "7a6c369a08f4a3b2143637ee7d81d61d775aab6d7c63b51e644e8f27d2629889",
+    "word/media/image14.png": "5ed8df2bc13e17022db430ce5caade9f4b9a8001393bd90bf6cfd313033e3354",
+    "word/media/image15.png": "b58ad5891d6193f9d11895301057988290b05d8a3d7c26dfc07eec034fa3fab9",
+    "word/media/image16.png": "4be06453d92ca465e795625f892c48b4551b60b28c443bc58920b404081c29b3",
+    "word/media/image17.png": "b19fe51fd5112917f96b899f20c8f5bc0bf094821a120d8149a525f80516936e",
+    "word/media/image18.png": "9e0f612704c49d6580885b6cde8813e4781b8ef898380605dd68ed71bdd8564c",
+    "word/media/image19.png": "765da8ec1dc47d1ce8ea0edc3a41c2d7853150186e580362190ed037af879c45",
+    "word/media/image2.png": "97513eb01b7833a5b1e1409c26b73d273afbf27c9bc2e93522fd5dcbb7b0d11a",
+    "word/media/image20.png": "66825e5f3db3c936a1393ffad8cfaf8236628cade3eb35334514d34b02df0077",
+    "word/media/image21.png": "de729f2187c61e507750c725a4a5325eb75f4b750dabecd1ab6db37ab063598d",
+    "word/media/image22.png": "65bd4cac9ae76da7c0d2c36eb9f4af95adf4db13333640557887e535796451dd",
+    "word/media/image23.png": "ed10804765af0f8a09e5cde408e78c4d6e52beccf0f764ab206f5b16dc0313b9",
+    "word/media/image24.png": "b5728aec6b0f36ec87e919189264d61d7ee9a27a7ff8d7d620e21f7ade3a960c",
+    "word/media/image25.png": "9ead60de75a1713120abcbdabab5a37433b1e41f5a5a413070af98c0a6462bd7",
+    "word/media/image26.png": "9241055f3cbddf938ebc9f1b3eab87a6a3689b0ba1d5d825d4bad646c8d6a4cc",
+    "word/media/image27.png": "cc63615939548d79b5b79450e45749e52bd6c05b96dc2be155206418d1553cc5",
+    "word/media/image28.png": "e1ddddf29ab8ed6967ef24e57c883a350286ad4026193d260327b6830e7ec4f3",
+    "word/media/image29.png": "756d64e84ace3caf39c1dfdf8fe58b70c55f0d85ffe33036d29d84ce8461e6b5",
+    "word/media/image3.png": "6a5540e52ddffe9fa7a87f3c555d60e5c768a8583948c9b4b2db87e9a70eb3f8",
+    "word/media/image30.png": "dbeadbaa04af4965855362c03758de0b92506a3c068d58504f164ebceec85caa",
+    "word/media/image31.png": "abcccae5148977c1b1292582f033d7e7bf489e5a3b377d5dbf4feb4bd083c6bf",
+    "word/media/image32.png": "6affb63adb73e7543214bae12a75368aec80bebfe2c81ed1534a941de7ad2df6",
+    "word/media/image33.png": "40a93161450d947abbb150e222183f55da54dac1b8b408ed32cf29028236ec83",
+    "word/media/image34.png": "cd9401e2437c8cba0a7ed918fe63c4d06899cada3fa206c43115ec2fb3b3ebc5",
+    "word/media/image35.png": "6ec270cecbf85e09e05d0e3ec62d432fb8793430306d7ae3c7e17ca61b087aaf",
+    "word/media/image36.png": "b01197f30e765fce7fb4173546f576feb362394098aa80d8b1e46cc22de1394c",
+    "word/media/image37.png": "26d2780718f0b51837354c74b29a9b471788dcb83245e6a99535948b747aadc1",
+    "word/media/image38.png": "1efcacb5db8c4d37867f0f41d51e9f7acc34f047964bfdd5ee3f93095803d3e5",
+    "word/media/image4.png": "9fb279842273165f968253ea1a64e6323613fc75c22ddce8ea91b0787fa6c421",
+    "word/media/image5.png": "73ba7a36b8b9ffb977770f7b43d6f4ff40a18eaf03b3c713109567bb79e8d782",
+    "word/media/image6.png": "c16f01a41d886d4f2bd2b7ef724d071fc57d6a3b359194df0c6a93f064d4dbf7",
+    "word/media/image7.png": "e99fb06b1006ca818f5975d6889fccc61958ad5f9495f51cb31cabc5de9c65d1",
+    "word/media/image8.png": "a9c4f307d1679d3710262dce986e890d38b953b5927fdd5bfad6145e3737dd24",
+    "word/media/image9.png": "f28a59172d7724684f0f2baa4c45aae16edf28682b70f944eaf667f1846c8aeb"
+  },
+  "relationships": [
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml",
+      "target": "../customXml/item1.xml",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
+      "target": "endnotes.xml",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable",
+      "target": "fontTable.xml",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
+      "target": "footer1.xml",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+      "target": "footnotes.xml",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+      "target": "header1.xml",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image1.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image10.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image11.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image12.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image13.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image14.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image15.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image16.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image17.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image18.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image19.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image2.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image20.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image21.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image22.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image23.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image24.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image25.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image26.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image27.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image28.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image29.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image3.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image30.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image31.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image32.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image33.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image34.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image35.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image36.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image37.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image38.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image4.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image5.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image6.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image7.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image8.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      "target": "media/image9.png",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+      "target": "numbering.xml",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings",
+      "target": "settings.xml",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+      "target": "styles.xml",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+      "target": "theme/theme1.xml",
+      "target_mode": ""
+    },
+    {
+      "part": "word/_rels/document.xml.rels",
+      "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings",
+      "target": "webSettings.xml",
+      "target_mode": ""
+    }
+  ],
+  "paragraph_count": 1695,
+  "paragraph_styles": {
+    "(none)": 22,
+    "AddendaHeading": 6,
+    "Body": 246,
+    "ComparableHeader": 3,
+    "CrossRef": 10,
+    "FactorItem": 11,
+    "ListParagraph": 15,
+    "MainSectionHeading": 17,
+    "PhotoLabel": 1,
+    "SectionLabel": 44,
+    "SubsectionHeading": 13,
+    "TOC1": 16,
+    "TableColHead": 119,
+    "TableLabel": 360,
+    "TableSectionHead": 27,
+    "TableSubHead": 72,
+    "TableValue": 713
+  },
+  "paragraph_text_hash": "0578de651320be13c082f55f9a39b160e543e959efd403545542f7b74d08aadd",
+  "table_count": 65,
+  "tables": [
+    {
+      "rows": 1,
+      "cells_per_row": [
+        2
+      ]
+    },
+    {
+      "rows": 20,
+      "cells_per_row": [
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 4,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 4,
+      "cells_per_row": [
+        3,
+        3,
+        3,
+        3
+      ]
+    },
+    {
+      "rows": 11,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 2,
+      "cells_per_row": [
+        1,
+        1
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        2
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        1
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        1
+      ]
+    },
+    {
+      "rows": 3,
+      "cells_per_row": [
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 7,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 30,
+      "cells_per_row": [
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2
+      ]
+    },
+    {
+      "rows": 29,
+      "cells_per_row": [
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        1
+      ]
+    },
+    {
+      "rows": 5,
+      "cells_per_row": [
+        3,
+        3,
+        3,
+        3,
+        3
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        2
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        2
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        2
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        2
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        1
+      ]
+    },
+    {
+      "rows": 5,
+      "cells_per_row": [
+        2,
+        2,
+        6,
+        6,
+        6
+      ]
+    },
+    {
+      "rows": 22,
+      "cells_per_row": [
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 2,
+      "cells_per_row": [
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 16,
+      "cells_per_row": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        1
+      ]
+    },
+    {
+      "rows": 5,
+      "cells_per_row": [
+        2,
+        2,
+        6,
+        6,
+        6
+      ]
+    },
+    {
+      "rows": 22,
+      "cells_per_row": [
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 2,
+      "cells_per_row": [
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 16,
+      "cells_per_row": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        1
+      ]
+    },
+    {
+      "rows": 5,
+      "cells_per_row": [
+        2,
+        2,
+        6,
+        6,
+        6
+      ]
+    },
+    {
+      "rows": 22,
+      "cells_per_row": [
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 2,
+      "cells_per_row": [
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 16,
+      "cells_per_row": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "rows": 8,
+      "cells_per_row": [
+        11,
+        11,
+        11,
+        11,
+        11,
+        11,
+        11,
+        11
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        1
+      ]
+    },
+    {
+      "rows": 8,
+      "cells_per_row": [
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "rows": 8,
+      "cells_per_row": [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4
+      ]
+    },
+    {
+      "rows": 3,
+      "cells_per_row": [
+        3,
+        3,
+        2
+      ]
+    },
+    {
+      "rows": 6,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 4,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 13,
+      "cells_per_row": [
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7
+      ]
+    },
+    {
+      "rows": 10,
+      "cells_per_row": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ]
+    },
+    {
+      "rows": 3,
+      "cells_per_row": [
+        4,
+        4,
+        2
+      ]
+    },
+    {
+      "rows": 10,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 10,
+      "cells_per_row": [
+        3,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7
+      ]
+    },
+    {
+      "rows": 9,
+      "cells_per_row": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ]
+    },
+    {
+      "rows": 6,
+      "cells_per_row": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        4
+      ]
+    },
+    {
+      "rows": 3,
+      "cells_per_row": [
+        3,
+        3,
+        3
+      ]
+    },
+    {
+      "rows": 17,
+      "cells_per_row": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ]
+    },
+    {
+      "rows": 6,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 4,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 4,
+      "cells_per_row": [
+        3,
+        3,
+        3,
+        3
+      ]
+    },
+    {
+      "rows": 23,
+      "cells_per_row": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "rows": 12,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 5,
+      "cells_per_row": [
+        3,
+        3,
+        3,
+        3,
+        3
+      ]
+    },
+    {
+      "rows": 5,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 6,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 7,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 1,
+      "cells_per_row": [
+        1
+      ]
+    },
+    {
+      "rows": 4,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 15,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 5,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 15,
+      "cells_per_row": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "rows": 2,
+      "cells_per_row": [
+        2,
+        2
+      ]
+    }
+  ],
+  "inline_shape_count": 40,
+  "page_break_count": 47,
+  "section_count": 8,
+  "sections": [
+    {
+      "width": 7772400,
+      "height": 10058400,
+      "top_margin": 685800,
+      "right_margin": 640080,
+      "bottom_margin": 640080,
+      "left_margin": 640080
+    },
+    {
+      "width": 7772400,
+      "height": 10058400,
+      "top_margin": 685800,
+      "right_margin": 640080,
+      "bottom_margin": 640080,
+      "left_margin": 640080
+    },
+    {
+      "width": 7772400,
+      "height": 10058400,
+      "top_margin": 685800,
+      "right_margin": 640080,
+      "bottom_margin": 640080,
+      "left_margin": 640080
+    },
+    {
+      "width": 7772400,
+      "height": 10058400,
+      "top_margin": 685800,
+      "right_margin": 640080,
+      "bottom_margin": 640080,
+      "left_margin": 640080
+    },
+    {
+      "width": 7772400,
+      "height": 10058400,
+      "top_margin": 685800,
+      "right_margin": 640080,
+      "bottom_margin": 640080,
+      "left_margin": 640080
+    },
+    {
+      "width": 7772400,
+      "height": 10058400,
+      "top_margin": 685800,
+      "right_margin": 640080,
+      "bottom_margin": 640080,
+      "left_margin": 640080
+    },
+    {
+      "width": 7772400,
+      "height": 10058400,
+      "top_margin": 685800,
+      "right_margin": 640080,
+      "bottom_margin": 640080,
+      "left_margin": 640080
+    },
+    {
+      "width": 7772400,
+      "height": 10058400,
+      "top_margin": 685800,
+      "right_margin": 640080,
+      "bottom_margin": 640080,
+      "left_margin": 640080
+    }
+  ]
+}
