@@ -18,10 +18,17 @@ removed:
 - hidden workbook sheets, cached values, formulas, names, comments, and links
   containing real assignment data.
 
-The fixture currently produces zero ordinary missing placeholders and 17
-unresolved pipeline blocks: eight missing media inputs, eight local AI
-narratives, and one missing comparable-sale dataset. The ownership table is
-now generated from the fixture's existing assignment fields.
+The fixture contains three fully fictional comparable sales and eleven
+conspicuously labeled synthetic QA images. Run
+`scripts/build_demo_media.py` to reproduce the image assets. None of these
+inputs are appraisal evidence.
+
+Fixture validation produces zero ordinary missing placeholders and eight
+unresolved pipeline blocks, all of which are intentionally local AI
+narratives. Ten sales-comparison formula caches remain errors because the
+fixture exercises report-page comp insertion, not the separate adjustment-grid
+model. The ownership table is generated from the fixture's existing assignment
+fields.
 
 Presentation-only lowercase, title-case, and zoning-table aliases are omitted
 from fixture JSON. `fill_engine.load_variables()` derives them from canonical

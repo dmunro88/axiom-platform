@@ -63,7 +63,7 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Sixteen automated validation, delivery-state, media, structured-block,
+- Eighteen automated validation, delivery-state, media, comp-page, structured-block,
   model-routing, contract, and presentation-derivation tests pass.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
@@ -71,8 +71,11 @@ Checks were performed without regenerating or modifying assignment outputs.
   assignment: `DEMO-001_Northstar_Example_Holdings`.
 - `tests/fixtures/DEMO-001` is the approved source-controlled regression
   fixture.
-- Fixture validation reports 0 ordinary missing keys and 17 unresolved block
-  placeholders.
+- Fixture validation reports 0 ordinary missing keys and 8 unresolved block
+  placeholders, all intentionally local AI narratives.
+- The fixture includes three fictional comparable-sale rows and eleven
+  deterministic synthetic QA images. Tests inject all three comp pages and all
+  nine registered media blocks (eleven total images).
 - Dashboard readiness now counts ordinary missing fields and unresolved blocks.
 - Final delivery now stops before generation when validation fails.
 - Draft generation remains available through explicit `--draft` and does not
@@ -149,8 +152,9 @@ Checks were performed without regenerating or modifying assignment outputs.
 ### P1 — Repeatable testing
 
 1. **Completed:** build a genuinely fictional fixture under `tests/fixtures/`.
-2. Add tests for placeholder coverage, section removal, comp insertion,
-   formatting, state transitions, and failure behavior.
+2. **Completed for comp and media insertion:** add representative fictional
+   comp rows, reproducible synthetic media, and end-to-end block tests. Section
+   removal, formatting, and broader failure behavior remain.
 3. Add a golden-output or structural DOCX comparison that ignores unstable
    package metadata.
 

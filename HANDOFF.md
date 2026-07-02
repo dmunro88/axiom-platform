@@ -2,7 +2,7 @@
 
 - Last updated: 2026-07-01
 - Current agent: Codex
-- Last commit: Field-aware freshness checkpoint (the commit containing this
+- Last commit: Comp and media pipeline checkpoint (the commit containing this
   handoff; use `git log -1 --oneline` for its immutable hash).
 
 ## Current objective
@@ -91,26 +91,36 @@ blocks before connecting external services.
   JSON for full registry-aware testing.
 - Advanced the field contract to v1.1.1 and the application to v0.4.0.
 - Expanded the automated baseline to sixteen passing tests.
+- Added three fully fictional comparable-sale rows to the approved fixture.
+- Added a deterministic generator for eleven synthetic QA map, sketch, subject,
+  and lease-comparable images; every image is visibly marked as non-evidence.
+- Added end-to-end tests proving three comp pages and all nine registered media
+  blocks inject without unresolved placeholders.
+- Replaced a Unicode console checkmark that crashed comp insertion under the
+  Windows CP-1252 console.
+- Expanded the automated baseline to eighteen passing tests.
 
 ## In progress
 
-- Field-aware freshness and formula-cache validation are ready for a source
-  checkpoint.
+- Comp and media fixture coverage is ready for a source checkpoint.
 
 ## Exact next step
 
-Add representative fictional comparable rows and media to exercise the
-remaining report-block pipelines and visual layout.
+Add structural or golden-output comparison for generated DOCX files, then
+expand section-removal and exception-path delivery tests.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 16 tests passed.
+- `python -m unittest discover -s tests -v`: 18 tests passed.
 - `python axiom.py contract`: passed at v1.1.1 with 220 fields and 20 blocks.
 - Registry-aware fixture freshness check: 0 stale Intake fields and 0 cache
   warnings.
 - `axiom.py --help`: passed with the warning corrected.
-- `DEMO-001` fixture validation: 0 ordinary missing fields and 17 unresolved
-  blocks (eight missing media inputs, eight AI narratives, and comp data).
+- `DEMO-001` fixture validation: 0 ordinary missing fields, 8 unresolved
+  blocks (all local AI narratives), and 10 expected sales-adjustment formula
+  cache errors because the separate adjustment grid remains unpopulated.
+- Fixture pipeline tests: 3 comp pages and 11 images across all 9 registered
+  media blocks injected without remaining comp/media placeholders.
 - Spreadsheet render review: Intake, market, lease-comps, rent-roll,
   land-sales, and output sheets retained readable formatting.
 - DOCX render attempt: blocked because LibreOffice/`soffice` is unavailable;

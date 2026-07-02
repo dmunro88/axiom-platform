@@ -10,8 +10,10 @@ from unittest.mock import patch
 import openpyxl
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
+from docx.oxml.ns import qn
 
 import axiom
+from comp_builder import inject_comp_section, load_comp_data
 from field_registry import (
     audit_assignment_contract,
     build_registry,
@@ -412,6 +414,70 @@ class ValidateAssignmentTests(unittest.TestCase):
                 "REGIONAL_MAP_IMAGE",
                 find_docx_placeholders(output_path),
             )
+
+    def test_demo_fixture_injects_all_synthetic_media(self):
+        project_root = Path(__file__).resolve().parents[1]
+        assignment = project_root / "tests" / "fixtures" / "DEMO-001"
+        expected = {
+            "REGIONAL_MAP_IMAGE": 1,
+            "AERIAL_MAP_IMAGE": 1,
+            "PARCEL_MAP_IMAGE": 1,
+            "SCA_SALE_LOCATION_MAP": 1,
+            "LAND_SALE_LOCATION_MAP": 1,
+            "LEASE_COMP_LOCATION_MAP": 1,
+            "BUILDING_SKETCH_BLOCK": 1,
+            "SUBJECT_PHOTOS_BLOCK": 2,
+            "LEASE_COMP_PHOTOS_BLOCK": 2,
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "all-media.docx"
+            document = Document()
+            for block in expected:
+                document.add_paragraph(f"[[{block}]]")
+            document.save(output_path)
+
+            self.assertEqual(
+                expected,
+                inject_media_blocks(output_path, assignment),
+            )
+            self.assertEqual([], find_docx_placeholders(output_path))
+            self.assertEqual(11, len(Document(output_path).inline_shapes))
+
+    def test_demo_fixture_injects_three_comparable_sale_pages(self):
+        project_root = Path(__file__).resolve().parents[1]
+        assignment = project_root / "tests" / "fixtures" / "DEMO-001"
+        workbook_path = assignment / "workbook.xlsx"
+        comps = load_comp_data(workbook_path)
+        self.assertEqual(
+            ["Sale No. 1", "Sale No. 2", "Sale No. 3"],
+            [comp["COMP_NO"] for comp in comps],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "comp-pages.docx"
+            document = Document()
+            document.add_paragraph("Comparable Sales")
+            document.add_paragraph("[[COMP_SHEETS_BLOCK]]")
+            document.save(output_path)
+
+            count = inject_comp_section(
+                output_path,
+                project_root / "templates" / "comp_block_template.docx",
+                workbook_path,
+            )
+            self.assertEqual(3, count)
+            placeholders = find_docx_placeholders(output_path)
+            self.assertNotIn("COMP_SHEETS_BLOCK", placeholders)
+            self.assertFalse(
+                [name for name in placeholders if name.startswith("COMP_")]
+            )
+            output_text = "\n".join(
+                node.text or ""
+                for node in Document(output_path).element.body.iter(qn("w:t"))
+            )
+            for sale_no in ("Sale No. 1", "Sale No. 2", "Sale No. 3"):
+                self.assertIn(sale_no, output_text)
 
     def test_ownership_table_uses_existing_assignment_fields(self):
         variables = {

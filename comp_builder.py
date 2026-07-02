@@ -225,7 +225,7 @@ def inject_comp_section(report_path, comp_template_path, workbook_path):
     parent.remove(marker_para)
 
     report_doc.save(str(report_path))
-    print(f"  ✓ {len(comps)} comp page(s) injected into report.")
+    print(f"  OK: {len(comps)} comp page(s) injected into report.")
     return len(comps)
 
 
