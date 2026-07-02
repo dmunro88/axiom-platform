@@ -267,6 +267,8 @@ def canonicalize_record(
 
 def canonicalize_extraction_result(result):
     """Canonicalize every comp in an extracted assignment batch."""
+    from harvest_contract import canonicalize_harvest_records
+
     canonical = copy.deepcopy(result)
     canonical["contract_id"] = "axiom.comparable.extraction_batch"
     canonical["schema_version"] = SCHEMA_VERSION
@@ -286,11 +288,13 @@ def canonicalize_extraction_result(result):
         )
         for record in canonical.get("lease_comps", [])
     ]
-    return canonical
+    return canonicalize_harvest_records(canonical)
 
 
 def confirm_extraction_result(result, reviewer="user", reviewed_at=None):
     """Return a canonical batch with every retained record confirmed."""
+    from harvest_contract import confirm_harvest_records
+
     confirmed = canonicalize_extraction_result(result)
     timestamp = reviewed_at or datetime.datetime.now(
         datetime.timezone.utc
@@ -305,6 +309,7 @@ def confirm_extraction_result(result, reviewer="user", reviewed_at=None):
         }
         record["reviewed"] = True
         record["validation"] = validate_record(record)
+    confirmed = confirm_harvest_records(confirmed, reviewer, timestamp)
     confirmed["reviewed"] = True
     confirmed["review"] = {
         "status": "confirmed",

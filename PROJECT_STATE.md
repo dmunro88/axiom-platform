@@ -111,6 +111,11 @@ Checks were performed without regenerating or modifying assignment outputs.
 - Reviewed comp search and CSV/workbook `comp_data` export are verified through
   a fictional historical-workbook vertical slice. Application version is
   v0.6.0. See `docs/COMPARABLE_INTELLIGENCE.md`.
+- Assignment conclusions and compact income snapshots now use canonical
+  identities, immutable source provenance, explicit review, transactional
+  commit, reviewed-only search, and additive SQLite migrations. Standalone
+  income Word files are no longer ignored. Application version is v0.7.0.
+  See `docs/HISTORICAL_HARVESTING.md`.
 - Maps, building sketches, and photo blocks use documented assignment asset
   paths; validation identifies missing files and delivery embeds available
   JPG/PNG assets.
@@ -206,9 +211,11 @@ Checks were performed without regenerating or modifying assignment outputs.
    review status, identity, and database idempotency.
 2. **Completed:** verify fictional extract → stage → review → commit → search →
    CSV/workbook export.
-3. Extend the same provenance/review model to assignment conclusions, income
-   snapshots, rent rolls, expenses, narratives, charts, and maps.
-4. Add database migrations/backfills for any legacy local comp rows before
+3. **Completed:** extend provenance/review to assignment conclusions and
+   compact income snapshots.
+4. Extend the model to row-level rent rolls, expenses, narratives, charts, and
+   maps.
+5. Add database migrations/backfills for any legacy local comp rows before
    importing a real historical archive.
 
 ### P2 — Integrations

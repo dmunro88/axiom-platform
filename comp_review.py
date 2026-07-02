@@ -61,6 +61,19 @@ _LEASE_DISPLAY_FIELDS = [
     ("renewal_options", "Options"), ("ti_allowance_psf", "TI Allow/SF"),
     ("free_rent_months", "Free Rent"), ("submarket", "Submarket"),
 ]
+_ASSIGNMENT_EDIT_FIELDS = [
+    ("file_no", "File Number"), ("client", "Client"),
+    ("effective_date", "Effective Date"), ("report_date", "Report Date"),
+    ("sca_value", "SCA Value"), ("ia_value", "IA Value"),
+    ("ca_value", "Cost Value"), ("reconciled_value", "Reconciled Value"),
+]
+_INCOME_EDIT_FIELDS = [
+    ("period_year", "Period Year"), ("period_type", "Period Type"),
+    ("pgi", "Potential Gross Income"), ("vacancy_pct", "Vacancy"),
+    ("egi", "Effective Gross Income"),
+    ("total_expenses", "Total Expenses"), ("expense_ratio", "Expense Ratio"),
+    ("noi", "Net Operating Income"), ("cap_rate_applied", "Cap Rate Applied"),
+]
 
 
 def _fmt(val, field=None):
@@ -104,7 +117,10 @@ def _render_record(staged_name, kind, idx, record, display_fields, edit_fields):
     """Render one comp/lease-comp card with a Keep checkbox + Edit expander."""
     d = record["data"]
     conf = record.get("confidence", {})
-    src = record.get("source", "")
+    src = (
+        record.get("source")
+        or record.get("provenance", {}).get("source_path", "")
+    )
 
     keep_key = f"keep_{staged_name}_{kind}_{idx}"
     with st.container(border=True):
@@ -306,6 +322,8 @@ def render_comp_library():
             comps = result.get("comps", [])
             leases = result.get("lease_comps", [])
             narr = result.get("narrative", {}).get("data", {})
+            assignment_record = result.get("assignment_record")
+            income_record = result.get("income_snapshot")
 
             st.markdown(f"**{folder_name}**")
             meta_bits = [v for v in (meta.get("property_type"), meta.get("city")) if v]
@@ -313,11 +331,27 @@ def render_comp_library():
                 st.caption(" · ".join(meta_bits))
             st.caption(f"{len(comps)} sale comp(s)  ·  {len(leases)} lease comp(s)")
 
-            if narr:
-                with st.expander("Report-level data found (not editable here)"):
-                    for k, v in narr.items():
-                        if v:
-                            st.write(f"**{k}**: {v}")
+            if assignment_record:
+                st.markdown("##### Assignment Conclusion")
+                _render_record(
+                    choice,
+                    "assignment",
+                    0,
+                    assignment_record,
+                    _ASSIGNMENT_EDIT_FIELDS,
+                    _ASSIGNMENT_EDIT_FIELDS,
+                )
+
+            if income_record:
+                st.markdown("##### Income Snapshot")
+                _render_record(
+                    choice,
+                    "income",
+                    0,
+                    income_record,
+                    _INCOME_EDIT_FIELDS,
+                    _INCOME_EDIT_FIELDS,
+                )
 
             if comps:
                 st.markdown("##### Sale Comps")
@@ -329,7 +363,7 @@ def render_comp_library():
                 for i, lc in enumerate(leases):
                     _render_record(choice, "lease", i, lc, _LEASE_DISPLAY_FIELDS, _LEASE_EDIT_FIELDS)
 
-            if not comps and not leases:
+            if not comps and not leases and not assignment_record and not income_record:
                 st.info("Nothing extracted from this assignment.")
 
             btn_cols = st.columns(2)
@@ -339,6 +373,22 @@ def render_comp_library():
                     confirmed_leases = _collect_confirmed(choice, "lease", leases, _LEASE_EDIT_FIELDS)
                     result["comps"] = confirmed_comps
                     result["lease_comps"] = confirmed_leases
+                    if assignment_record:
+                        retained = _collect_confirmed(
+                            choice,
+                            "assignment",
+                            [assignment_record],
+                            _ASSIGNMENT_EDIT_FIELDS,
+                        )
+                        result["assignment_record"] = retained[0] if retained else None
+                    if income_record:
+                        retained = _collect_confirmed(
+                            choice,
+                            "income",
+                            [income_record],
+                            _INCOME_EDIT_FIELDS,
+                        )
+                        result["income_snapshot"] = retained[0] if retained else None
                     result = confirm_extraction_result(
                         result,
                         reviewer="streamlit",
@@ -379,17 +429,27 @@ def render_comp_library():
         if db_path.exists():
             conn = sqlite3.connect(str(db_path))
             counts = {}
-            for table in ["properties", "comps", "lease_comps", "assignments"]:
+            for table in [
+                "properties",
+                "comps",
+                "lease_comps",
+                "assignments",
+                "income_snapshots",
+            ]:
                 try:
                     counts[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 except sqlite3.OperationalError:
                     counts[table] = 0
             conn.close()
-            stat_cols = st.columns(4)
+            stat_cols = st.columns(5)
             stat_cols[0].metric("Properties", counts.get("properties", 0))
             stat_cols[1].metric("Sale Comps", counts.get("comps", 0))
             stat_cols[2].metric("Lease Comps", counts.get("lease_comps", 0))
             stat_cols[3].metric("Assignments", counts.get("assignments", 0))
+            stat_cols[4].metric(
+                "Income Snapshots",
+                counts.get("income_snapshots", 0),
+            )
         else:
             st.caption("No database yet — commit your first confirmed assignment to create one.")
 

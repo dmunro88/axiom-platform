@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "contracts": {
+    "assignment": "axiom.assignment.conclusion",
+    "income": "axiom.income.snapshot"
+  },
+  "review_statuses": [
+    "unreviewed",
+    "confirmed",
+    "rejected"
+  ],
+  "assignment_identity_fields": [
+    "file_no",
+    "address_street",
+    "effective_date",
+    "reconciled_value"
+  ],
+  "income_identity_fields": [
+    "assignment_identity_key",
+    "period_year",
+    "period_type",
+    "noi"
+  ],
+  "rate_storage": "decimal_fraction",
+  "date_storage": "ISO-8601 YYYY-MM-DD"
+}

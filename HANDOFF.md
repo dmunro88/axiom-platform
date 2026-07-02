@@ -146,6 +146,19 @@ blocks before connecting external services.
 - Replaced extraction CLI status glyphs that crashed Windows CP-1252 consoles.
 - Advanced the application to v0.6.0 and expanded the baseline to forty-seven
   passing tests.
+- Added canonical assignment-conclusion and income-snapshot contracts with
+  stable identities, source hashes, review provenance, validation, and
+  reviewed-only search.
+- Activated standalone income-document extraction for period, PGI, vacancy,
+  EGI, expenses, NOI, and applied cap rate; these files were previously
+  classified but not processed.
+- Added additive SQLite migrations, unique identity indexes, transactional
+  commit, duplicate recommit handling, and UI review/edit support for both
+  record types.
+- Verified the full path with a generated fictional historical report and
+  income chart, including rollback and legacy migration tests.
+- Advanced the application to v0.7.0 and expanded the baseline to fifty-one
+  passing tests.
 
 ## In progress
 

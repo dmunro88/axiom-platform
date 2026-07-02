@@ -580,6 +580,60 @@ def _extract_narrative(text):
     return data, confidence
 
 
+_INCOME_PATTERNS = {
+    "period_year": [
+        r"(?:period|fiscal|projection)\s+year[:\s]+(20\d{2})",
+        r"\b(20\d{2})\s+(?:actual|pro\s*forma|projected|stabilized)\b",
+    ],
+    "period_type": [
+        r"period\s+type[:\s]+(actual|pro\s*forma|projected|stabilized)",
+        r"\b20\d{2}\s+(actual|pro\s*forma|projected|stabilized)\b",
+    ],
+    "pgi": [
+        r"(?:potential gross income|pgi)[:\s\$]+([\d,]+(?:\.\d+)?)",
+    ],
+    "vacancy_pct": [
+        r"(?:vacancy(?:\s+and\s+collection\s+loss)?|vacancy rate)[:\s]+([\d.]+)\s*%",
+    ],
+    "egi": [
+        r"(?:effective gross income|egi)[:\s\$]+([\d,]+(?:\.\d+)?)",
+    ],
+    "total_expenses": [
+        r"(?:total operating expenses|total expenses)[:\s\$]+([\d,]+(?:\.\d+)?)",
+    ],
+    "expense_ratio": [
+        r"(?:expense ratio|operating expense ratio)[:\s]+([\d.]+)\s*%",
+    ],
+    "noi": [
+        r"(?:net operating income|noi)[:\s\$]+([\d,]+(?:\.\d+)?)",
+    ],
+    "cap_rate_applied": [
+        r"(?:capitalization rate|cap rate|overall rate)(?:\s+applied)?[:\s]+([\d.]+)\s*%",
+    ],
+}
+
+
+def _extract_income_snapshot(text):
+    """Extract a compact historical income summary from report text."""
+    data = {}
+    confidence = {}
+    for field, patterns in _INCOME_PATTERNS.items():
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if not match:
+                continue
+            raw = match.group(1).strip()
+            if field == "period_type":
+                data[field] = raw
+            elif field == "period_year":
+                data[field] = int(raw)
+            else:
+                data[field] = _clean_number(raw)
+            confidence[field] = "medium"
+            break
+    return data, confidence
+
+
 # ─── Word document extraction ─────────────────────────────────────────────────
 
 def _header_suggests_comp_table(table):
@@ -648,10 +702,12 @@ def extract_from_docx(path):
       'comps'           — list of {data, confidence}
       'lease_comps'     — list of {data, confidence}
       'narrative'       — {data, confidence} from narrative text
+      'income_data'     — {data, confidence} historical income summary
       'warnings'        — list of warning strings
     """
     if not _DOCX_OK:
         return {"comps": [], "lease_comps": [], "narrative": {},
+                "income_data": {},
                 "warnings": ["python-docx not installed"]}
 
     path = Path(path)
@@ -659,15 +715,28 @@ def extract_from_docx(path):
         doc = DocxDocument(str(path))
     except Exception as e:
         return {"comps": [], "lease_comps": [], "narrative": {},
+                "income_data": {},
                 "warnings": [f"Could not open {path.name}: {e}"]}
 
-    results  = {"comps": [], "lease_comps": [], "narrative": {}, "warnings": []}
+    results = {
+        "comps": [],
+        "lease_comps": [],
+        "narrative": {},
+        "income_data": {},
+        "warnings": [],
+    }
     warnings = results["warnings"]
 
     # ── Narrative extraction ──────────────────────────────────────────────────
     full_text            = "\n".join(p.text for p in doc.paragraphs)
     narr_data, narr_conf = _extract_narrative(full_text)
     results["narrative"] = {"data": narr_data, "confidence": narr_conf}
+    income_data, income_conf = _extract_income_snapshot(full_text)
+    results["income_data"] = {
+        "data": income_data,
+        "confidence": income_conf,
+        "source": str(path),
+    } if income_data else {}
 
     # ── Reconciliation table → effective_date + value conclusions ─────────────
     recon = _extract_axiom_reconciliation(doc)
@@ -1171,7 +1240,8 @@ def scan_projects_root(root_path):
         scan = scan_assignment_folder(subfolder)
         has_data = any([
             scan["reports"], scan["exhibits"], scan["sale_comp_docs"],
-            scan["cap_rate_xls"], scan["rental_comp_xls"],
+            scan["income_docs"], scan["cap_rate_xls"],
+            scan["rental_comp_xls"],
         ])
         if has_data:
             assignments.append(scan)
@@ -1274,9 +1344,21 @@ def extract_assignment(scan):
         result["sources"].append(rpt_path)
         data = extract_from_docx(Path(rpt_path))
         result["narrative"] = data["narrative"]
+        result["assignment_source"] = str(rpt_path)
+        if data.get("income_data") and not result["income_data"]:
+            result["income_data"] = data["income_data"]
         # Reports also have comp tables — fill any gaps
         _add_comps(data["comps"], rpt_path)
         _add_lease_comps(data["lease_comps"], rpt_path)
+        result["warnings"].extend(data["warnings"])
+
+    # ── 6. Standalone income summaries ───────────────────────────────────────
+    for doc_path in scan["income_docs"]:
+        result["sources"].append(doc_path)
+        data = extract_from_docx(Path(doc_path))
+        if data.get("income_data"):
+            result["income_data"] = data["income_data"]
+            result["income_source"] = str(doc_path)
         result["warnings"].extend(data["warnings"])
 
     # ── Inject folder metadata into narrative if not already present ──────────

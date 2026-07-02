@@ -108,10 +108,11 @@ The automated fixture creates an old-style market workbook and proves:
 
 The same batch/provenance/review pattern should next be extended to:
 
-1. assignment conclusions and income snapshots;
-2. rent rolls and expense comparables;
-3. reusable narrative/market observations with effective dates;
-4. charts, maps, and exhibits as separately indexed artifacts;
-5. file classification, renaming, and assignment filing;
-6. bid-log and appraisal-log synchronization through a canonical assignment
+1. **Completed:** assignment conclusions and compact income snapshots; see
+   `docs/HISTORICAL_HARVESTING.md`.
+2. Rent rolls and expense comparables;
+3. Reusable narrative/market observations with effective dates;
+4. Charts, maps, and exhibits as separately indexed artifacts;
+5. File classification, renaming, and assignment filing;
+6. Bid-log and appraisal-log synchronization through a canonical assignment
    event model.

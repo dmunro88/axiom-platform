@@ -143,6 +143,11 @@ CREATE TABLE IF NOT EXISTS assignments (
     ia_value            REAL,
     ca_value            REAL,
     reconciled_value    REAL,
+    identity_key        TEXT,
+    confidence          TEXT,
+    review_status       TEXT    DEFAULT 'unreviewed',
+    reviewed_at         TEXT,
+    source_record_json  TEXT,
     created_at          TEXT    DEFAULT (datetime('now'))
 );
 
@@ -164,6 +169,11 @@ CREATE TABLE IF NOT EXISTS income_snapshots (
     cap_rate_applied    REAL,           -- cap rate used to reach the IA value
     market_cap_rate_low  REAL,
     market_cap_rate_high REAL,
+    identity_key        TEXT,
+    confidence          TEXT,
+    review_status       TEXT    DEFAULT 'unreviewed',
+    reviewed_at         TEXT,
+    source_record_json  TEXT,
     created_at          TEXT    DEFAULT (datetime('now'))
 );
 
@@ -197,6 +207,20 @@ MIGRATION_COLUMNS = {
         "reviewed_at": "TEXT",
         "source_record_json": "TEXT",
     },
+    "assignments": {
+        "identity_key": "TEXT",
+        "confidence": "TEXT",
+        "review_status": "TEXT DEFAULT 'unreviewed'",
+        "reviewed_at": "TEXT",
+        "source_record_json": "TEXT",
+    },
+    "income_snapshots": {
+        "identity_key": "TEXT",
+        "confidence": "TEXT",
+        "review_status": "TEXT DEFAULT 'unreviewed'",
+        "reviewed_at": "TEXT",
+        "source_record_json": "TEXT",
+    },
 }
 
 IDENTITY_INDEXES = """
@@ -208,6 +232,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_comps_identity_key
     WHERE identity_key IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_lease_comps_identity_key
     ON lease_comps(identity_key)
+    WHERE identity_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_assignments_identity_key
+    ON assignments(identity_key)
+    WHERE identity_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_income_snapshots_identity_key
+    ON income_snapshots(identity_key)
     WHERE identity_key IS NOT NULL;
 """
 
@@ -425,13 +455,32 @@ def insert_lease_comp(
     return cur.lastrowid
 
 
-def insert_assignment(data, property_id, source_doc_id, conn):
+def insert_assignment(
+    data,
+    property_id,
+    source_doc_id,
+    conn,
+    *,
+    identity_key=None,
+    confidence=None,
+    review=None,
+    source_record=None,
+):
     """Insert an assignments row and return assignment_id."""
     fields = ["file_no", "client", "report_date", "effective_date",
               "approaches", "sca_value", "ia_value", "ca_value", "reconciled_value"]
     row = {f: data.get(f) for f in fields}
     row["property_id"] = property_id
     row["source_doc_id"] = source_doc_id
+    row["identity_key"] = identity_key
+    row["confidence"] = json.dumps(confidence or {}, sort_keys=True)
+    row["review_status"] = (review or {}).get("status", "unreviewed")
+    row["reviewed_at"] = (review or {}).get("reviewed_at")
+    row["source_record_json"] = json.dumps(
+        source_record or {},
+        sort_keys=True,
+        default=str,
+    )
     cols = ", ".join(row.keys())
     placeholders = ", ".join("?" for _ in row)
     cur = conn.execute(
@@ -441,7 +490,17 @@ def insert_assignment(data, property_id, source_doc_id, conn):
     return cur.lastrowid
 
 
-def insert_income_snapshot(data, property_id, source_doc_id, conn):
+def insert_income_snapshot(
+    data,
+    property_id,
+    source_doc_id,
+    conn,
+    *,
+    identity_key=None,
+    confidence=None,
+    review=None,
+    source_record=None,
+):
     """Insert an income_snapshots row and return snapshot_id."""
     fields = ["period_year", "period_type", "pgi", "vacancy_pct", "egi",
               "total_expenses", "expense_ratio", "noi", "cap_rate_applied",
@@ -449,6 +508,15 @@ def insert_income_snapshot(data, property_id, source_doc_id, conn):
     row = {f: data.get(f) for f in fields}
     row["property_id"] = property_id
     row["source_doc_id"] = source_doc_id
+    row["identity_key"] = identity_key
+    row["confidence"] = json.dumps(confidence or {}, sort_keys=True)
+    row["review_status"] = (review or {}).get("status", "unreviewed")
+    row["reviewed_at"] = (review or {}).get("reviewed_at")
+    row["source_record_json"] = json.dumps(
+        source_record or {},
+        sort_keys=True,
+        default=str,
+    )
     cols = ", ".join(row.keys())
     placeholders = ", ".join("?" for _ in row)
     cur = conn.execute(
@@ -456,6 +524,109 @@ def insert_income_snapshot(data, property_id, source_doc_id, conn):
         list(row.values())
     )
     return cur.lastrowid
+
+
+def harvest_id_by_identity(record_kind, identity_key, conn):
+    table, id_column = (
+        ("assignments", "assignment_id")
+        if record_kind == "assignment"
+        else ("income_snapshots", "snapshot_id")
+    )
+    row = conn.execute(
+        f"SELECT {id_column} FROM {table} WHERE identity_key = ?",
+        (identity_key,),
+    ).fetchone()
+    return row[id_column] if row else None
+
+
+def search_assignments(
+    db_path=None,
+    *,
+    file_no=None,
+    client_contains=None,
+    effective_date_from=None,
+    effective_date_to=None,
+    include_unreviewed=False,
+):
+    """Return reusable historical assignment conclusions."""
+    path = Path(db_path) if db_path else DB_PATH
+    if not path.exists():
+        return []
+    init_db(path, quiet=True)
+    conn = get_conn(path)
+    sql = """
+        SELECT a.*, p.address_street, p.address_city, p.address_state,
+               p.property_type, sd.filename AS source_filename,
+               sd.content_sha256 AS source_sha256
+        FROM assignments a
+        LEFT JOIN properties p ON p.property_id = a.property_id
+        LEFT JOIN source_documents sd ON sd.doc_id = a.source_doc_id
+        WHERE 1=1
+    """
+    params = []
+    if not include_unreviewed:
+        sql += " AND a.review_status = 'confirmed'"
+    if file_no:
+        sql += " AND lower(a.file_no) = lower(?)"
+        params.append(file_no)
+    if client_contains:
+        sql += " AND lower(a.client) LIKE lower(?)"
+        params.append(f"%{client_contains}%")
+    if effective_date_from:
+        sql += " AND a.effective_date >= ?"
+        params.append(effective_date_from)
+    if effective_date_to:
+        sql += " AND a.effective_date <= ?"
+        params.append(effective_date_to)
+    sql += " ORDER BY a.effective_date DESC, a.assignment_id DESC"
+    try:
+        rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+    for row in rows:
+        row["confidence"] = json.loads(row.get("confidence") or "{}")
+    return rows
+
+
+def search_income_snapshots(
+    db_path=None,
+    *,
+    period_year=None,
+    period_type=None,
+    include_unreviewed=False,
+):
+    """Return reusable historical income snapshots."""
+    path = Path(db_path) if db_path else DB_PATH
+    if not path.exists():
+        return []
+    init_db(path, quiet=True)
+    conn = get_conn(path)
+    sql = """
+        SELECT i.*, p.address_street, p.address_city, p.address_state,
+               p.property_type, sd.filename AS source_filename,
+               sd.content_sha256 AS source_sha256
+        FROM income_snapshots i
+        LEFT JOIN properties p ON p.property_id = i.property_id
+        LEFT JOIN source_documents sd ON sd.doc_id = i.source_doc_id
+        WHERE 1=1
+    """
+    params = []
+    if not include_unreviewed:
+        sql += " AND i.review_status = 'confirmed'"
+    if period_year is not None:
+        sql += " AND i.period_year = ?"
+        params.append(period_year)
+    if period_type:
+        sql += " AND lower(i.period_type) = lower(?)"
+        params.append(period_type)
+    sql += " ORDER BY i.period_year DESC, i.snapshot_id DESC"
+    try:
+        rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+    for row in rows:
+        row["confidence"] = json.loads(row.get("confidence") or "{}")
+    return rows
 
 
 def comparable_id_by_identity(record_kind, identity_key, conn):

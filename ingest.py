@@ -33,11 +33,12 @@ from comparable_contract import (
     source_metadata,
     validate_record,
 )
+from harvest_contract import validate_harvest_record
 from db        import (init_db, get_conn, already_ingested,
                        insert_source_document, insert_property,
                        insert_comp, insert_lease_comp,
                        insert_assignment, insert_income_snapshot,
-                       comparable_id_by_identity)
+                       comparable_id_by_identity, harvest_id_by_identity)
 
 
 # ─── Staging ──────────────────────────────────────────────────────────────────
@@ -124,7 +125,12 @@ def run_extraction(root_path, staged_dir=None):
                     f"{len(result['warnings']) - 3} more warning(s)"
                 )
 
-        if n_comps == 0 and n_leases == 0 and not result["narrative"].get("data"):
+        if (
+            n_comps == 0
+            and n_leases == 0
+            and not result["narrative"].get("data")
+            and not result.get("income_data")
+        ):
             print(f"         - nothing useful extracted, skipping")
             continue
 
@@ -269,6 +275,8 @@ def review_staged(interactive=True):
         comps       = result.get("comps", [])
         leases      = result.get("lease_comps", [])
         narr        = result.get("narrative", {})
+        assignment_record = result.get("assignment_record")
+        income_record = result.get("income_snapshot")
 
         print("  " + "═" * 60)
         print(f"  ASSIGNMENT: {folder_name}")
@@ -284,7 +292,13 @@ def review_staged(interactive=True):
                 if v:
                     print(f"    {k:<25} {v}")
 
-        if not comps and not leases:
+        if income_record:
+            print("\n  Income snapshot found:")
+            for key, value in income_record.get("data", {}).items():
+                if value is not None:
+                    print(f"    {key:<25} {_fmt(value, key)}")
+
+        if not comps and not leases and not assignment_record and not income_record:
             print("\n  Nothing to commit for this assignment.")
             if _input_yn("Skip and move to next?"):
                 staged_path.rename(staged_path.with_suffix(".skipped"))
@@ -422,14 +436,25 @@ def commit_extraction_result(result, conn):
         raise ValueError("Extraction batch has not been confirmed for commit.")
     counts = {
         "assignments": 0,
+        "income_snapshots": 0,
         "sale_comps": 0,
         "lease_comps": 0,
+        "duplicate_assignments": 0,
+        "duplicate_income_snapshots": 0,
         "duplicate_sale_comps": 0,
         "duplicate_lease_comps": 0,
         "sources": 0,
     }
 
     records = result.get("comps", []) + result.get("lease_comps", [])
+    records += [
+        record
+        for record in (
+            result.get("assignment_record"),
+            result.get("income_snapshot"),
+        )
+        if record
+    ]
     provenance_by_source = {
         record.get("provenance", {}).get("source_path"): record.get(
             "provenance",
@@ -490,15 +515,15 @@ def commit_extraction_result(result, conn):
         )
 
     primary_doc_id = next(iter(doc_ids.values()), None)
-    narrative = result.get("narrative", {}).get("data", {})
-    metadata = result.get("folder_meta", {})
+    assignment_record = result.get("assignment_record")
+    assignment_data = (
+        assignment_record.get("data", {}) if assignment_record else {}
+    )
     property_data = {
-        "address_street": narrative.get("address_street"),
-        "address_city": narrative.get("address_city") or metadata.get("city"),
-        "address_state": "AL",
-        "property_type": (
-            narrative.get("property_type") or metadata.get("property_type")
-        ),
+        "address_street": assignment_data.get("address_street"),
+        "address_city": assignment_data.get("address_city"),
+        "address_state": assignment_data.get("address_state") or "AL",
+        "property_type": assignment_data.get("property_type"),
     }
     subject_property_id = (
         _upsert_property(property_data, conn)
@@ -506,56 +531,58 @@ def commit_extraction_result(result, conn):
         else None
     )
 
-    assignment_data = {
-        "file_no": narrative.get("file_no") or metadata.get("file_no"),
-        "client": narrative.get("client"),
-        "report_date": narrative.get("report_date"),
-        "effective_date": narrative.get("effective_date"),
-        "reconciled_value": narrative.get("reconciled_value"),
-        "sca_value": narrative.get("sca_value"),
-        "ia_value": narrative.get("ia_value"),
-        "ca_value": narrative.get("ca_value"),
-    }
-    if primary_doc_id and any(assignment_data.values()):
-        existing_assignment = conn.execute(
-            """
-            SELECT assignment_id FROM assignments
-            WHERE source_doc_id = ? AND coalesce(file_no, '') = coalesce(?, '')
-            """,
-            (primary_doc_id, assignment_data.get("file_no")),
-        ).fetchone()
-        if not existing_assignment:
+    if assignment_record:
+        if assignment_record.get("review", {}).get("status") != "confirmed":
+            raise ValueError("Assignment conclusion has not been confirmed.")
+        findings = validate_harvest_record(assignment_record)
+        if findings["errors"]:
+            raise ValueError(
+                "Assignment conclusion failed validation: "
+                + "; ".join(findings["errors"])
+            )
+        identity_key = assignment_record["identity_key"]
+        if harvest_id_by_identity("assignment", identity_key, conn):
+            counts["duplicate_assignments"] += 1
+        else:
+            source = assignment_record["provenance"].get("source_path")
             insert_assignment(
                 assignment_data,
                 subject_property_id,
-                primary_doc_id,
+                doc_ids.get(source, primary_doc_id),
                 conn,
+                identity_key=identity_key,
+                confidence=assignment_record.get("confidence"),
+                review=assignment_record.get("review"),
+                source_record=assignment_record,
             )
             counts["assignments"] += 1
 
-    income = dict(result.get("income_data", {}))
-    if income and primary_doc_id:
-        income["market_cap_rate_low"] = narrative.get("market_cap_rate_low")
-        income["market_cap_rate_high"] = narrative.get("market_cap_rate_high")
-        existing_snapshot = conn.execute(
-            """
-            SELECT snapshot_id FROM income_snapshots
-            WHERE source_doc_id = ? AND coalesce(period_year, -1) = coalesce(?, -1)
-              AND coalesce(period_type, '') = coalesce(?, '')
-            """,
-            (
-                primary_doc_id,
-                income.get("period_year"),
-                income.get("period_type"),
-            ),
-        ).fetchone()
-        if not existing_snapshot:
-            insert_income_snapshot(
-                income,
-                subject_property_id,
-                primary_doc_id,
-                conn,
+    income_record = result.get("income_snapshot")
+    if income_record:
+        if income_record.get("review", {}).get("status") != "confirmed":
+            raise ValueError("Income snapshot has not been confirmed.")
+        findings = validate_harvest_record(income_record)
+        if findings["errors"]:
+            raise ValueError(
+                "Income snapshot failed validation: "
+                + "; ".join(findings["errors"])
             )
+        identity_key = income_record["identity_key"]
+        if harvest_id_by_identity("income", identity_key, conn):
+            counts["duplicate_income_snapshots"] += 1
+        else:
+            source = income_record["provenance"].get("source_path")
+            insert_income_snapshot(
+                income_record["data"],
+                subject_property_id,
+                doc_ids.get(source, primary_doc_id),
+                conn,
+                identity_key=identity_key,
+                confidence=income_record.get("confidence"),
+                review=income_record.get("review"),
+                source_record=income_record,
+            )
+            counts["income_snapshots"] += 1
 
     for record_kind, key, counter, duplicate_counter, insert_function in (
         (
@@ -627,6 +654,7 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
     total_comps  = 0
     total_leases = 0
     total_asgn   = 0
+    total_income = 0
 
     print(f"\n  Committing {len(confirmed_files)} confirmed file(s) to axiom.db ...\n")
 
@@ -645,12 +673,15 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
             continue
 
         total_asgn += counts["assignments"]
+        total_income += counts["income_snapshots"]
         total_comps += counts["sale_comps"]
         total_leases += counts["lease_comps"]
         conf_path.rename(conf_path.with_suffix(".committed"))
         duplicate_count = (
             counts["duplicate_sale_comps"]
             + counts["duplicate_lease_comps"]
+            + counts["duplicate_assignments"]
+            + counts["duplicate_income_snapshots"]
         )
         duplicate_note = (
             f", {duplicate_count} duplicate(s) skipped"
@@ -663,11 +694,13 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
 
     print(f"\n  Summary:")
     print(f"    {total_asgn}  assignment(s) recorded")
+    print(f"    {total_income}  income snapshot(s) added to database")
     print(f"    {total_comps}  sale comp(s) added to database")
     print(f"    {total_leases}  lease comp(s) added to database")
     print(f"\n  Run: python axiom.py comp-search   to query the database\n")
     return {
         "assignments": total_asgn,
+        "income_snapshots": total_income,
         "sale_comps": total_comps,
         "lease_comps": total_leases,
     }
