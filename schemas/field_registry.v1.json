@@ -1,6 +1,6 @@
 {
   "contract_id": "axiom.appraisal.fields",
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "status": "baseline",
   "load_order": [
     "json_export",
@@ -1502,11 +1502,15 @@
     },
     "PROPERTY_CLASS_LOWER": {
       "value_kind": "text",
-      "source_of_truth": "json_export",
+      "source_of_truth": "application",
       "producers": [
-        "json_export"
+        "application"
       ],
-      "used_in": []
+      "used_in": [],
+      "derived_from": [
+        "PROPERTY_CLASS"
+      ],
+      "derivation": "lowercase"
     },
     "PROPERTY_COUNTY": {
       "value_kind": "text",
@@ -1558,13 +1562,17 @@
     },
     "PROPERTY_SUBTYPE_LOWER": {
       "value_kind": "text",
-      "source_of_truth": "json_export",
+      "source_of_truth": "application",
       "producers": [
-        "json_export"
+        "application"
       ],
       "used_in": [
         "deliver"
-      ]
+      ],
+      "derived_from": [
+        "PROPERTY_SUBTYPE_FULL"
+      ],
+      "derivation": "lowercase"
     },
     "PROPERTY_SUBTYPE_TABLE": {
       "value_kind": "text",
@@ -2291,7 +2299,7 @@
       "description": "e.g. $1,375,000"
     },
     "VALUE_INTEREST": {
-      "value_kind": "currency_text",
+      "value_kind": "text",
       "source_of_truth": "json_export",
       "producers": [
         "json_export"
@@ -2301,17 +2309,21 @@
       ]
     },
     "VALUE_INTEREST_LOWER": {
-      "value_kind": "currency_text",
-      "source_of_truth": "json_export",
+      "value_kind": "text",
+      "source_of_truth": "application",
       "producers": [
-        "json_export"
+        "application"
       ],
       "used_in": [
         "deliver"
-      ]
+      ],
+      "derived_from": [
+        "VALUE_INTEREST"
+      ],
+      "derivation": "lowercase"
     },
     "VALUE_TYPE": {
-      "value_kind": "currency_text",
+      "value_kind": "text",
       "source_of_truth": "intake",
       "producers": [
         "intake",
@@ -2323,7 +2335,7 @@
       "description": "e.g. As-Is Market Value"
     },
     "VALUE_TYPE_SHORT": {
-      "value_kind": "currency_text",
+      "value_kind": "text",
       "source_of_truth": "intake",
       "producers": [
         "intake",
@@ -2335,7 +2347,7 @@
       "description": "e.g. As-Is"
     },
     "VALUE_WORDS": {
-      "value_kind": "currency_text",
+      "value_kind": "text",
       "source_of_truth": "workbook_output",
       "producers": [
         "intake",
@@ -2348,16 +2360,19 @@
       "description": "e.g. ONE MILLION..."
     },
     "VALUE_WORDS_FORMAL": {
-      "value_kind": "currency_text",
-      "source_of_truth": "workbook_output",
+      "value_kind": "text",
+      "source_of_truth": "application",
       "producers": [
-        "intake",
-        "workbook_output",
-        "json_export"
+        "application"
       ],
       "used_in": [
         "deliver"
-      ]
+      ],
+      "derived_from": [
+        "VALUE_WORDS"
+      ],
+      "derivation": "title_case",
+      "description": "Derived automatically from VALUE_WORDS"
     },
     "WINDOWS": {
       "value_kind": "text",
@@ -2413,13 +2428,17 @@
     },
     "ZONING_CLASS_TABLE": {
       "value_kind": "text",
-      "source_of_truth": "json_export",
+      "source_of_truth": "application",
       "producers": [
-        "json_export"
+        "application"
       ],
       "used_in": [
         "deliver"
-      ]
+      ],
+      "derived_from": [
+        "ZONING_CLASS"
+      ],
+      "derivation": "identity"
     },
     "ZONING_CODE": {
       "value_kind": "text",
@@ -2433,13 +2452,17 @@
     },
     "ZONING_CODE_TABLE": {
       "value_kind": "text",
-      "source_of_truth": "json_export",
+      "source_of_truth": "application",
       "producers": [
-        "json_export"
+        "application"
       ],
       "used_in": [
         "deliver"
-      ]
+      ],
+      "derived_from": [
+        "ZONING_CODE"
+      ],
+      "derivation": "identity"
     },
     "ZONING_COMPLIANCE": {
       "value_kind": "text",

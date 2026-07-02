@@ -16,8 +16,10 @@ from field_registry import (
     build_registry,
     load_registry,
 )
+from fill_engine import load_variables
 from media_blocks import inject_media_blocks
 from narrative_generator import _get_model
+from presentation_variants import derive_presentation_variants
 from structured_blocks import inject_ownership_history
 from validation import find_docx_placeholders, validate_assignment
 
@@ -67,6 +69,61 @@ class ValidateAssignmentTests(unittest.TestCase):
             self.assertTrue(result["ready"])
             self.assertEqual([], result["missing"])
             self.assertEqual({}, result["unresolved_blocks"])
+
+    def test_presentation_variants_derive_from_canonical_fields(self):
+        variables = derive_presentation_variants(
+            {
+                "PROPERTY_CLASS": "Class B",
+                "PROPERTY_CLASS_LOWER": "stale",
+                "PROPERTY_SUBTYPE_FULL": "Multi-Tenant Office Building",
+                "VALUE_INTEREST": "As-Is Market Value in Leased Fee Estate",
+                "VALUE_WORDS": (
+                    "ONE MILLION THREE HUNDRED SEVENTY-FIVE THOUSAND DOLLARS"
+                ),
+                "ZONING_CLASS": "General Business District",
+                "ZONING_CODE": "C-5",
+            }
+        )
+
+        self.assertEqual("class b", variables["PROPERTY_CLASS_LOWER"])
+        self.assertEqual(
+            "multi-tenant office building",
+            variables["PROPERTY_SUBTYPE_LOWER"],
+        )
+        self.assertEqual(
+            "as-is market value in leased fee estate",
+            variables["VALUE_INTEREST_LOWER"],
+        )
+        self.assertEqual(
+            "One Million Three Hundred Seventy-Five Thousand Dollars",
+            variables["VALUE_WORDS_FORMAL"],
+        )
+        self.assertEqual(
+            "General Business District",
+            variables["ZONING_CLASS_TABLE"],
+        )
+        self.assertEqual("C-5", variables["ZONING_CODE_TABLE"])
+
+    def test_legacy_variant_survives_when_canonical_source_is_absent(self):
+        variables = derive_presentation_variants(
+            {"PROPERTY_CLASS_LOWER": "legacy class"}
+        )
+        self.assertEqual("legacy class", variables["PROPERTY_CLASS_LOWER"])
+
+    def test_variable_loading_refreshes_stale_presentation_variants(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            json_path = Path(temp_dir) / "variables.json"
+            json_path.write_text(
+                json.dumps(
+                    {
+                        "PROPERTY_CLASS": "Class C",
+                        "PROPERTY_CLASS_LOWER": "stale class",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            variables = load_variables(json_path=json_path)
+            self.assertEqual("class c", variables["PROPERTY_CLASS_LOWER"])
 
     def test_missing_value_and_unsupported_block_prevent_readiness(self):
         with tempfile.TemporaryDirectory() as temp_dir:

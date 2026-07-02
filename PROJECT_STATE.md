@@ -63,8 +63,8 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Nine automated validation, delivery-state, media, structured-block, and
-  model-routing tests pass.
+- Twelve automated validation, delivery-state, media, structured-block,
+  model-routing, contract, and presentation-derivation tests pass.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -93,6 +93,10 @@ Checks were performed without regenerating or modifying assignment outputs.
   assignment JSON keys, and pipeline blocks without handlers.
 - New assignments record application/schema versions; delivery records the
   template filename and SHA-256 hash.
+- Contract v1.1 derives lowercase property labels, lowercase value-interest
+  text, title-case value words, and zoning table aliases from canonical facts.
+- The canonical Intake workbook derives `VALUE_WORDS_FORMAL` visibly from
+  `VALUE_WORDS`; legacy stored variants remain fallback-compatible.
 - Cached Excel formula values are loaded with `openpyxl(data_only=True)`.
   Validation warns when the JSON predates the workbook, but that file-level
   heuristic cannot distinguish Intake edits from normal calculation work.
@@ -150,7 +154,9 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 1. **Completed:** introduce a versioned field registry/schema independent of
    Word templates.
-2. Derive presentation variants rather than entering duplicate facts.
+2. **Completed for six deterministic variants:** derive presentation variants
+   rather than entering duplicate facts. Semantically distinct short/full
+   labels remain explicit.
 3. Detect stale JSON and stale Excel calculation caches.
 4. **Completed for new assignments and delivery attempts:** record template,
    schema, and application versions per assignment.

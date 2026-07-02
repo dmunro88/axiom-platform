@@ -36,6 +36,8 @@ import openpyxl
 from docx import Document
 from docx.oxml.ns import qn
 
+from presentation_variants import derive_presentation_variants
+
 
 # -- Placeholder classification ------------------------------------------------
 
@@ -77,7 +79,7 @@ def load_variables(json_path=None, workbook_path=None):
                         and val and val != 'None'):
                     variables[key] = val
 
-    return variables
+    return derive_presentation_variants(variables)
 
 
 # -- Run-merge replacement -----------------------------------------------------

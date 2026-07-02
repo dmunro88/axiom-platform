@@ -2,7 +2,7 @@
 
 - Last updated: 2026-07-01
 - Current agent: Codex
-- Last commit: `717d9a9` — Honor configured narrative model routing.
+- Last commit: `e7b3d1c` — Add versioned appraisal field contract.
 
 ## Current objective
 
@@ -68,21 +68,29 @@ blocks before connecting external services.
   field dictionary.
 - Added the previously missing land-sale location-map media convention.
 - Expanded the automated baseline to nine passing tests.
+- Advanced the field contract to v1.1.0 and the application to v0.3.0.
+- Added deterministic derivation for six report-facing presentation variants.
+- Updated the canonical Intake workbook so `VALUE_WORDS_FORMAL` is visibly
+  calculated from `VALUE_WORDS` rather than entered twice.
+- Removed stored presentation duplicates from the source-controlled fixture;
+  fixture loading now proves they are regenerated from canonical facts.
+- Kept semantically meaningful short/full property and value labels explicit.
+- Expanded the automated baseline to twelve passing tests.
 
 ## In progress
 
-- Field registry v1 and contract auditing are ready for a source checkpoint.
+- Canonical presentation-variant derivation is ready for a source checkpoint.
 
 ## Exact next step
 
-Derive presentation variants from canonical facts instead of entering duplicate
-values. Fixture media and comp rows should be added when representative
-fictional assets are available.
+Replace file-level JSON freshness heuristics with field-aware stale-input and
+formula-cache checks. Fixture media and comp rows should be added when
+representative fictional assets are available.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 9 tests passed.
-- `python axiom.py contract`: passed with 220 fields and 20 blocks.
+- `python -m unittest discover -s tests -v`: 12 tests passed.
+- `python axiom.py contract`: passed at v1.1.0 with 220 fields and 20 blocks.
 - `axiom.py --help`: passed with the warning corrected.
 - `DEMO-001` fixture validation: 0 ordinary missing fields and 17 unresolved
   blocks (eight missing media inputs, eight AI narratives, and comp data).

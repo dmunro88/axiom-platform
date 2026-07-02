@@ -25,6 +25,29 @@ When a key exists in both Intake and workbook Outputs, `workbook_output` is the
 source of truth because `fill_engine.load_variables()` loads JSON first and
 then applies the last nonblank workbook output.
 
+## Canonical facts and presentation variants
+
+Presentation variants are generated after JSON and workbook values are merged.
+If a legacy assignment still contains a stored variant, the canonical source
+wins whenever it is available; the stored variant remains a fallback only when
+the canonical source is absent.
+
+The current deterministic variants are:
+
+| Variant | Canonical source | Derivation |
+|---|---|---|
+| `PROPERTY_CLASS_LOWER` | `PROPERTY_CLASS` | lowercase |
+| `PROPERTY_SUBTYPE_LOWER` | `PROPERTY_SUBTYPE_FULL` | lowercase |
+| `VALUE_INTEREST_LOWER` | `VALUE_INTEREST` | lowercase |
+| `VALUE_WORDS_FORMAL` | `VALUE_WORDS` | title case |
+| `ZONING_CLASS_TABLE` | `ZONING_CLASS` | direct alias |
+| `ZONING_CODE_TABLE` | `ZONING_CODE` | direct alias |
+
+`VALUE_TYPE_SHORT`, `PROPERTY_SUBTYPE_FULL`, and `PROPERTY_SUBTYPE_TABLE`
+remain explicit because shortening or expanding those labels can change their
+meaning. The Intake workbook also calculates `VALUE_WORDS_FORMAL` visibly from
+`VALUE_WORDS`, so users do not enter both.
+
 ## Versioning
 
 - Patch: descriptions or metadata corrections that do not alter accepted data.

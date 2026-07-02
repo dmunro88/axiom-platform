@@ -7,6 +7,8 @@ from pathlib import Path
 
 import openpyxl
 
+from presentation_variants import VARIANT_RULES
+
 
 KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 PLACEHOLDER_PATTERN = re.compile(r"\[\[([A-Z0-9_]+)\]\]")
@@ -30,6 +32,15 @@ MEDIA_BLOCKS = frozenset({
     "REGIONAL_MAP_IMAGE",
     "SCA_SALE_LOCATION_MAP",
     "SUBJECT_PHOTOS_BLOCK",
+})
+
+TEXT_VALUE_KEYS = frozenset({
+    "VALUE_INTEREST",
+    "VALUE_INTEREST_LOWER",
+    "VALUE_TYPE",
+    "VALUE_TYPE_SHORT",
+    "VALUE_WORDS",
+    "VALUE_WORDS_FORMAL",
 })
 
 
@@ -96,6 +107,8 @@ def inventory_templates(templates_dir, stages):
 
 
 def _infer_value_kind(key):
+    if key in TEXT_VALUE_KEYS:
+        return "text"
     if key.endswith("_DATE"):
         return "date_text"
     if key.endswith(("_RATE", "_RATIO", "_PERCENT", "_WEIGHT")):
@@ -139,7 +152,7 @@ def build_registry(
     templates_dir,
     stages,
     fixture_json_path=None,
-    schema_version="1.0.0",
+    schema_version="1.1.0",
 ):
     """Build the initial authoritative registry from the verified baseline."""
     workbook_inventory = inventory_workbook(workbook_path)
@@ -155,6 +168,7 @@ def build_registry(
         | workbook_inventory["workbook_output"]
         | fixture_keys
         | set().union(*template_usage.values())
+        | set(VARIANT_RULES)
     )
 
     fields = {}
@@ -163,6 +177,7 @@ def build_registry(
         set(workbook_inventory["intake"])
         | workbook_inventory["workbook_output"]
         | fixture_keys
+        | set(VARIANT_RULES)
     )
     for key in sorted(all_keys):
         used_in = sorted(
@@ -183,7 +198,11 @@ def build_registry(
         if key in fixture_keys:
             producers.append("json_export")
 
-        if key in workbook_inventory["workbook_output"]:
+        variant_rule = VARIANT_RULES.get(key)
+        if variant_rule:
+            source_of_truth = "application"
+            producers = ["application"]
+        elif key in workbook_inventory["workbook_output"]:
             source_of_truth = "workbook_output"
         elif key in workbook_inventory["intake"]:
             source_of_truth = "intake"
@@ -198,6 +217,9 @@ def build_registry(
             "producers": producers,
             "used_in": used_in,
         }
+        if variant_rule:
+            field["derived_from"] = [variant_rule["source"]]
+            field["derivation"] = variant_rule["transform"]
         description = workbook_inventory["intake"].get(key)
         if description:
             field["description"] = description

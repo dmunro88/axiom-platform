@@ -22,3 +22,7 @@ The fixture currently produces zero ordinary missing placeholders and 17
 unresolved pipeline blocks: eight missing media inputs, eight local AI
 narratives, and one missing comparable-sale dataset. The ownership table is
 now generated from the fixture's existing assignment fields.
+
+Presentation-only lowercase, title-case, and zoning-table aliases are omitted
+from fixture JSON. `fill_engine.load_variables()` derives them from canonical
+fields during every test and report generation.

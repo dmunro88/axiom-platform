@@ -86,6 +86,7 @@ WORKFLOW
 4. Do the appraisal work
    → Fill calc tabs in workbook.xlsx as you go
    → Excel auto-computes the Outputs tab
+   → Enter VALUE_WORDS once; VALUE_WORDS_FORMAL is derived automatically
 
 5. Validate
    → python axiom.py validate 2026-001
