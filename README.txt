@@ -93,6 +93,28 @@ WORKFLOW
    → Review the generated appraisal_report.docx before delivery
 
 
+REPORT MEDIA
+------------
+
+New assignments include a standard assets folder. Add report images using
+these names before final delivery (JPG and PNG are supported):
+
+  assets/maps/regional.jpg
+  assets/maps/aerial.jpg
+  assets/maps/parcel.jpg
+  assets/maps/sca-sale-location.jpg
+  assets/maps/lease-comp-location.jpg
+  assets/building-sketch.jpg
+
+Place multiple subject and lease-comparable photos in:
+
+  assets/photos/subject/
+  assets/photos/lease-comps/
+
+Run `python axiom.py validate <file_no>` to see exactly which required media
+is still missing. Draft delivery leaves missing media markers visible.
+
+
 COMPARABLE SALE PAGES (COMP SHEET)
 -----------------------------------
 The appraisal report template supports auto-generated comp pages.

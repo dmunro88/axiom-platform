@@ -2,7 +2,7 @@
 
 - Last updated: 2026-07-01
 - Current agent: Codex
-- Last commit: None — initial baseline is staged and ready to commit.
+- Last commit: `b8a309d` — Establish safe Axiom platform baseline.
 
 ## Current objective
 
@@ -48,23 +48,31 @@ blocks before connecting external services.
   paragraph, table, section, and media counts.
 - Removed three obsolete `v14_page-*.jpg` QA screenshots; one contained a
   retired salutation baked into pixels and none were referenced by runtime code.
+- Created the initial safe baseline commit with Git LFS tracking Word and Excel
+  source artifacts.
+- Added convention-based map, sketch, subject-photo, and lease-photo handlers.
+- New assignments now receive the standard report-media folder structure.
+- Validation reports the exact media path required for each missing image block.
+- Added ownership-history table generation from the existing owner and
+  prior-transfer fields.
+- Expanded the automated baseline to seven passing tests.
 
 ## In progress
 
-- The safe source, Office artifacts, fixture, and documentation are staged as
-  one coherent initial baseline.
+- Media and structured-block handlers are ready for a source checkpoint.
 
 ## Exact next step
 
-Create the initial baseline commit. The next product task is implementing or
-explicitly scoping the 18 unresolved report-block handlers.
+Fix narrative model routing, then define the versioned field/data contract.
+Fixture media and comp rows should be added when representative fictional
+assets are available.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 5 tests passed.
+- `python -m unittest discover -s tests -v`: 7 tests passed.
 - `axiom.py --help`: passed with the warning corrected.
-- `DEMO-001` fixture validation: 0 ordinary missing fields and 18 unresolved
-  blocks.
+- `DEMO-001` fixture validation: 0 ordinary missing fields and 17 unresolved
+  blocks (eight missing media inputs, eight AI narratives, and comp data).
 - Spreadsheet render review: Intake, market, lease-comps, rent-roll,
   land-sales, and output sheets retained readable formatting.
 - DOCX render attempt: blocked because LibreOffice/`soffice` is unavailable;
@@ -83,7 +91,8 @@ explicitly scoping the 18 unresolved report-block handlers.
 
 - Plain `python` is not on PATH in the current Codex environment. The bundled
   Python runtime was used for checks.
-- Git author identity is configured locally for this repository.
+- DOCX media layout has structural test coverage but still needs visual QA with
+  representative landscape and portrait photos.
 - The existing parent-folder `PROJECT_STATE.md` is historical and contains
   stale claims. This file and the project-root `PROJECT_STATE.md` are the
   canonical handoff documents going forward.

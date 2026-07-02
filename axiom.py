@@ -32,6 +32,8 @@ from pathlib import Path
 from fill_engine import fill_document, load_variables
 from comp_builder import inject_comp_section
 from dilmore import dilmore_factor, dilmore_adj_pct
+from media_blocks import create_media_directories, inject_media_blocks
+from structured_blocks import inject_ownership_history
 from validation import find_docx_placeholders, validate_assignment
 
 
@@ -106,6 +108,7 @@ def cmd_new(args):
     # Create folder structure
     adir.mkdir(parents=True)
     (adir / "outputs").mkdir()
+    create_media_directories(adir)
 
     # Copy workbook template
     if WORKBOOK_TPL.exists():
@@ -295,7 +298,7 @@ def cmd_deliver(args):
             print(f"       ◈  {len(result['blocks'])} block placeholders left intact: {', '.join(result['blocks'])}")
         count += 1
 
-        # After filling the appraisal report, inject comp pages at [[COMP_SECTION]]
+        # After filling the appraisal report, inject comp pages.
         if doc_cfg.get("inject_comps") and output_path.exists():
             comp_template = TEMPLATES_DIR / "comp_block_template.docx"
             if comp_template.exists():
@@ -303,6 +306,19 @@ def cmd_deliver(args):
                 inject_comp_section(output_path, comp_template, workbook_path)
             else:
                 print(f"    Warning: comp_block_template.docx not found in templates/")
+
+        if doc_cfg.get("inject_comps") and output_path.exists():
+            print(f"\n  Injecting assignment media ...")
+            media_results = inject_media_blocks(output_path, adir)
+            if media_results:
+                for block, image_count in sorted(media_results.items()):
+                    print(f"    ✓  {block}: {image_count} image(s)")
+            else:
+                print("    (no media assets injected)")
+
+        if doc_cfg.get("inject_comps") and output_path.exists():
+            if inject_ownership_history(output_path, variables):
+                print("    ✓  OWNERSHIP_HISTORY_TABLE")
 
         # Generate all AI narratives after comps are injected
         if doc_cfg.get("inject_comps") and output_path.exists():

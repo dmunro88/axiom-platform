@@ -13,6 +13,11 @@ import openpyxl
 
 from comp_builder import load_comp_data
 from fill_engine import fill_document, load_variables
+from media_blocks import MEDIA_BLOCKS, media_files_for_block, missing_media_reason
+from structured_blocks import (
+    OWNERSHIP_HISTORY_BLOCK,
+    ownership_history_missing_fields,
+)
 
 
 NARRATIVE_BLOCKS = frozenset({
@@ -136,7 +141,7 @@ def _formula_cache_findings(workbook_path):
     return errors, warnings
 
 
-def _classify_blocks(blocks, workbook_path):
+def _classify_blocks(blocks, workbook_path, assignment_dir, variables):
     handled = []
     unresolved = {}
 
@@ -144,6 +149,25 @@ def _classify_blocks(blocks, workbook_path):
     anthropic_key_available = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
     for block in sorted(blocks):
+        if block == OWNERSHIP_HISTORY_BLOCK:
+            missing_fields = ownership_history_missing_fields(variables)
+            if missing_fields:
+                unresolved[block] = (
+                    "Ownership table requires values for: "
+                    + ", ".join(missing_fields)
+                    + "."
+                )
+            else:
+                handled.append(block)
+            continue
+
+        if block in MEDIA_BLOCKS:
+            if media_files_for_block(block, assignment_dir):
+                handled.append(block)
+            else:
+                unresolved[block] = missing_media_reason(block)
+            continue
+
         if block == "COMP_SHEETS_BLOCK":
             with contextlib.redirect_stdout(io.StringIO()):
                 comps = load_comp_data(workbook_path)
@@ -261,7 +285,9 @@ def validate_assignment(assignment_dir, templates_dir, deliver_config):
     result["missing"] = fill_result["missing"]
     result["blocks"] = fill_result["blocks"]
 
-    handled, unresolved = _classify_blocks(result["blocks"], workbook_path)
+    handled, unresolved = _classify_blocks(
+        result["blocks"], workbook_path, assignment_dir, variables
+    )
     result["handled_blocks"] = handled
     result["unresolved_blocks"] = unresolved
     result["ready"] = not (

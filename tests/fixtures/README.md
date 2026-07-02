@@ -18,6 +18,7 @@ removed:
 - hidden workbook sheets, cached values, formulas, names, comments, and links
   containing real assignment data.
 
-The fixture currently produces zero ordinary missing placeholders and 18
-unresolved pipeline blocks. Those blocks are expected until their handlers are
-implemented.
+The fixture currently produces zero ordinary missing placeholders and 17
+unresolved pipeline blocks: eight missing media inputs, eight local AI
+narratives, and one missing comparable-sale dataset. The ownership table is
+now generated from the fixture's existing assignment fields.

@@ -59,14 +59,15 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Five automated validation and delivery-state tests pass.
+- Seven automated validation, delivery-state, media, and structured-block tests
+  pass.
 - The platform folder arrived without dedicated Git history. A dedicated
-  repository is initialized and the first commit is staged.
+  repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
   assignment: `DEMO-001_Northstar_Example_Holdings`.
 - `tests/fixtures/DEMO-001` is the approved source-controlled regression
   fixture.
-- Fixture validation reports 0 ordinary missing keys and 18 unresolved block
+- Fixture validation reports 0 ordinary missing keys and 17 unresolved block
   placeholders.
 - Dashboard readiness now counts ordinary missing fields and unresolved blocks.
 - Final delivery now stops before generation when validation fails.
@@ -76,6 +77,11 @@ Checks were performed without regenerating or modifying assignment outputs.
   placeholders prevent the delivered-state transition.
 - Delivery attempts record status and blocker count while preserving the
   previous assignment stage on failure.
+- Maps, building sketches, and photo blocks use documented assignment asset
+  paths; validation identifies missing files and delivery embeds available
+  JPG/PNG assets.
+- Ownership history is generated as a table from the existing owner,
+  transfer-history, and prior-price fields.
 - Narrative model routing reads the wrong configuration level. It falls back to
   `claude-sonnet-4-6` rather than honoring `models.per_command`.
 - Cached Excel formula values are loaded with `openpyxl(data_only=True)`.
@@ -120,7 +126,8 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 1. **Completed:** create a dedicated Git repository in this code root.
 2. **Completed:** privacy scan and fictionalization of source Office artifacts.
-3. Create the staged initial source commit.
+3. **Completed:** create the initial source commit with Git LFS tracking Office
+   artifacts.
 
 ### P1 — Repeatable testing
 

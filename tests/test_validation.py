@@ -1,4 +1,6 @@
+import base64
 import os
+import shutil
 import tempfile
 import unittest
 import json
@@ -9,7 +11,9 @@ import openpyxl
 from docx import Document
 
 import axiom
-from validation import validate_assignment
+from media_blocks import inject_media_blocks
+from structured_blocks import inject_ownership_history
+from validation import find_docx_placeholders, validate_assignment
 
 
 def _build_assignment(root, template_text, variables=None):
@@ -38,6 +42,11 @@ def _build_assignment(root, template_text, variables=None):
 
 
 class ValidateAssignmentTests(unittest.TestCase):
+    TINY_PNG = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+        "/x8AAusB9Wl2nWQAAAAASUVORK5CYII="
+    )
+
     def test_ready_when_required_values_are_present(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             assignment, templates, config = _build_assignment(
@@ -138,6 +147,60 @@ class ValidateAssignmentTests(unittest.TestCase):
         self.assertTrue(result["checked"])
         self.assertEqual([], result["missing"])
         self.assertEqual("DEMO-001", result["assignment"])
+
+    def test_media_asset_is_validated_and_injected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment, templates, config = _build_assignment(
+                temp_dir,
+                "[[REGIONAL_MAP_IMAGE]]",
+            )
+            maps_dir = assignment / "assets" / "maps"
+            maps_dir.mkdir(parents=True)
+            (maps_dir / "regional.png").write_bytes(self.TINY_PNG)
+
+            result = validate_assignment(assignment, templates, config)
+            self.assertTrue(result["ready"])
+            self.assertEqual(["REGIONAL_MAP_IMAGE"], result["handled_blocks"])
+
+            output_path = Path(temp_dir) / "media-output.docx"
+            shutil.copy(templates / "report.docx", output_path)
+            injected = inject_media_blocks(output_path, assignment)
+            self.assertEqual({"REGIONAL_MAP_IMAGE": 1}, injected)
+            self.assertNotIn(
+                "REGIONAL_MAP_IMAGE",
+                find_docx_placeholders(output_path),
+            )
+
+    def test_ownership_table_uses_existing_assignment_fields(self):
+        variables = {
+            "OWNER_NAME": "Example Owner, LLC",
+            "PRIOR_SALE_DATE": "No arm's-length transfers in three years.",
+            "PRIOR_SALE_PRICE": "N/A",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment, templates, config = _build_assignment(
+                temp_dir,
+                "[[OWNERSHIP_HISTORY_TABLE]]",
+                variables,
+            )
+
+            result = validate_assignment(assignment, templates, config)
+            self.assertTrue(result["ready"])
+            self.assertEqual(
+                ["OWNERSHIP_HISTORY_TABLE"],
+                result["handled_blocks"],
+            )
+
+            output_path = Path(temp_dir) / "ownership-output.docx"
+            shutil.copy(templates / "report.docx", output_path)
+            self.assertTrue(inject_ownership_history(output_path, variables))
+            self.assertNotIn(
+                "OWNERSHIP_HISTORY_TABLE",
+                find_docx_placeholders(output_path),
+            )
+            output_doc = Document(output_path)
+            self.assertEqual("Owner of Record", output_doc.tables[0].cell(0, 0).text)
+            self.assertEqual("Example Owner, LLC", output_doc.tables[0].cell(0, 1).text)
 
 
 if __name__ == "__main__":
