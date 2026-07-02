@@ -23,6 +23,7 @@ from datetime import datetime
 
 from comparable_contract import comparable_identity
 from financial_extractor import extract_financial_workbook
+from observation_extractor import extract_market_observations
 
 
 # ─── Try importing document libraries ────────────────────────────────────────
@@ -704,11 +705,13 @@ def extract_from_docx(path):
       'lease_comps'     — list of {data, confidence}
       'narrative'       — {data, confidence} from narrative text
       'income_data'     — {data, confidence} historical income summary
+      'market_observations' — bounded, labeled narrative sections
       'warnings'        — list of warning strings
     """
     if not _DOCX_OK:
         return {"comps": [], "lease_comps": [], "narrative": {},
                 "income_data": {},
+                "market_observations": [],
                 "warnings": ["python-docx not installed"]}
 
     path = Path(path)
@@ -717,6 +720,7 @@ def extract_from_docx(path):
     except Exception as e:
         return {"comps": [], "lease_comps": [], "narrative": {},
                 "income_data": {},
+                "market_observations": [],
                 "warnings": [f"Could not open {path.name}: {e}"]}
 
     results = {
@@ -724,6 +728,7 @@ def extract_from_docx(path):
         "lease_comps": [],
         "narrative": {},
         "income_data": {},
+        "market_observations": [],
         "warnings": [],
     }
     warnings = results["warnings"]
@@ -738,6 +743,7 @@ def extract_from_docx(path):
         "confidence": income_conf,
         "source": str(path),
     } if income_data else {}
+    results["market_observations"] = extract_market_observations(doc, path)
 
     # ── Reconciliation table → effective_date + value conclusions ─────────────
     recon = _extract_axiom_reconciliation(doc)
@@ -1290,6 +1296,7 @@ def extract_assignment(scan):
         "income_data":  {},
         "rent_roll_entries": [],
         "expense_records": [],
+        "market_observations": [],
         "warnings":     [],
         "sources":      [],
     }
@@ -1365,6 +1372,7 @@ def extract_assignment(scan):
         result["assignment_source"] = str(rpt_path)
         if data.get("income_data") and not result["income_data"]:
             result["income_data"] = data["income_data"]
+        result["market_observations"] = data.get("market_observations", [])
         # Reports also have comp tables — fill any gaps
         _add_comps(data["comps"], rpt_path)
         _add_lease_comps(data["lease_comps"], rpt_path)

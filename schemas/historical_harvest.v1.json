@@ -4,7 +4,8 @@
     "assignment": "axiom.assignment.conclusion",
     "income": "axiom.income.snapshot",
     "rent_roll": "axiom.rent_roll.entry",
-    "expense": "axiom.operating_expense.line"
+    "expense": "axiom.operating_expense.line",
+    "observation": "axiom.market.observation"
   },
   "review_statuses": [
     "unreviewed",
@@ -39,6 +40,13 @@
     "period_type",
     "category",
     "amount"
+  ],
+  "observation_identity_fields": [
+    "assignment_identity_key",
+    "effective_date",
+    "category",
+    "geography",
+    "text_sha256"
   ],
   "rate_storage": "decimal_fraction",
   "date_storage": "ISO-8601 YYYY-MM-DD"

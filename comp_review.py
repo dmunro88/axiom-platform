@@ -209,6 +209,86 @@ def _collect_confirmed(staged_name, kind, records, edit_fields):
     return confirmed
 
 
+def _render_observation(staged_name, index, record):
+    data = record.get("data", {})
+    keep_key = f"keep_{staged_name}_observation_{index}"
+    with st.container(border=True):
+        top = st.columns([5, 1])
+        with top[0]:
+            st.markdown(f"**{data.get('title') or '(untitled observation)'}**")
+            st.caption(
+                " · ".join(
+                    str(value)
+                    for value in (
+                        data.get("category"),
+                        data.get("geography"),
+                        data.get("effective_date"),
+                    )
+                    if value
+                )
+            )
+        with top[1]:
+            st.checkbox("Keep", value=True, key=keep_key)
+        with st.expander("Review and edit observation"):
+            for field, label in (
+                ("category", "Category"),
+                ("title", "Title"),
+                ("effective_date", "Effective Date"),
+                ("geography", "Geography"),
+                ("property_type", "Property Type"),
+            ):
+                st.text_input(
+                    label,
+                    value=str(data.get(field) or ""),
+                    key=f"edit_{staged_name}_observation_{index}_{field}",
+                )
+            st.text_area(
+                "Observation Text",
+                value=data.get("text") or "",
+                height=240,
+                key=f"edit_{staged_name}_observation_{index}_text",
+            )
+
+
+def _collect_observations(staged_name, records):
+    retained = []
+    fields = (
+        "category",
+        "title",
+        "effective_date",
+        "geography",
+        "property_type",
+        "text",
+    )
+    for index, record in enumerate(records):
+        if not st.session_state.get(
+            f"keep_{staged_name}_observation_{index}",
+            True,
+        ):
+            continue
+        data = dict(record.get("data", {}))
+        edits = []
+        for field in fields:
+            key = f"edit_{staged_name}_observation_{index}_{field}"
+            if key not in st.session_state:
+                continue
+            value = st.session_state[key].strip() or None
+            if value != data.get(field):
+                edits.append({
+                    "field": field,
+                    "before": data.get(field),
+                    "after": value,
+                })
+                data[field] = value
+        updated = dict(record)
+        updated["data"] = data
+        if edits:
+            updated["reviewed"] = True
+            updated["review_edits"] = edits
+        retained.append(updated)
+    return retained
+
+
 
 def _distinct_values(column, table="properties"):
     """Distinct non-empty values for a column, for filter dropdowns."""
@@ -340,6 +420,7 @@ def render_comp_library():
             income_record = result.get("income_snapshot")
             rent_roll_entries = result.get("rent_roll_entries", [])
             expense_records = result.get("expense_records", [])
+            market_observations = result.get("market_observations", [])
 
             st.markdown(f"**{folder_name}**")
             meta_bits = [v for v in (meta.get("property_type"), meta.get("city")) if v]
@@ -393,6 +474,11 @@ def render_comp_library():
                         _EXPENSE_EDIT_FIELDS,
                     )
 
+            if market_observations:
+                st.markdown("##### Market Observations")
+                for index, record in enumerate(market_observations):
+                    _render_observation(choice, index, record)
+
             if comps:
                 st.markdown("##### Sale Comps")
                 for i, comp in enumerate(comps):
@@ -410,6 +496,7 @@ def render_comp_library():
                 and not income_record
                 and not rent_roll_entries
                 and not expense_records
+                and not market_observations
             ):
                 st.info("Nothing extracted from this assignment.")
 
@@ -447,6 +534,10 @@ def render_comp_library():
                         "expense",
                         expense_records,
                         _EXPENSE_EDIT_FIELDS,
+                    )
+                    result["market_observations"] = _collect_observations(
+                        choice,
+                        market_observations,
                     )
                     result = confirm_extraction_result(
                         result,
@@ -496,13 +587,14 @@ def render_comp_library():
                 "income_snapshots",
                 "rent_roll_entries",
                 "operating_expenses",
+                "market_observations",
             ]:
                 try:
                     counts[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 except sqlite3.OperationalError:
                     counts[table] = 0
             conn.close()
-            stat_cols = st.columns(7)
+            stat_cols = st.columns(8)
             stat_cols[0].metric("Properties", counts.get("properties", 0))
             stat_cols[1].metric("Sale Comps", counts.get("comps", 0))
             stat_cols[2].metric("Lease Comps", counts.get("lease_comps", 0))
@@ -518,6 +610,10 @@ def render_comp_library():
             stat_cols[6].metric(
                 "Expense Lines",
                 counts.get("operating_expenses", 0),
+            )
+            stat_cols[7].metric(
+                "Observations",
+                counts.get("market_observations", 0),
             )
         else:
             st.caption("No database yet — commit your first confirmed assignment to create one.")

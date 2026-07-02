@@ -15,6 +15,7 @@ ASSIGNMENT_CONTRACT_ID = "axiom.assignment.conclusion"
 INCOME_CONTRACT_ID = "axiom.income.snapshot"
 RENT_ROLL_CONTRACT_ID = "axiom.rent_roll.entry"
 EXPENSE_CONTRACT_ID = "axiom.operating_expense.line"
+OBSERVATION_CONTRACT_ID = "axiom.market.observation"
 REVIEW_STATUSES = frozenset({"unreviewed", "confirmed", "rejected"})
 CONFIDENCE_VALUES = frozenset({"high", "medium", "low", "unknown"})
 
@@ -153,6 +154,16 @@ def normalize_expense_data(data):
     return normalized
 
 
+def normalize_observation_data(data):
+    normalized = {}
+    for key, value in dict(data or {}).items():
+        if key == "effective_date":
+            normalized[key] = _date(value)
+        else:
+            normalized[key] = _text(value)
+    return normalized
+
+
 def _identity_text(value):
     return re.sub(r"[^a-z0-9]+", " ", (_text(value) or "").casefold()).strip()
 
@@ -210,6 +221,20 @@ def expense_identity(data, assignment_identity_key=None, source_sha256=None):
     ))
 
 
+def observation_identity(data, assignment_identity_key=None, source_sha256=None):
+    data = normalize_observation_data(data)
+    text_hash = hashlib.sha256(
+        (data.get("text") or "").encode("utf-8")
+    ).hexdigest()
+    return _digest((
+        assignment_identity_key or source_sha256 or "",
+        data.get("effective_date") or "",
+        _identity_text(data.get("category")),
+        _identity_text(data.get("geography")),
+        text_hash,
+    ))
+
+
 def _provenance(source_path, existing=None):
     provenance = dict(existing or {})
     if source_path and Path(source_path).is_file() and not provenance.get("source_sha256"):
@@ -246,6 +271,15 @@ def validate_harvest_record(record):
             errors.append("category is required.")
         if data.get("amount") is None:
             errors.append("amount is required.")
+    elif kind == "observation":
+        if not data.get("category"):
+            errors.append("category is required.")
+        if not data.get("title"):
+            errors.append("title is required.")
+        if len(data.get("text") or "") < 80:
+            errors.append("text must contain at least 80 characters.")
+        if not data.get("effective_date"):
+            warnings.append("effective_date is recommended.")
     else:
         errors.append(f"Unsupported harvest record_kind: {kind!r}.")
     for field in ("source_path", "source_sha256"):
@@ -267,6 +301,7 @@ def _record(data, confidence, kind, source_path, existing=None, assignment_key=N
         "income": INCOME_CONTRACT_ID,
         "rent_roll": RENT_ROLL_CONTRACT_ID,
         "expense": EXPENSE_CONTRACT_ID,
+        "observation": OBSERVATION_CONTRACT_ID,
     }[kind]
     record["schema_version"] = SCHEMA_VERSION
     record["record_kind"] = kind
@@ -275,6 +310,7 @@ def _record(data, confidence, kind, source_path, existing=None, assignment_key=N
         "income": normalize_income_data,
         "rent_roll": normalize_rent_roll_data,
         "expense": normalize_expense_data,
+        "observation": normalize_observation_data,
     }
     record["data"] = normalizers[kind](data)
     record["confidence"] = {
@@ -290,6 +326,11 @@ def _record(data, confidence, kind, source_path, existing=None, assignment_key=N
         if record.get("source_row"):
             locator += f":row:{record['source_row']}"
         record["provenance"].setdefault("source_locator", locator)
+    elif record.get("source_locator"):
+        record["provenance"].setdefault(
+            "source_locator",
+            record["source_locator"],
+        )
     identity_functions = {
         "assignment": lambda: assignment_identity(
             record["data"],
@@ -306,6 +347,11 @@ def _record(data, confidence, kind, source_path, existing=None, assignment_key=N
             record["provenance"].get("source_sha256"),
         ),
         "expense": lambda: expense_identity(
+            record["data"],
+            assignment_key,
+            record["provenance"].get("source_sha256"),
+        ),
+        "observation": lambda: observation_identity(
             record["data"],
             assignment_key,
             record["provenance"].get("source_sha256"),
@@ -436,12 +482,27 @@ def canonicalize_harvest_records(result):
     for key, kind in (
         ("rent_roll_entries", "rent_roll"),
         ("expense_records", "expense"),
+        ("market_observations", "observation"),
     ):
         records = []
         identities = set()
         for raw_record in canonical.get(key, []):
+            raw_data = dict(raw_record.get("data", {}))
+            if kind == "observation":
+                raw_data.setdefault(
+                    "effective_date",
+                    assignment_data.get("effective_date"),
+                )
+                raw_data.setdefault(
+                    "geography",
+                    assignment_data.get("address_city"),
+                )
+                raw_data.setdefault(
+                    "property_type",
+                    assignment_data.get("property_type"),
+                )
             record = _record(
-                raw_record.get("data", {}),
+                raw_data,
                 raw_record.get("confidence", {}),
                 kind,
                 (
@@ -466,6 +527,7 @@ def confirm_harvest_records(result, reviewer, reviewed_at):
         confirmed.get("income_snapshot"),
         *confirmed.get("rent_roll_entries", []),
         *confirmed.get("expense_records", []),
+        *confirmed.get("market_observations", []),
     ]
     for record in records:
         if not record:

@@ -2,13 +2,14 @@
 
 ## Scope
 
-Historical reports now produce two reusable record types in addition to sale
-and lease comparables, plus two row-level financial record types:
+Historical reports now produce five reusable record types in addition to sale
+and lease comparables:
 
 - assignment conclusions (`axiom.assignment.conclusion` v1.0.0);
 - income snapshots (`axiom.income.snapshot` v1.0.0);
 - rent-roll entries (`axiom.rent_roll.entry` v1.0.0);
-- operating-expense lines (`axiom.operating_expense.line` v1.0.0).
+- operating-expense lines (`axiom.operating_expense.line` v1.0.0);
+- market observations (`axiom.market.observation` v1.0.0).
 
 The machine-readable descriptor is
 `schemas/historical_harvest.v1.json`.
@@ -33,7 +34,7 @@ identity combines the parent assignment identity, period, period type, and NOI.
 
 ## Safety and review
 
-All four record types use the comparable pipeline's controls:
+All five record types use the comparable pipeline's controls:
 
 - immutable source SHA-256, path, filename, size, and modification metadata;
 - per-field confidence and validation findings;
@@ -43,9 +44,31 @@ All four record types use the comparable pipeline's controls:
 - reviewed-only search;
 - unique database identities and transactional commit.
 
-The Streamlit review surface displays and edits all four record types. CLI review shows
-the report conclusion, income summary, rent roll, and expenses before
-confirmation.
+The Streamlit review surface displays and edits all five record types. CLI
+review shows the report conclusion, income summary, rent roll, expenses, and
+market observations before confirmation.
+
+## Market observations
+
+The report extractor recognizes bounded sections under headings such as market
+area analysis, regional/economic overview, neighborhood analysis,
+property-market analysis, and supply/demand. A recognized heading starts an
+observation and the next heading ends it. Sections shorter than 80 characters
+are discarded; sections longer than 12,000 characters are explicitly marked
+as truncated.
+
+Each observation stores category, original heading, reviewed text, effective
+date, geography, property type, source hash, and exact paragraph range. This
+is intentionally not a whole-report text dump: valuation reconciliation and
+unrelated report sections stay outside the observation unless explicitly
+recognized and reviewed.
+
+Search is available through `db.search_market_observations()` and:
+
+```text
+python axiom.py observation-search --category market_area --geography "Demo City"
+python axiom.py observation-search --type Office --text vacancy --from 2024-01-01
+```
 
 ## Rent rolls and operating expenses
 
@@ -74,9 +97,10 @@ python axiom.py financial-search --expenses --year 2025 --category taxes
 
 `tests/test_historical_harvest.py` builds a fictional old report and standalone
 income chart. `tests/test_financial_harvest.py` adds fictional rent-roll and
-expense workbooks. Together they prove scan, extraction, normalization,
-staging, review edits, commit, duplicate recommit, reviewed search, rollback,
-and database initialization/migration behavior.
+expense workbooks, while `tests/test_observation_harvest.py` proves bounded
+heading-based narrative sections. Together they prove scan, extraction,
+normalization, staging, review edits, commit, duplicate recommit, reviewed
+search, rollback, and database initialization/migration behavior.
 
 ## Deliberate limits
 

@@ -10,6 +10,9 @@ Tables
   lease_comps        — lease transactions (Income Approach / market rent support)
   assignments        — old appraisal reports (subject + value conclusions)
   income_snapshots   — cap rates + income figures per property per period
+  rent_roll_entries  — subject occupancy and contract-rent rows
+  operating_expenses — normalized historical expense lines
+  market_observations — reviewed, bounded narrative evidence
 
 Usage
 -----
@@ -224,6 +227,27 @@ CREATE TABLE IF NOT EXISTS operating_expenses (
     created_at          TEXT    DEFAULT (datetime('now'))
 );
 
+-- ── Reviewed market observations ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS market_observations (
+    observation_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignment_id       INTEGER REFERENCES assignments(assignment_id),
+    property_id         INTEGER REFERENCES properties(property_id),
+    source_doc_id       INTEGER REFERENCES source_documents(doc_id),
+    category            TEXT,
+    title               TEXT,
+    observation_text    TEXT,
+    effective_date      TEXT,
+    geography           TEXT,
+    property_type       TEXT,
+    truncated           TEXT,
+    identity_key        TEXT,
+    confidence          TEXT,
+    review_status       TEXT    DEFAULT 'unreviewed',
+    reviewed_at         TEXT,
+    source_record_json  TEXT,
+    created_at          TEXT    DEFAULT (datetime('now'))
+);
+
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_properties_city    ON properties(address_city);
 CREATE INDEX IF NOT EXISTS idx_properties_county  ON properties(address_county);
@@ -291,6 +315,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_rent_roll_entries_identity_key
     WHERE identity_key IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_operating_expenses_identity_key
     ON operating_expenses(identity_key)
+    WHERE identity_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_market_observations_identity_key
+    ON market_observations(identity_key)
     WHERE identity_key IS NOT NULL;
 """
 
@@ -678,12 +705,44 @@ def insert_operating_expense(
     )
 
 
+def insert_market_observation(
+    data,
+    assignment_id,
+    property_id,
+    source_doc_id,
+    conn,
+    **record_metadata,
+):
+    storage_data = dict(data)
+    storage_data["observation_text"] = storage_data.pop("text", None)
+    fields = [
+        "category",
+        "title",
+        "observation_text",
+        "effective_date",
+        "geography",
+        "property_type",
+        "truncated",
+    ]
+    return _insert_harvest_row(
+        "market_observations",
+        fields,
+        storage_data,
+        assignment_id,
+        property_id,
+        source_doc_id,
+        conn,
+        **record_metadata,
+    )
+
+
 def harvest_id_by_identity(record_kind, identity_key, conn):
     table, id_column = {
         "assignment": ("assignments", "assignment_id"),
         "income": ("income_snapshots", "snapshot_id"),
         "rent_roll": ("rent_roll_entries", "rent_roll_entry_id"),
         "expense": ("operating_expenses", "expense_id"),
+        "observation": ("market_observations", "observation_id"),
     }[record_kind]
     row = conn.execute(
         f"SELECT {id_column} FROM {table} WHERE identity_key = ?",
@@ -767,6 +826,64 @@ def search_operating_expenses(
         sql += " AND lower(e.category) LIKE lower(?)"
         params.append(f"%{category_contains}%")
     sql += " ORDER BY e.period_year DESC, e.category, e.expense_id"
+    try:
+        rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+    for row in rows:
+        row["confidence"] = json.loads(row.get("confidence") or "{}")
+    return rows
+
+
+def search_market_observations(
+    db_path=None,
+    *,
+    category=None,
+    geography=None,
+    property_type=None,
+    text_contains=None,
+    effective_date_from=None,
+    effective_date_to=None,
+    include_unreviewed=False,
+):
+    """Return reviewed, source-traceable market observations."""
+    path = Path(db_path) if db_path else DB_PATH
+    if not path.exists():
+        return []
+    init_db(path, quiet=True)
+    conn = get_conn(path)
+    sql = """
+        SELECT o.*, a.file_no, p.address_street, p.address_city,
+               sd.filename AS source_filename,
+               sd.content_sha256 AS source_sha256
+        FROM market_observations o
+        LEFT JOIN assignments a ON a.assignment_id = o.assignment_id
+        LEFT JOIN properties p ON p.property_id = o.property_id
+        LEFT JOIN source_documents sd ON sd.doc_id = o.source_doc_id
+        WHERE 1=1
+    """
+    params = []
+    if not include_unreviewed:
+        sql += " AND o.review_status = 'confirmed'"
+    if category:
+        sql += " AND lower(o.category) = lower(?)"
+        params.append(category)
+    if geography:
+        sql += " AND lower(o.geography) LIKE lower(?)"
+        params.append(f"%{geography}%")
+    if property_type:
+        sql += " AND lower(o.property_type) = lower(?)"
+        params.append(property_type)
+    if text_contains:
+        sql += " AND lower(o.observation_text) LIKE lower(?)"
+        params.append(f"%{text_contains}%")
+    if effective_date_from:
+        sql += " AND o.effective_date >= ?"
+        params.append(effective_date_from)
+    if effective_date_to:
+        sql += " AND o.effective_date <= ?"
+        params.append(effective_date_to)
+    sql += " ORDER BY o.effective_date DESC, o.observation_id DESC"
     try:
         rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
     finally:

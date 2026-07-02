@@ -51,9 +51,11 @@ the signed deliverable.
 | `contract` | Audits workbook and configured template keys against field registry v1 |
 | `dilmore` | Writes size-adjustment calculations into the assignment workbook |
 | `extract` | Extracts comparable and narrative data from supported source documents |
-| `comp-ingest` | Scans historical assignment folders and stages versioned sale/lease records for review |
+| `comp-ingest` | Scans historical assignment folders and stages versioned comparable, assignment, financial, and observation records |
 | `review-staged` / `comp-commit` | Confirms staged records and transactionally commits reviewed evidence |
 | `comp-search` | Searches reviewed sale or lease comps by canonical database fields |
+| `financial-search` | Searches reviewed rent-roll and operating-expense records |
+| `observation-search` | Searches reviewed market observations by category, geography, property type, text, and date |
 | `list` / `status` | Reads assignment metadata and files |
 | `dashboard` | Regenerates a local HTML assignment dashboard |
 
@@ -66,8 +68,8 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Forty-seven automated validation, delivery-state, stress, golden-DOCX, comparable,
-  media, comp-page,
+- Fifty-eight automated validation, delivery-state, stress, golden-DOCX,
+  comparable, historical-harvest, media, comp-page,
   structured-block, model-routing, contract, and presentation-derivation tests
   pass.
 - The platform folder arrived without dedicated Git history. A dedicated
@@ -120,6 +122,10 @@ Checks were performed without regenerating or modifying assignment outputs.
   reviewed row-level records with assignment linkage, worksheet/row
   provenance, stable identities, transactional commit, search APIs, CLI
   search, and Streamlit review. Application version is v0.8.0.
+- Recognized report sections now produce bounded market observations with
+  effective date, geography, property type, paragraph-range provenance,
+  explicit review/edit history, reviewed search, and transactional commit.
+  Application version is v0.9.0.
 - Maps, building sketches, and photo blocks use documented assignment asset
   paths; validation identifies missing files and delivery embeds available
   JPG/PNG assets.
@@ -219,9 +225,9 @@ Checks were performed without regenerating or modifying assignment outputs.
    compact income snapshots.
 4. **Completed:** extend the model to row-level rent rolls and normalized
    operating expenses.
-5. Extend the model to reusable narratives, charts, maps, and archived
-   exhibits.
-6. Add database migrations/backfills for any legacy local comp rows before
+5. **Completed:** extend the model to bounded reusable market observations.
+6. Extend the model to charts, maps, and archived exhibits.
+7. Add database migrations/backfills for any legacy local comp rows before
    importing a real historical archive.
 
 ### P2 — Integrations

@@ -723,6 +723,7 @@ def cmd_extract(args):
     narr_data   = result.get('narrative', {}).get('data', {})
     rent_roll_entries = result.get('rent_roll_entries', [])
     expense_records = result.get('expense_records', [])
+    market_observations = result.get('market_observations', [])
     sources     = result.get('sources', [])
     warnings    = result.get('warnings', [])
 
@@ -763,6 +764,7 @@ def cmd_extract(args):
 
     print(f'  Rent-roll rows: {len(rent_roll_entries)}')
     print(f'  Operating-expense lines: {len(expense_records)}')
+    print(f'  Market observations: {len(market_observations)}')
 
     if warnings:
         print(f'  Warnings ({len(warnings)}):')
@@ -923,6 +925,51 @@ def cmd_financial_search(args):
                 f"    {number}. {label} — "
                 f"{record.get('sf_leased') or '-'} SF, {metric}"
             )
+    return True
+
+
+def cmd_observation_search(args):
+    """Search reviewed historical market observations."""
+    option_map = {
+        "--category": "category",
+        "--geography": "geography",
+        "--type": "property_type",
+        "--text": "text_contains",
+        "--from": "effective_date_from",
+        "--to": "effective_date_to",
+    }
+    filters = {}
+    index = 0
+    while index < len(args):
+        option = args[index]
+        if option not in option_map:
+            print(f"  Unknown observation-search option: {option}")
+            return False
+        if index + 1 >= len(args):
+            print(f"  Missing value for {option}")
+            return False
+        filters[option_map[option]] = args[index + 1]
+        index += 2
+
+    from db import search_market_observations
+
+    records = search_market_observations(**filters)
+    print(f"\n  {len(records)} reviewed market observation(s) found")
+    for number, record in enumerate(records, 1):
+        title = record.get("title") or "(untitled)"
+        context = " · ".join(
+            str(value)
+            for value in (
+                record.get("category"),
+                record.get("geography"),
+                record.get("effective_date"),
+            )
+            if value
+        )
+        excerpt = (record.get("observation_text") or "").replace("\n", " ")[:140]
+        print(f"    {number}. {title}")
+        print(f"       {context}")
+        print(f"       {excerpt}")
     return True
 
 
@@ -1410,6 +1457,7 @@ COMMANDS = {
     'comp-commit': cmd_comp_commit,
     'comp-search': cmd_comp_search,
     'financial-search': cmd_financial_search,
+    'observation-search': cmd_observation_search,
     'list':      cmd_list,
     'status':    cmd_status,
     'dashboard': cmd_dashboard,

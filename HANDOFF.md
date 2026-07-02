@@ -171,6 +171,17 @@ blocks before connecting external services.
   transactional rollback, duplicate recommit, and reviewed search.
 - Advanced the application to v0.8.0 and expanded the baseline to fifty-five
   passing tests.
+- Added bounded heading-based extraction for regional, market-area,
+  neighborhood, property-market, and supply/demand observations.
+- Added canonical observation identity, paragraph-range source provenance,
+  inherited effective date/geography/property type, explicit truncation,
+  Streamlit text review, SQLite storage, reviewed search API, and
+  `observation-search`.
+- Verified that short fragments and unrelated reconciliation content are not
+  harvested, review edits persist, duplicate recommit is safe, and an
+  unconfirmed section rolls back the entire batch.
+- Advanced the application to v0.9.0 and expanded the baseline to fifty-eight
+  passing tests.
 
 ## In progress
 
@@ -178,12 +189,12 @@ blocks before connecting external services.
 
 ## Exact next step
 
-Extend canonical harvesting to reusable narrative/market observations, then
-index charts, maps, and exhibits as source artifacts.
+Index charts, maps, and exhibits as source artifacts, then add layout adapters
+for wide multi-year operating statements.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 55 tests passed.
+- `python -m unittest discover -s tests -v`: 58 tests passed.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000
