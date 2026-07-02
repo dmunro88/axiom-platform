@@ -88,6 +88,11 @@ _EXPENSE_EDIT_FIELDS = [
     ("category", "Category"), ("amount", "Amount"),
     ("amount_per_sf", "Amount/SF"), ("notes", "Notes"),
 ]
+_ARTIFACT_EDIT_FIELDS = [
+    ("artifact_kind", "Artifact Kind"), ("title", "Title"),
+    ("description", "Description"), ("effective_date", "Effective Date"),
+    ("geography", "Geography"), ("property_type", "Property Type"),
+]
 
 
 def _fmt(val, field=None):
@@ -289,6 +294,47 @@ def _collect_observations(staged_name, records):
     return retained
 
 
+def _render_artifact(staged_name, index, record):
+    data = record.get("data", {})
+    source = record.get("provenance", {}).get("source_path")
+    keep_key = f"keep_{staged_name}_artifact_{index}"
+    with st.container(border=True):
+        top = st.columns([5, 1])
+        with top[0]:
+            st.markdown(
+                f"**{data.get('title') or data.get('artifact_filename')}**"
+            )
+            metadata = [
+                data.get("artifact_kind"),
+                data.get("media_type"),
+                (
+                    f"{data.get('width_px')}×{data.get('height_px')} px"
+                    if data.get("width_px") and data.get("height_px")
+                    else None
+                ),
+                Path(source).name if source else None,
+            ]
+            st.caption(" · ".join(str(value) for value in metadata if value))
+        with top[1]:
+            st.checkbox("Keep", value=True, key=keep_key)
+        with st.expander("Review artifact metadata"):
+            for field, label in _ARTIFACT_EDIT_FIELDS:
+                st.text_input(
+                    label,
+                    value=str(data.get(field) or ""),
+                    key=f"edit_{staged_name}_artifact_{index}_{field}",
+                )
+            st.caption(
+                f"SHA-256: {data.get('artifact_sha256')} · "
+                f"Locator: {record.get('provenance', {}).get('source_locator')}"
+            )
+            if record.get("alternate_provenance"):
+                st.caption(
+                    f"{len(record['alternate_provenance'])} duplicate source "
+                    "location(s) collapsed."
+                )
+
+
 
 def _distinct_values(column, table="properties"):
     """Distinct non-empty values for a column, for filter dropdowns."""
@@ -421,6 +467,7 @@ def render_comp_library():
             rent_roll_entries = result.get("rent_roll_entries", [])
             expense_records = result.get("expense_records", [])
             market_observations = result.get("market_observations", [])
+            artifacts = result.get("artifacts", [])
 
             st.markdown(f"**{folder_name}**")
             meta_bits = [v for v in (meta.get("property_type"), meta.get("city")) if v]
@@ -479,6 +526,11 @@ def render_comp_library():
                 for index, record in enumerate(market_observations):
                     _render_observation(choice, index, record)
 
+            if artifacts:
+                st.markdown("##### Source Artifacts")
+                for index, record in enumerate(artifacts):
+                    _render_artifact(choice, index, record)
+
             if comps:
                 st.markdown("##### Sale Comps")
                 for i, comp in enumerate(comps):
@@ -497,6 +549,7 @@ def render_comp_library():
                 and not rent_roll_entries
                 and not expense_records
                 and not market_observations
+                and not artifacts
             ):
                 st.info("Nothing extracted from this assignment.")
 
@@ -538,6 +591,12 @@ def render_comp_library():
                     result["market_observations"] = _collect_observations(
                         choice,
                         market_observations,
+                    )
+                    result["artifacts"] = _collect_confirmed(
+                        choice,
+                        "artifact",
+                        artifacts,
+                        _ARTIFACT_EDIT_FIELDS,
                     )
                     result = confirm_extraction_result(
                         result,
@@ -588,13 +647,14 @@ def render_comp_library():
                 "rent_roll_entries",
                 "operating_expenses",
                 "market_observations",
+                "source_artifacts",
             ]:
                 try:
                     counts[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 except sqlite3.OperationalError:
                     counts[table] = 0
             conn.close()
-            stat_cols = st.columns(8)
+            stat_cols = st.columns(5)
             stat_cols[0].metric("Properties", counts.get("properties", 0))
             stat_cols[1].metric("Sale Comps", counts.get("comps", 0))
             stat_cols[2].metric("Lease Comps", counts.get("lease_comps", 0))
@@ -603,17 +663,22 @@ def render_comp_library():
                 "Income Snapshots",
                 counts.get("income_snapshots", 0),
             )
-            stat_cols[5].metric(
+            harvest_cols = st.columns(4)
+            harvest_cols[0].metric(
                 "Rent-Roll Rows",
                 counts.get("rent_roll_entries", 0),
             )
-            stat_cols[6].metric(
+            harvest_cols[1].metric(
                 "Expense Lines",
                 counts.get("operating_expenses", 0),
             )
-            stat_cols[7].metric(
+            harvest_cols[2].metric(
                 "Observations",
                 counts.get("market_observations", 0),
+            )
+            harvest_cols[3].metric(
+                "Artifacts",
+                counts.get("source_artifacts", 0),
             )
         else:
             st.caption("No database yet — commit your first confirmed assignment to create one.")

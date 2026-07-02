@@ -40,6 +40,7 @@ from db        import (init_db, get_conn, already_ingested,
                        insert_assignment, insert_income_snapshot,
                        insert_rent_roll_entry, insert_operating_expense,
                        insert_market_observation,
+                       insert_source_artifact,
                        comparable_id_by_identity, harvest_id_by_identity)
 
 
@@ -116,6 +117,7 @@ def run_extraction(root_path, staged_dir=None):
         n_rent_roll = len(result.get("rent_roll_entries", []))
         n_expenses = len(result.get("expense_records", []))
         n_observations = len(result.get("market_observations", []))
+        n_artifacts = len(result.get("artifacts", []))
         print(
             f"         - {n_comps} sale comp(s), "
             f"{n_leases} lease comp(s) extracted"
@@ -129,6 +131,8 @@ def run_extraction(root_path, staged_dir=None):
             print(
                 f"         - {n_observations} market observation(s) extracted"
             )
+        if n_artifacts:
+            print(f"         - {n_artifacts} source artifact(s) indexed")
 
         if result["warnings"]:
             for w in result["warnings"][:3]:  # show first 3 warnings only
@@ -145,6 +149,7 @@ def run_extraction(root_path, staged_dir=None):
             and n_rent_roll == 0
             and n_expenses == 0
             and n_observations == 0
+            and n_artifacts == 0
             and not result["narrative"].get("data")
             and not result.get("income_data")
         ):
@@ -297,6 +302,7 @@ def review_staged(interactive=True):
         rent_roll_entries = result.get("rent_roll_entries", [])
         expense_records = result.get("expense_records", [])
         market_observations = result.get("market_observations", [])
+        artifacts = result.get("artifacts", [])
 
         print("  " + "═" * 60)
         print(f"  ASSIGNMENT: {folder_name}")
@@ -349,6 +355,15 @@ def review_staged(interactive=True):
                 print(f"    {data.get('title') or '(untitled)'}")
                 print(f"      {excerpt}")
 
+        if artifacts:
+            print(f"\n  Source artifacts: {len(artifacts)} item(s) found")
+            for record in artifacts:
+                data = record.get("data", {})
+                print(
+                    f"    {str(data.get('artifact_kind')):<16} "
+                    f"{data.get('title') or data.get('artifact_filename')}"
+                )
+
         if (
             not comps
             and not leases
@@ -357,6 +372,7 @@ def review_staged(interactive=True):
             and not rent_roll_entries
             and not expense_records
             and not market_observations
+            and not artifacts
         ):
             print("\n  Nothing to commit for this assignment.")
             if _input_yn("Skip and move to next?"):
@@ -510,6 +526,7 @@ def commit_extraction_result(result, conn):
         "rent_roll_entries": 0,
         "operating_expenses": 0,
         "market_observations": 0,
+        "source_artifacts": 0,
         "sale_comps": 0,
         "lease_comps": 0,
         "duplicate_assignments": 0,
@@ -517,6 +534,7 @@ def commit_extraction_result(result, conn):
         "duplicate_rent_roll_entries": 0,
         "duplicate_operating_expenses": 0,
         "duplicate_market_observations": 0,
+        "duplicate_source_artifacts": 0,
         "duplicate_sale_comps": 0,
         "duplicate_lease_comps": 0,
         "sources": 0,
@@ -534,6 +552,7 @@ def commit_extraction_result(result, conn):
     records += result.get("rent_roll_entries", [])
     records += result.get("expense_records", [])
     records += result.get("market_observations", [])
+    records += result.get("artifacts", [])
     provenance_by_source = {
         record.get("provenance", {}).get("source_path"): record.get(
             "provenance",
@@ -542,6 +561,10 @@ def commit_extraction_result(result, conn):
         for record in records
         if record.get("provenance", {}).get("source_path")
     }
+    for record in records:
+        for provenance in record.get("alternate_provenance", []):
+            if provenance.get("source_path"):
+                provenance_by_source[provenance["source_path"]] = provenance
     sources = list(dict.fromkeys(
         list(result.get("sources", []))
         + [
@@ -691,6 +714,13 @@ def commit_extraction_result(result, conn):
             "duplicate_market_observations",
             insert_market_observation,
         ),
+        (
+            "artifact",
+            "artifacts",
+            "source_artifacts",
+            "duplicate_source_artifacts",
+            insert_source_artifact,
+        ),
     ):
         for record in result.get(key, []):
             if record.get("review", {}).get("status") != "confirmed":
@@ -793,6 +823,7 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
     total_rent_roll = 0
     total_expenses = 0
     total_observations = 0
+    total_artifacts = 0
 
     print(f"\n  Committing {len(confirmed_files)} confirmed file(s) to axiom.db ...\n")
 
@@ -815,6 +846,7 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
         total_rent_roll += counts["rent_roll_entries"]
         total_expenses += counts["operating_expenses"]
         total_observations += counts["market_observations"]
+        total_artifacts += counts["source_artifacts"]
         total_comps += counts["sale_comps"]
         total_leases += counts["lease_comps"]
         conf_path.rename(conf_path.with_suffix(".committed"))
@@ -826,6 +858,7 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
             + counts["duplicate_rent_roll_entries"]
             + counts["duplicate_operating_expenses"]
             + counts["duplicate_market_observations"]
+            + counts["duplicate_source_artifacts"]
         )
         duplicate_note = (
             f", {duplicate_count} duplicate(s) skipped"
@@ -842,6 +875,7 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
     print(f"    {total_rent_roll}  rent-roll row(s) added to database")
     print(f"    {total_expenses}  operating-expense line(s) added to database")
     print(f"    {total_observations}  market observation(s) added to database")
+    print(f"    {total_artifacts}  source artifact(s) added to database")
     print(f"    {total_comps}  sale comp(s) added to database")
     print(f"    {total_leases}  lease comp(s) added to database")
     print(f"\n  Run: python axiom.py comp-search   to query the database\n")
@@ -851,6 +885,7 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
         "rent_roll_entries": total_rent_roll,
         "operating_expenses": total_expenses,
         "market_observations": total_observations,
+        "source_artifacts": total_artifacts,
         "sale_comps": total_comps,
         "lease_comps": total_leases,
     }

@@ -113,7 +113,8 @@ The same batch/provenance/review pattern should next be extended to:
 2. **Completed:** subject rent rolls and operating-expense lines;
 3. **Completed:** reusable narrative/market observations with effective dates
    and paragraph-level provenance;
-4. Charts, maps, and exhibits as separately indexed artifacts;
+4. **Completed:** charts, maps, photos, sketches, and exhibits as separately
+   indexed source artifacts;
 5. File classification, renaming, and assignment filing;
 6. Bid-log and appraisal-log synchronization through a canonical assignment
    event model.

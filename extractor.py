@@ -24,6 +24,7 @@ from datetime import datetime
 from comparable_contract import comparable_identity
 from financial_extractor import extract_financial_workbook
 from observation_extractor import extract_market_observations
+from artifact_extractor import extract_assignment_artifacts
 
 
 # ─── Try importing document libraries ────────────────────────────────────────
@@ -729,6 +730,7 @@ def extract_from_docx(path):
         "narrative": {},
         "income_data": {},
         "market_observations": [],
+        "artifacts": [],
         "warnings": [],
     }
     warnings = results["warnings"]
@@ -1394,6 +1396,28 @@ def extract_assignment(scan):
         result["rent_roll_entries"].extend(data["rent_roll_entries"])
         result["expense_records"].extend(data["expense_records"])
         result["warnings"].extend(data["warnings"])
+
+    # ── 8. External and Word-embedded source artifacts ───────────────────────
+    office_containers = (
+        scan["reports"]
+        + scan["exhibits"]
+        + scan["sale_comp_docs"]
+        + scan["income_docs"]
+        + scan["other_docs"]
+        + scan["cap_rate_xls"]
+        + scan["rental_comp_xls"]
+        + scan["rent_roll_xls"]
+        + scan["expense_xls"]
+        + scan["market_xls"]
+        + scan["other_xls"]
+    )
+    artifact_data = extract_assignment_artifacts(
+        scan["folder"],
+        office_containers,
+    )
+    result["artifacts"] = artifact_data["artifacts"]
+    result["sources"].extend(artifact_data["sources"])
+    result["warnings"].extend(artifact_data["warnings"])
 
     # ── Inject folder metadata into narrative if not already present ──────────
     meta = scan["folder_meta"]

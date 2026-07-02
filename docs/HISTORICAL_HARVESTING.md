@@ -2,14 +2,15 @@
 
 ## Scope
 
-Historical reports now produce five reusable record types in addition to sale
+Historical reports now produce six reusable record types in addition to sale
 and lease comparables:
 
 - assignment conclusions (`axiom.assignment.conclusion` v1.0.0);
 - income snapshots (`axiom.income.snapshot` v1.0.0);
 - rent-roll entries (`axiom.rent_roll.entry` v1.0.0);
 - operating-expense lines (`axiom.operating_expense.line` v1.0.0);
-- market observations (`axiom.market.observation` v1.0.0).
+- market observations (`axiom.market.observation` v1.0.0);
+- source artifacts (`axiom.source.artifact` v1.0.0).
 
 The machine-readable descriptor is
 `schemas/historical_harvest.v1.json`.
@@ -34,7 +35,7 @@ identity combines the parent assignment identity, period, period type, and NOI.
 
 ## Safety and review
 
-All five record types use the comparable pipeline's controls:
+All six record types use the comparable pipeline's controls:
 
 - immutable source SHA-256, path, filename, size, and modification metadata;
 - per-field confidence and validation findings;
@@ -44,9 +45,33 @@ All five record types use the comparable pipeline's controls:
 - reviewed-only search;
 - unique database identities and transactional commit.
 
-The Streamlit review surface displays and edits all five record types. CLI
+The Streamlit review surface displays and edits all six record types. CLI
 review shows the report conclusion, income summary, rent roll, expenses, and
-market observations before confirmation.
+market observations and source artifacts before confirmation.
+
+## Source artifacts
+
+The artifact index covers external PNG/JPEG/TIFF/WebP/GIF/BMP images and PDFs,
+Word-embedded drawing images, Excel-embedded images, and native Excel chart
+objects. It records likely kind (map, chart, photo, sketch, exhibit, or
+decorative), title, media type, binary SHA-256, size, pixel dimensions when
+available, effective date, geography, property type, container filename, and
+exact file/package locator.
+
+The binary artifact hash is distinct from its source-container hash. Therefore
+an embedded map can be verified independently while a changed Word or Excel
+container still fails the pre-commit source check. Identical binaries of the
+same kind within an assignment collapse to one canonical record; their other
+locations remain in `alternate_provenance`.
+
+The index does not copy, rename, render, OCR, or otherwise alter source files.
+Reviewed search is available through `db.search_source_artifacts()` and:
+
+```text
+python axiom.py artifact-search --kind map --geography "Demo City"
+python axiom.py artifact-search --kind chart --title vacancy
+python axiom.py artifact-search --sha256 <artifact-sha256>
+```
 
 ## Market observations
 
@@ -98,9 +123,11 @@ python axiom.py financial-search --expenses --year 2025 --category taxes
 `tests/test_historical_harvest.py` builds a fictional old report and standalone
 income chart. `tests/test_financial_harvest.py` adds fictional rent-roll and
 expense workbooks, while `tests/test_observation_harvest.py` proves bounded
-heading-based narrative sections. Together they prove scan, extraction,
-normalization, staging, review edits, commit, duplicate recommit, reviewed
-search, rollback, and database initialization/migration behavior.
+heading-based narrative sections. `tests/test_artifact_harvest.py` adds
+external files, duplicate paths, Word-embedded images, and a native Excel
+chart. Together they prove scan, extraction, normalization, staging, review
+edits, commit, duplicate recommit, reviewed search, changed-source rejection,
+rollback, and database initialization/migration behavior.
 
 ## Deliberate limits
 
@@ -109,3 +136,8 @@ workbooks with years spread across columns or custom subtotal layouts will
 need layout adapters before archive-scale import. Neither rent-roll rows nor
 expense lines are automatically treated as market evidence; that distinction
 requires a later analytical promotion step.
+
+PDFs are currently indexed as whole-file exhibits rather than page-level
+artifacts. Embedded media classification uses filenames, container names, and
+available alt text; ambiguous items remain reviewable instead of being treated
+as authoritative automatically.

@@ -182,6 +182,17 @@ blocks before connecting external services.
   unconfirmed section rolls back the entire batch.
 - Advanced the application to v0.9.0 and expanded the baseline to fifty-eight
   passing tests.
+- Added non-mutating indexing for external image/PDF artifacts,
+  Word-embedded drawing images, Excel-embedded images, and native Excel chart
+  objects.
+- Added binary artifact hashes separate from container hashes, pixel
+  dimensions, package/file locators, duplicate-location provenance, review
+  metadata, SQLite storage, reviewed search, and `artifact-search`.
+- Verified duplicate-binary collapse, Word alt-text map classification, native
+  chart indexing, review edits, changed-source rejection, duplicate recommit,
+  and full transactional rollback.
+- Advanced the application to v0.10.0 and expanded the baseline to sixty-two
+  passing tests.
 
 ## In progress
 
@@ -189,12 +200,12 @@ blocks before connecting external services.
 
 ## Exact next step
 
-Index charts, maps, and exhibits as source artifacts, then add layout adapters
-for wide multi-year operating statements.
+Add layout adapters for wide multi-year operating statements, then design the
+canonical assignment-event model for bid-log/appraisal-log synchronization.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 58 tests passed.
+- `python -m unittest discover -s tests -v`: 62 tests passed.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000

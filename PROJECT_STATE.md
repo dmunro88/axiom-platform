@@ -56,6 +56,7 @@ the signed deliverable.
 | `comp-search` | Searches reviewed sale or lease comps by canonical database fields |
 | `financial-search` | Searches reviewed rent-roll and operating-expense records |
 | `observation-search` | Searches reviewed market observations by category, geography, property type, text, and date |
+| `artifact-search` | Searches reviewed maps, charts, photos, sketches, and exhibits |
 | `list` / `status` | Reads assignment metadata and files |
 | `dashboard` | Regenerates a local HTML assignment dashboard |
 
@@ -68,7 +69,7 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Fifty-eight automated validation, delivery-state, stress, golden-DOCX,
+- Sixty-two automated validation, delivery-state, stress, golden-DOCX,
   comparable, historical-harvest, media, comp-page,
   structured-block, model-routing, contract, and presentation-derivation tests
   pass.
@@ -126,6 +127,10 @@ Checks were performed without regenerating or modifying assignment outputs.
   effective date, geography, property type, paragraph-range provenance,
   explicit review/edit history, reviewed search, and transactional commit.
   Application version is v0.9.0.
+- External and Office-embedded maps, charts, photos, sketches, and exhibits
+  now produce searchable source-artifact records with binary/container hashes,
+  dimensions, package locators, alternate duplicate provenance, explicit
+  review, and changed-source rejection. Application version is v0.10.0.
 - Maps, building sketches, and photo blocks use documented assignment asset
   paths; validation identifies missing files and delivery embeds available
   JPG/PNG assets.
@@ -226,7 +231,8 @@ Checks were performed without regenerating or modifying assignment outputs.
 4. **Completed:** extend the model to row-level rent rolls and normalized
    operating expenses.
 5. **Completed:** extend the model to bounded reusable market observations.
-6. Extend the model to charts, maps, and archived exhibits.
+6. **Completed:** extend the model to external and Office-embedded charts,
+   maps, photos, sketches, and archived exhibits.
 7. Add database migrations/backfills for any legacy local comp rows before
    importing a real historical archive.
 

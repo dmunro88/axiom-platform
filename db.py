@@ -13,6 +13,7 @@ Tables
   rent_roll_entries  — subject occupancy and contract-rent rows
   operating_expenses — normalized historical expense lines
   market_observations — reviewed, bounded narrative evidence
+  source_artifacts    — reviewed external and Office-embedded media/evidence
 
 Usage
 -----
@@ -248,6 +249,34 @@ CREATE TABLE IF NOT EXISTS market_observations (
     created_at          TEXT    DEFAULT (datetime('now'))
 );
 
+-- ── Searchable source artifacts ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS source_artifacts (
+    artifact_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignment_id       INTEGER REFERENCES assignments(assignment_id),
+    property_id         INTEGER REFERENCES properties(property_id),
+    source_doc_id       INTEGER REFERENCES source_documents(doc_id),
+    artifact_kind       TEXT,
+    title               TEXT,
+    description         TEXT,
+    artifact_filename   TEXT,
+    container_filename  TEXT,
+    media_type          TEXT,
+    extension           TEXT,
+    artifact_sha256     TEXT,
+    artifact_size       INTEGER,
+    width_px            INTEGER,
+    height_px           INTEGER,
+    effective_date      TEXT,
+    geography           TEXT,
+    property_type       TEXT,
+    identity_key        TEXT,
+    confidence          TEXT,
+    review_status       TEXT    DEFAULT 'unreviewed',
+    reviewed_at         TEXT,
+    source_record_json  TEXT,
+    created_at          TEXT    DEFAULT (datetime('now'))
+);
+
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_properties_city    ON properties(address_city);
 CREATE INDEX IF NOT EXISTS idx_properties_county  ON properties(address_county);
@@ -319,6 +348,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_operating_expenses_identity_key
 CREATE UNIQUE INDEX IF NOT EXISTS idx_market_observations_identity_key
     ON market_observations(identity_key)
     WHERE identity_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_source_artifacts_identity_key
+    ON source_artifacts(identity_key)
+    WHERE identity_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_source_artifacts_sha256
+    ON source_artifacts(artifact_sha256);
 """
 
 
@@ -736,6 +770,42 @@ def insert_market_observation(
     )
 
 
+def insert_source_artifact(
+    data,
+    assignment_id,
+    property_id,
+    source_doc_id,
+    conn,
+    **record_metadata,
+):
+    fields = [
+        "artifact_kind",
+        "title",
+        "description",
+        "artifact_filename",
+        "container_filename",
+        "media_type",
+        "extension",
+        "artifact_sha256",
+        "artifact_size",
+        "width_px",
+        "height_px",
+        "effective_date",
+        "geography",
+        "property_type",
+    ]
+    return _insert_harvest_row(
+        "source_artifacts",
+        fields,
+        data,
+        assignment_id,
+        property_id,
+        source_doc_id,
+        conn,
+        **record_metadata,
+    )
+
+
 def harvest_id_by_identity(record_kind, identity_key, conn):
     table, id_column = {
         "assignment": ("assignments", "assignment_id"),
@@ -743,6 +813,7 @@ def harvest_id_by_identity(record_kind, identity_key, conn):
         "rent_roll": ("rent_roll_entries", "rent_roll_entry_id"),
         "expense": ("operating_expenses", "expense_id"),
         "observation": ("market_observations", "observation_id"),
+        "artifact": ("source_artifacts", "artifact_id"),
     }[record_kind]
     row = conn.execute(
         f"SELECT {id_column} FROM {table} WHERE identity_key = ?",
@@ -884,6 +955,61 @@ def search_market_observations(
         sql += " AND o.effective_date <= ?"
         params.append(effective_date_to)
     sql += " ORDER BY o.effective_date DESC, o.observation_id DESC"
+    try:
+        rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+    for row in rows:
+        row["confidence"] = json.loads(row.get("confidence") or "{}")
+    return rows
+
+
+def search_source_artifacts(
+    db_path=None,
+    *,
+    artifact_kind=None,
+    title_contains=None,
+    geography=None,
+    property_type=None,
+    artifact_sha256=None,
+    include_unreviewed=False,
+):
+    """Return reviewed external and container-embedded source artifacts."""
+    path = Path(db_path) if db_path else DB_PATH
+    if not path.exists():
+        return []
+    init_db(path, quiet=True)
+    conn = get_conn(path)
+    sql = """
+        SELECT s.*, a.file_no, p.address_street, p.address_city,
+               sd.filename AS source_filename,
+               sd.filepath AS source_path,
+               sd.content_sha256 AS source_sha256
+        FROM source_artifacts s
+        LEFT JOIN assignments a ON a.assignment_id = s.assignment_id
+        LEFT JOIN properties p ON p.property_id = s.property_id
+        LEFT JOIN source_documents sd ON sd.doc_id = s.source_doc_id
+        WHERE 1=1
+    """
+    params = []
+    if not include_unreviewed:
+        sql += " AND s.review_status = 'confirmed'"
+    if artifact_kind:
+        sql += " AND lower(s.artifact_kind) = lower(?)"
+        params.append(artifact_kind)
+    if title_contains:
+        sql += " AND lower(s.title) LIKE lower(?)"
+        params.append(f"%{title_contains}%")
+    if geography:
+        sql += " AND lower(s.geography) LIKE lower(?)"
+        params.append(f"%{geography}%")
+    if property_type:
+        sql += " AND lower(s.property_type) = lower(?)"
+        params.append(property_type)
+    if artifact_sha256:
+        sql += " AND s.artifact_sha256 = ?"
+        params.append(artifact_sha256)
+    sql += " ORDER BY s.effective_date DESC, s.artifact_id DESC"
     try:
         rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
     finally:

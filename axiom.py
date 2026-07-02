@@ -724,6 +724,7 @@ def cmd_extract(args):
     rent_roll_entries = result.get('rent_roll_entries', [])
     expense_records = result.get('expense_records', [])
     market_observations = result.get('market_observations', [])
+    artifacts = result.get('artifacts', [])
     sources     = result.get('sources', [])
     warnings    = result.get('warnings', [])
 
@@ -765,6 +766,7 @@ def cmd_extract(args):
     print(f'  Rent-roll rows: {len(rent_roll_entries)}')
     print(f'  Operating-expense lines: {len(expense_records)}')
     print(f'  Market observations: {len(market_observations)}')
+    print(f'  Source artifacts: {len(artifacts)}')
 
     if warnings:
         print(f'  Warnings ({len(warnings)}):')
@@ -970,6 +972,50 @@ def cmd_observation_search(args):
         print(f"    {number}. {title}")
         print(f"       {context}")
         print(f"       {excerpt}")
+    return True
+
+
+def cmd_artifact_search(args):
+    """Search reviewed maps, charts, photos, sketches, and exhibits."""
+    option_map = {
+        "--kind": "artifact_kind",
+        "--title": "title_contains",
+        "--geography": "geography",
+        "--type": "property_type",
+        "--sha256": "artifact_sha256",
+    }
+    filters = {}
+    index = 0
+    while index < len(args):
+        option = args[index]
+        if option not in option_map:
+            print(f"  Unknown artifact-search option: {option}")
+            return False
+        if index + 1 >= len(args):
+            print(f"  Missing value for {option}")
+            return False
+        filters[option_map[option]] = args[index + 1]
+        index += 2
+
+    from db import search_source_artifacts
+
+    records = search_source_artifacts(**filters)
+    print(f"\n  {len(records)} reviewed source artifact(s) found")
+    for number, record in enumerate(records, 1):
+        dimensions = (
+            f"{record['width_px']}x{record['height_px']} px"
+            if record.get("width_px") and record.get("height_px")
+            else "-"
+        )
+        print(
+            f"    {number}. {record.get('title') or '(untitled)'} "
+            f"[{record.get('artifact_kind') or '-'}]"
+        )
+        print(
+            f"       {dimensions}  "
+            f"{record.get('artifact_filename') or '-'}  "
+            f"{record.get('source_filename') or '-'}"
+        )
     return True
 
 
@@ -1458,6 +1504,7 @@ COMMANDS = {
     'comp-search': cmd_comp_search,
     'financial-search': cmd_financial_search,
     'observation-search': cmd_observation_search,
+    'artifact-search': cmd_artifact_search,
     'list':      cmd_list,
     'status':    cmd_status,
     'dashboard': cmd_dashboard,
