@@ -110,7 +110,7 @@ The same batch/provenance/review pattern should next be extended to:
 
 1. **Completed:** assignment conclusions and compact income snapshots; see
    `docs/HISTORICAL_HARVESTING.md`.
-2. Rent rolls and expense comparables;
+2. **Completed:** subject rent rolls and operating-expense lines;
 3. Reusable narrative/market observations with effective dates;
 4. Charts, maps, and exhibits as separately indexed artifacts;
 5. File classification, renaming, and assignment filing;

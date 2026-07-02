@@ -159,6 +159,18 @@ blocks before connecting external services.
   income chart, including rollback and legacy migration tests.
 - Advanced the application to v0.7.0 and expanded the baseline to fifty-one
   passing tests.
+- Activated the previously dormant rent-roll workbook lane and added explicit
+  operating-expense workbook classification.
+- Added canonical rent-roll-entry and operating-expense-line contracts,
+  assignment-scoped identities, worksheet/row provenance, review/edit support,
+  SQLite tables, unique indexes, reviewed search APIs, and
+  `financial-search`.
+- Kept subject rent-roll evidence separate from market lease comps and excluded
+  total/subtotal expense rows to prevent analytical double counting.
+- Verified fictional extraction, exact-row collapse, review edits,
+  transactional rollback, duplicate recommit, and reviewed search.
+- Advanced the application to v0.8.0 and expanded the baseline to fifty-five
+  passing tests.
 
 ## In progress
 
@@ -166,12 +178,12 @@ blocks before connecting external services.
 
 ## Exact next step
 
-Extend the canonical harvesting model to assignment conclusions and income
-snapshots, then to rent rolls/expenses and reusable narrative/chart artifacts.
+Extend canonical harvesting to reusable narrative/market observations, then
+index charts, maps, and exhibits as source artifacts.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 47 tests passed.
+- `python -m unittest discover -s tests -v`: 55 tests passed.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000

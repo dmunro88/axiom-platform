@@ -1,4 +1,4 @@
-"""Canonical contracts for historical assignment and income harvesting."""
+"""Canonical contracts for historical assignment and financial harvesting."""
 
 import copy
 import datetime
@@ -13,6 +13,8 @@ from comparable_contract import source_metadata
 SCHEMA_VERSION = "1.0.0"
 ASSIGNMENT_CONTRACT_ID = "axiom.assignment.conclusion"
 INCOME_CONTRACT_ID = "axiom.income.snapshot"
+RENT_ROLL_CONTRACT_ID = "axiom.rent_roll.entry"
+EXPENSE_CONTRACT_ID = "axiom.operating_expense.line"
 REVIEW_STATUSES = frozenset({"unreviewed", "confirmed", "rejected"})
 CONFIDENCE_VALUES = frozenset({"high", "medium", "low", "unknown"})
 
@@ -35,6 +37,14 @@ INCOME_RATE_FIELDS = {
     "market_cap_rate_low",
     "market_cap_rate_high",
 }
+RENT_ROLL_NUMBER_FIELDS = {
+    "sf_leased",
+    "monthly_rent",
+    "annual_rent",
+    "rent_psf",
+}
+RENT_ROLL_DATE_FIELDS = {"lease_start", "lease_end", "as_of_date"}
+EXPENSE_NUMBER_FIELDS = {"amount", "amount_per_sf"}
 
 
 def _text(value):
@@ -112,6 +122,37 @@ def normalize_income_data(data):
     return normalized
 
 
+def normalize_rent_roll_data(data):
+    normalized = {}
+    for key, value in dict(data or {}).items():
+        if key in RENT_ROLL_NUMBER_FIELDS:
+            normalized[key] = _number(value)
+        elif key in RENT_ROLL_DATE_FIELDS:
+            normalized[key] = _date(value)
+        else:
+            normalized[key] = _text(value)
+    return normalized
+
+
+def normalize_expense_data(data):
+    normalized = {}
+    for key, value in dict(data or {}).items():
+        if key in EXPENSE_NUMBER_FIELDS:
+            normalized[key] = _number(value)
+        elif key == "period_year":
+            parsed = _number(value)
+            normalized[key] = int(parsed) if parsed is not None else None
+        elif key == "period_type":
+            text = (_text(value) or "").casefold().replace("-", " ")
+            normalized[key] = {
+                "pro forma": "proforma",
+                "projected": "proforma",
+            }.get(text, text or None)
+        else:
+            normalized[key] = _text(value)
+    return normalized
+
+
 def _identity_text(value):
     return re.sub(r"[^a-z0-9]+", " ", (_text(value) or "").casefold()).strip()
 
@@ -144,6 +185,31 @@ def income_identity(data, assignment_identity_key=None, source_sha256=None):
     ))
 
 
+def rent_roll_identity(data, assignment_identity_key=None, source_sha256=None):
+    data = normalize_rent_roll_data(data)
+    return _digest((
+        assignment_identity_key or source_sha256 or "",
+        data.get("as_of_date") or "",
+        _identity_text(data.get("unit_id")),
+        _identity_text(data.get("suite")),
+        _identity_text(data.get("tenant_name")),
+        data.get("lease_start") or "",
+        data.get("lease_end") or "",
+        data.get("sf_leased"),
+    ))
+
+
+def expense_identity(data, assignment_identity_key=None, source_sha256=None):
+    data = normalize_expense_data(data)
+    return _digest((
+        assignment_identity_key or source_sha256 or "",
+        data.get("period_year"),
+        data.get("period_type") or "",
+        _identity_text(data.get("category")),
+        data.get("amount"),
+    ))
+
+
 def _provenance(source_path, existing=None):
     provenance = dict(existing or {})
     if source_path and Path(source_path).is_file() and not provenance.get("source_sha256"):
@@ -170,6 +236,16 @@ def validate_harvest_record(record):
             warnings.append("period_year is recommended.")
         if data.get("noi") is None:
             warnings.append("noi is recommended.")
+    elif kind == "rent_roll":
+        if not any(data.get(field) for field in ("tenant_name", "unit_id", "suite")):
+            errors.append("tenant_name, unit_id, or suite is required.")
+        if data.get("sf_leased") is None:
+            warnings.append("sf_leased is recommended.")
+    elif kind == "expense":
+        if not data.get("category"):
+            errors.append("category is required.")
+        if data.get("amount") is None:
+            errors.append("amount is required.")
     else:
         errors.append(f"Unsupported harvest record_kind: {kind!r}.")
     for field in ("source_path", "source_sha256"):
@@ -186,16 +262,21 @@ def validate_harvest_record(record):
 
 def _record(data, confidence, kind, source_path, existing=None, assignment_key=None):
     record = copy.deepcopy(existing or {})
-    record["contract_id"] = (
-        ASSIGNMENT_CONTRACT_ID if kind == "assignment" else INCOME_CONTRACT_ID
-    )
+    record["contract_id"] = {
+        "assignment": ASSIGNMENT_CONTRACT_ID,
+        "income": INCOME_CONTRACT_ID,
+        "rent_roll": RENT_ROLL_CONTRACT_ID,
+        "expense": EXPENSE_CONTRACT_ID,
+    }[kind]
     record["schema_version"] = SCHEMA_VERSION
     record["record_kind"] = kind
-    record["data"] = (
-        normalize_assignment_data(data)
-        if kind == "assignment"
-        else normalize_income_data(data)
-    )
+    normalizers = {
+        "assignment": normalize_assignment_data,
+        "income": normalize_income_data,
+        "rent_roll": normalize_rent_roll_data,
+        "expense": normalize_expense_data,
+    }
+    record["data"] = normalizers[kind](data)
     record["confidence"] = {
         key: value if value in CONFIDENCE_VALUES else "unknown"
         for key, value in dict(confidence or {}).items()
@@ -204,18 +285,33 @@ def _record(data, confidence, kind, source_path, existing=None, assignment_key=N
         source_path or record.get("provenance", {}).get("source_path"),
         record.get("provenance"),
     )
-    record["identity_key"] = (
-        assignment_identity(
+    if record.get("sheet"):
+        locator = f"worksheet:{record['sheet']}"
+        if record.get("source_row"):
+            locator += f":row:{record['source_row']}"
+        record["provenance"].setdefault("source_locator", locator)
+    identity_functions = {
+        "assignment": lambda: assignment_identity(
             record["data"],
             record["provenance"].get("source_sha256"),
-        )
-        if kind == "assignment"
-        else income_identity(
+        ),
+        "income": lambda: income_identity(
             record["data"],
             assignment_key,
             record["provenance"].get("source_sha256"),
-        )
-    )
+        ),
+        "rent_roll": lambda: rent_roll_identity(
+            record["data"],
+            assignment_key,
+            record["provenance"].get("source_sha256"),
+        ),
+        "expense": lambda: expense_identity(
+            record["data"],
+            assignment_key,
+            record["provenance"].get("source_sha256"),
+        ),
+    }
+    record["identity_key"] = identity_functions[kind]()
     review = dict(record.get("review", {}))
     review.setdefault(
         "status",
@@ -332,13 +428,46 @@ def canonicalize_harvest_records(result):
         if income_data and income_source
         else None
     )
+    assignment_key = (
+        canonical["assignment_record"]["identity_key"]
+        if canonical.get("assignment_record")
+        else None
+    )
+    for key, kind in (
+        ("rent_roll_entries", "rent_roll"),
+        ("expense_records", "expense"),
+    ):
+        records = []
+        identities = set()
+        for raw_record in canonical.get(key, []):
+            record = _record(
+                raw_record.get("data", {}),
+                raw_record.get("confidence", {}),
+                kind,
+                (
+                    raw_record.get("provenance", {}).get("source_path")
+                    or raw_record.get("source")
+                ),
+                raw_record,
+                assignment_key,
+            )
+            if record["identity_key"] in identities:
+                continue
+            records.append(record)
+            identities.add(record["identity_key"])
+        canonical[key] = records
     return canonical
 
 
 def confirm_harvest_records(result, reviewer, reviewed_at):
     confirmed = canonicalize_harvest_records(result)
-    for key in ("assignment_record", "income_snapshot"):
-        record = confirmed.get(key)
+    records = [
+        confirmed.get("assignment_record"),
+        confirmed.get("income_snapshot"),
+        *confirmed.get("rent_roll_entries", []),
+        *confirmed.get("expense_records", []),
+    ]
+    for record in records:
         if not record:
             continue
         record["review"] = {

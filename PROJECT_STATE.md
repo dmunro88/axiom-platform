@@ -116,6 +116,10 @@ Checks were performed without regenerating or modifying assignment outputs.
   commit, reviewed-only search, and additive SQLite migrations. Standalone
   income Word files are no longer ignored. Application version is v0.7.0.
   See `docs/HISTORICAL_HARVESTING.md`.
+- Rent-roll workbooks and normalized operating-expense tables now produce
+  reviewed row-level records with assignment linkage, worksheet/row
+  provenance, stable identities, transactional commit, search APIs, CLI
+  search, and Streamlit review. Application version is v0.8.0.
 - Maps, building sketches, and photo blocks use documented assignment asset
   paths; validation identifies missing files and delivery embeds available
   JPG/PNG assets.
@@ -213,9 +217,11 @@ Checks were performed without regenerating or modifying assignment outputs.
    CSV/workbook export.
 3. **Completed:** extend provenance/review to assignment conclusions and
    compact income snapshots.
-4. Extend the model to row-level rent rolls, expenses, narratives, charts, and
-   maps.
-5. Add database migrations/backfills for any legacy local comp rows before
+4. **Completed:** extend the model to row-level rent rolls and normalized
+   operating expenses.
+5. Extend the model to reusable narratives, charts, maps, and archived
+   exhibits.
+6. Add database migrations/backfills for any legacy local comp rows before
    importing a real historical archive.
 
 ### P2 — Integrations

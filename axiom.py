@@ -721,6 +721,8 @@ def cmd_extract(args):
     comps       = result.get('comps', [])
     lease_comps = result.get('lease_comps', [])
     narr_data   = result.get('narrative', {}).get('data', {})
+    rent_roll_entries = result.get('rent_roll_entries', [])
+    expense_records = result.get('expense_records', [])
     sources     = result.get('sources', [])
     warnings    = result.get('warnings', [])
 
@@ -758,6 +760,9 @@ def cmd_extract(args):
         print(f'  Narrative fields: {len(narr_data)}')
         for k, v in list(narr_data.items())[:8]:
             print(f'    {k}: {str(v)[:60]}')
+
+    print(f'  Rent-roll rows: {len(rent_roll_entries)}')
+    print(f'  Operating-expense lines: {len(expense_records)}')
 
     if warnings:
         print(f'  Warnings ({len(warnings)}):')
@@ -842,6 +847,82 @@ def cmd_comp_search(args):
             date = record.get("lease_date") or "-"
         print(f"    {number}. {address}, {city}")
         print(f"       {metric}  {date}")
+    return True
+
+
+def cmd_financial_search(args):
+    """Search reviewed rent-roll rows or operating expenses."""
+    kind = "rent_roll"
+    filters = {}
+    index = 0
+    while index < len(args):
+        option = args[index]
+        if option == "--expenses":
+            kind = "expense"
+            index += 1
+            continue
+        value_options = {
+            "--tenant": "tenant_contains",
+            "--as-of": "as_of_date",
+            "--year": "period_year",
+            "--category": "category_contains",
+        }
+        if option in value_options:
+            if index + 1 >= len(args):
+                print(f"  Missing value for {option}")
+                return False
+            value = args[index + 1]
+            if option == "--year":
+                try:
+                    value = int(value)
+                except ValueError:
+                    print("  --year must be a whole year such as 2025")
+                    return False
+            filters[value_options[option]] = value
+            index += 2
+            continue
+        print(f"  Unknown financial-search option: {option}")
+        return False
+
+    allowed = (
+        {"period_year", "category_contains"}
+        if kind == "expense"
+        else {"tenant_contains", "as_of_date"}
+    )
+    incompatible = set(filters) - allowed
+    if incompatible:
+        print(f"  One or more filters do not apply to {kind} records.")
+        return False
+
+    from db import search_operating_expenses, search_rent_roll_entries
+
+    records = (
+        search_operating_expenses(**filters)
+        if kind == "expense"
+        else search_rent_roll_entries(**filters)
+    )
+    print(f"\n  {len(records)} reviewed {kind} record(s) found")
+    for number, record in enumerate(records, 1):
+        if kind == "expense":
+            amount = record.get("amount")
+            metric = f"${amount:,.0f}" if amount is not None else "-"
+            print(
+                f"    {number}. {record.get('category') or '(no category)'} "
+                f"({record.get('period_year') or '-'}) — {metric}"
+            )
+        else:
+            rent = record.get("monthly_rent")
+            metric = f"${rent:,.0f}/mo" if rent is not None else "-"
+            label = (
+                record.get("tenant_name")
+                or record.get("suite")
+                or record.get("unit_id")
+                or "(unidentified space)"
+            )
+            print(
+                f"    {number}. {label} — "
+                f"{record.get('sf_leased') or '-'} SF, {metric}"
+            )
     return True
 
 
@@ -1328,6 +1409,7 @@ COMMANDS = {
     'review-staged': cmd_review_staged,
     'comp-commit': cmd_comp_commit,
     'comp-search': cmd_comp_search,
+    'financial-search': cmd_financial_search,
     'list':      cmd_list,
     'status':    cmd_status,
     'dashboard': cmd_dashboard,

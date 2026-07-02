@@ -22,6 +22,7 @@ from pathlib import Path
 from datetime import datetime
 
 from comparable_contract import comparable_identity
+from financial_extractor import extract_financial_workbook
 
 
 # ─── Try importing document libraries ────────────────────────────────────────
@@ -1123,7 +1124,8 @@ def _classify_docx(path):
 def _classify_xlsx(path):
     """
     Return the role of an Excel file based on its filename.
-    Returns one of: 'cap_rates' | 'rental_comps' | 'rent_roll' | 'market' | 'other'
+    Returns one of: 'cap_rates' | 'rental_comps' | 'rent_roll' | 'expense' |
+    'market' | 'other'
     """
     name = path.stem.lower()
     if any(k in name for k in ["cap rate", "capitalization rate",
@@ -1134,6 +1136,16 @@ def _classify_xlsx(path):
         return "rental_comps"
     if "rr" in name.split() or "rent roll" in name or name.endswith(" rr"):
         return "rent_roll"
+    if any(k in name for k in [
+        "expense",
+        "operating history",
+        "historical operations",
+        "operating statement",
+        "income statement",
+        "profit and loss",
+        "p&l",
+    ]):
+        return "expense"
     if "market" in name:
         return "market"
     return "other"
@@ -1172,7 +1184,8 @@ def scan_assignment_folder(folder_path):
     Returns dict:
       folder, name, folder_meta (file_no/type/city from name),
       reports, exhibits, sale_comp_docs, income_docs, other_docs,
-      cap_rate_xls, rental_comp_xls, rent_roll_xls, market_xls, other_xls
+      cap_rate_xls, rental_comp_xls, rent_roll_xls, expense_xls, market_xls,
+      other_xls
     """
     folder = Path(folder_path)
     result = {
@@ -1187,6 +1200,7 @@ def scan_assignment_folder(folder_path):
         "cap_rate_xls":     [],   # cap rate / market chart Excel files
         "rental_comp_xls":  [],   # rental / lease comp Excel files
         "rent_roll_xls":    [],   # rent roll Excel files
+        "expense_xls":      [],   # operating expense/history Excel files
         "market_xls":       [],   # general market Excel files
         "other_xls":        [],   # other Excel files
     }
@@ -1220,6 +1234,7 @@ def scan_assignment_folder(folder_path):
                 "cap_rates":    "cap_rate_xls",
                 "rental_comps": "rental_comp_xls",
                 "rent_roll":    "rent_roll_xls",
+                "expense":      "expense_xls",
                 "market":       "market_xls",
                 "other":        "other_xls",
             }[role]].append(str(item))
@@ -1241,7 +1256,8 @@ def scan_projects_root(root_path):
         has_data = any([
             scan["reports"], scan["exhibits"], scan["sale_comp_docs"],
             scan["income_docs"], scan["cap_rate_xls"],
-            scan["rental_comp_xls"],
+            scan["rental_comp_xls"], scan["rent_roll_xls"],
+            scan["expense_xls"],
         ])
         if has_data:
             assignments.append(scan)
@@ -1272,6 +1288,8 @@ def extract_assignment(scan):
         "lease_comps":  [],
         "narrative":    {},
         "income_data":  {},
+        "rent_roll_entries": [],
+        "expense_records": [],
         "warnings":     [],
         "sources":      [],
     }
@@ -1359,6 +1377,14 @@ def extract_assignment(scan):
         if data.get("income_data"):
             result["income_data"] = data["income_data"]
             result["income_source"] = str(doc_path)
+        result["warnings"].extend(data["warnings"])
+
+    # ── 7. Rent rolls and operating-expense workbooks ────────────────────────
+    for workbook_path in scan["rent_roll_xls"] + scan["expense_xls"]:
+        result["sources"].append(workbook_path)
+        data = extract_financial_workbook(Path(workbook_path))
+        result["rent_roll_entries"].extend(data["rent_roll_entries"])
+        result["expense_records"].extend(data["expense_records"])
         result["warnings"].extend(data["warnings"])
 
     # ── Inject folder metadata into narrative if not already present ──────────

@@ -74,6 +74,20 @@ _INCOME_EDIT_FIELDS = [
     ("total_expenses", "Total Expenses"), ("expense_ratio", "Expense Ratio"),
     ("noi", "Net Operating Income"), ("cap_rate_applied", "Cap Rate Applied"),
 ]
+_RENT_ROLL_EDIT_FIELDS = [
+    ("unit_id", "Unit"), ("suite", "Suite"), ("tenant_name", "Tenant"),
+    ("tenant_use", "Use"), ("sf_leased", "Leased SF"),
+    ("lease_start", "Lease Start"), ("lease_end", "Lease End"),
+    ("monthly_rent", "Monthly Rent"), ("annual_rent", "Annual Rent"),
+    ("rent_psf", "Rent/SF"),
+    ("reimbursement_structure", "Reimbursement"),
+    ("occupancy_status", "Status"),
+]
+_EXPENSE_EDIT_FIELDS = [
+    ("period_year", "Period Year"), ("period_type", "Period Type"),
+    ("category", "Category"), ("amount", "Amount"),
+    ("amount_per_sf", "Amount/SF"), ("notes", "Notes"),
+]
 
 
 def _fmt(val, field=None):
@@ -324,6 +338,8 @@ def render_comp_library():
             narr = result.get("narrative", {}).get("data", {})
             assignment_record = result.get("assignment_record")
             income_record = result.get("income_snapshot")
+            rent_roll_entries = result.get("rent_roll_entries", [])
+            expense_records = result.get("expense_records", [])
 
             st.markdown(f"**{folder_name}**")
             meta_bits = [v for v in (meta.get("property_type"), meta.get("city")) if v]
@@ -353,6 +369,30 @@ def render_comp_library():
                     _INCOME_EDIT_FIELDS,
                 )
 
+            if rent_roll_entries:
+                st.markdown("##### Rent Roll")
+                for index, record in enumerate(rent_roll_entries):
+                    _render_record(
+                        choice,
+                        "rent_roll",
+                        index,
+                        record,
+                        _RENT_ROLL_EDIT_FIELDS,
+                        _RENT_ROLL_EDIT_FIELDS,
+                    )
+
+            if expense_records:
+                st.markdown("##### Operating Expenses")
+                for index, record in enumerate(expense_records):
+                    _render_record(
+                        choice,
+                        "expense",
+                        index,
+                        record,
+                        _EXPENSE_EDIT_FIELDS,
+                        _EXPENSE_EDIT_FIELDS,
+                    )
+
             if comps:
                 st.markdown("##### Sale Comps")
                 for i, comp in enumerate(comps):
@@ -363,7 +403,14 @@ def render_comp_library():
                 for i, lc in enumerate(leases):
                     _render_record(choice, "lease", i, lc, _LEASE_DISPLAY_FIELDS, _LEASE_EDIT_FIELDS)
 
-            if not comps and not leases and not assignment_record and not income_record:
+            if (
+                not comps
+                and not leases
+                and not assignment_record
+                and not income_record
+                and not rent_roll_entries
+                and not expense_records
+            ):
                 st.info("Nothing extracted from this assignment.")
 
             btn_cols = st.columns(2)
@@ -389,6 +436,18 @@ def render_comp_library():
                             _INCOME_EDIT_FIELDS,
                         )
                         result["income_snapshot"] = retained[0] if retained else None
+                    result["rent_roll_entries"] = _collect_confirmed(
+                        choice,
+                        "rent_roll",
+                        rent_roll_entries,
+                        _RENT_ROLL_EDIT_FIELDS,
+                    )
+                    result["expense_records"] = _collect_confirmed(
+                        choice,
+                        "expense",
+                        expense_records,
+                        _EXPENSE_EDIT_FIELDS,
+                    )
                     result = confirm_extraction_result(
                         result,
                         reviewer="streamlit",
@@ -435,13 +494,15 @@ def render_comp_library():
                 "lease_comps",
                 "assignments",
                 "income_snapshots",
+                "rent_roll_entries",
+                "operating_expenses",
             ]:
                 try:
                     counts[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 except sqlite3.OperationalError:
                     counts[table] = 0
             conn.close()
-            stat_cols = st.columns(5)
+            stat_cols = st.columns(7)
             stat_cols[0].metric("Properties", counts.get("properties", 0))
             stat_cols[1].metric("Sale Comps", counts.get("comps", 0))
             stat_cols[2].metric("Lease Comps", counts.get("lease_comps", 0))
@@ -449,6 +510,14 @@ def render_comp_library():
             stat_cols[4].metric(
                 "Income Snapshots",
                 counts.get("income_snapshots", 0),
+            )
+            stat_cols[5].metric(
+                "Rent-Roll Rows",
+                counts.get("rent_roll_entries", 0),
+            )
+            stat_cols[6].metric(
+                "Expense Lines",
+                counts.get("operating_expenses", 0),
             )
         else:
             st.caption("No database yet — commit your first confirmed assignment to create one.")

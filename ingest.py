@@ -38,6 +38,7 @@ from db        import (init_db, get_conn, already_ingested,
                        insert_source_document, insert_property,
                        insert_comp, insert_lease_comp,
                        insert_assignment, insert_income_snapshot,
+                       insert_rent_roll_entry, insert_operating_expense,
                        comparable_id_by_identity, harvest_id_by_identity)
 
 
@@ -111,10 +112,17 @@ def run_extraction(root_path, staged_dir=None):
 
         n_comps  = len(result["comps"])
         n_leases = len(result["lease_comps"])
+        n_rent_roll = len(result.get("rent_roll_entries", []))
+        n_expenses = len(result.get("expense_records", []))
         print(
             f"         - {n_comps} sale comp(s), "
             f"{n_leases} lease comp(s) extracted"
         )
+        if n_rent_roll or n_expenses:
+            print(
+                f"         - {n_rent_roll} rent-roll row(s), "
+                f"{n_expenses} expense line(s) extracted"
+            )
 
         if result["warnings"]:
             for w in result["warnings"][:3]:  # show first 3 warnings only
@@ -128,6 +136,8 @@ def run_extraction(root_path, staged_dir=None):
         if (
             n_comps == 0
             and n_leases == 0
+            and n_rent_roll == 0
+            and n_expenses == 0
             and not result["narrative"].get("data")
             and not result.get("income_data")
         ):
@@ -277,6 +287,8 @@ def review_staged(interactive=True):
         narr        = result.get("narrative", {})
         assignment_record = result.get("assignment_record")
         income_record = result.get("income_snapshot")
+        rent_roll_entries = result.get("rent_roll_entries", [])
+        expense_records = result.get("expense_records", [])
 
         print("  " + "═" * 60)
         print(f"  ASSIGNMENT: {folder_name}")
@@ -298,7 +310,34 @@ def review_staged(interactive=True):
                 if value is not None:
                     print(f"    {key:<25} {_fmt(value, key)}")
 
-        if not comps and not leases and not assignment_record and not income_record:
+        if rent_roll_entries:
+            print(f"\n  Rent roll: {len(rent_roll_entries)} row(s) found")
+            for record in rent_roll_entries:
+                data = record.get("data", {})
+                label = data.get("tenant_name") or data.get("suite") or data.get("unit_id")
+                print(
+                    f"    {str(label):<25} "
+                    f"{_fmt(data.get('sf_leased'), 'sf_leased')} SF  "
+                    f"{_fmt(data.get('monthly_rent'), 'monthly_rent')}/mo"
+                )
+
+        if expense_records:
+            print(f"\n  Operating expenses: {len(expense_records)} line(s) found")
+            for record in expense_records:
+                data = record.get("data", {})
+                print(
+                    f"    {str(data.get('category')):<25} "
+                    f"{_fmt(data.get('amount'), 'amount')}"
+                )
+
+        if (
+            not comps
+            and not leases
+            and not assignment_record
+            and not income_record
+            and not rent_roll_entries
+            and not expense_records
+        ):
             print("\n  Nothing to commit for this assignment.")
             if _input_yn("Skip and move to next?"):
                 staged_path.rename(staged_path.with_suffix(".skipped"))
@@ -421,6 +460,17 @@ def _source_doc_type(source_path):
     extension = path.suffix.lower()
     name = path.stem.lower()
     if extension == ".xlsx":
+        if "rent roll" in name or " rr" in f" {name}":
+            return "rent_roll"
+        if any(label in name for label in (
+            "expense",
+            "operating history",
+            "operating statement",
+            "income statement",
+            "profit and loss",
+            "p&l",
+        )):
+            return "operating_expenses"
         return "comp_workbook"
     if "report" in name:
         return "report"
@@ -437,10 +487,14 @@ def commit_extraction_result(result, conn):
     counts = {
         "assignments": 0,
         "income_snapshots": 0,
+        "rent_roll_entries": 0,
+        "operating_expenses": 0,
         "sale_comps": 0,
         "lease_comps": 0,
         "duplicate_assignments": 0,
         "duplicate_income_snapshots": 0,
+        "duplicate_rent_roll_entries": 0,
+        "duplicate_operating_expenses": 0,
         "duplicate_sale_comps": 0,
         "duplicate_lease_comps": 0,
         "sources": 0,
@@ -455,6 +509,8 @@ def commit_extraction_result(result, conn):
         )
         if record
     ]
+    records += result.get("rent_roll_entries", [])
+    records += result.get("expense_records", [])
     provenance_by_source = {
         record.get("provenance", {}).get("source_path"): record.get(
             "provenance",
@@ -531,6 +587,7 @@ def commit_extraction_result(result, conn):
         else None
     )
 
+    subject_assignment_id = None
     if assignment_record:
         if assignment_record.get("review", {}).get("status") != "confirmed":
             raise ValueError("Assignment conclusion has not been confirmed.")
@@ -541,11 +598,16 @@ def commit_extraction_result(result, conn):
                 + "; ".join(findings["errors"])
             )
         identity_key = assignment_record["identity_key"]
-        if harvest_id_by_identity("assignment", identity_key, conn):
+        subject_assignment_id = harvest_id_by_identity(
+            "assignment",
+            identity_key,
+            conn,
+        )
+        if subject_assignment_id:
             counts["duplicate_assignments"] += 1
         else:
             source = assignment_record["provenance"].get("source_path")
-            insert_assignment(
+            subject_assignment_id = insert_assignment(
                 assignment_data,
                 subject_property_id,
                 doc_ids.get(source, primary_doc_id),
@@ -583,6 +645,49 @@ def commit_extraction_result(result, conn):
                 source_record=income_record,
             )
             counts["income_snapshots"] += 1
+
+    for kind, key, counter, duplicate_counter, insert_function in (
+        (
+            "rent_roll",
+            "rent_roll_entries",
+            "rent_roll_entries",
+            "duplicate_rent_roll_entries",
+            insert_rent_roll_entry,
+        ),
+        (
+            "expense",
+            "expense_records",
+            "operating_expenses",
+            "duplicate_operating_expenses",
+            insert_operating_expense,
+        ),
+    ):
+        for record in result.get(key, []):
+            if record.get("review", {}).get("status") != "confirmed":
+                raise ValueError(f"{kind} record has not been confirmed.")
+            findings = validate_harvest_record(record)
+            if findings["errors"]:
+                raise ValueError(
+                    f"{kind} record failed validation: "
+                    + "; ".join(findings["errors"])
+                )
+            identity_key = record["identity_key"]
+            if harvest_id_by_identity(kind, identity_key, conn):
+                counts[duplicate_counter] += 1
+                continue
+            source = record["provenance"].get("source_path")
+            insert_function(
+                record["data"],
+                subject_assignment_id,
+                subject_property_id,
+                doc_ids.get(source, primary_doc_id),
+                conn,
+                identity_key=identity_key,
+                confidence=record.get("confidence"),
+                review=record.get("review"),
+                source_record=record,
+            )
+            counts[counter] += 1
 
     for record_kind, key, counter, duplicate_counter, insert_function in (
         (
@@ -655,6 +760,8 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
     total_leases = 0
     total_asgn   = 0
     total_income = 0
+    total_rent_roll = 0
+    total_expenses = 0
 
     print(f"\n  Committing {len(confirmed_files)} confirmed file(s) to axiom.db ...\n")
 
@@ -674,6 +781,8 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
 
         total_asgn += counts["assignments"]
         total_income += counts["income_snapshots"]
+        total_rent_roll += counts["rent_roll_entries"]
+        total_expenses += counts["operating_expenses"]
         total_comps += counts["sale_comps"]
         total_leases += counts["lease_comps"]
         conf_path.rename(conf_path.with_suffix(".committed"))
@@ -682,6 +791,8 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
             + counts["duplicate_lease_comps"]
             + counts["duplicate_assignments"]
             + counts["duplicate_income_snapshots"]
+            + counts["duplicate_rent_roll_entries"]
+            + counts["duplicate_operating_expenses"]
         )
         duplicate_note = (
             f", {duplicate_count} duplicate(s) skipped"
@@ -695,12 +806,16 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
     print(f"\n  Summary:")
     print(f"    {total_asgn}  assignment(s) recorded")
     print(f"    {total_income}  income snapshot(s) added to database")
+    print(f"    {total_rent_roll}  rent-roll row(s) added to database")
+    print(f"    {total_expenses}  operating-expense line(s) added to database")
     print(f"    {total_comps}  sale comp(s) added to database")
     print(f"    {total_leases}  lease comp(s) added to database")
     print(f"\n  Run: python axiom.py comp-search   to query the database\n")
     return {
         "assignments": total_asgn,
         "income_snapshots": total_income,
+        "rent_roll_entries": total_rent_roll,
+        "operating_expenses": total_expenses,
         "sale_comps": total_comps,
         "lease_comps": total_leases,
     }

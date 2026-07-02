@@ -177,6 +177,53 @@ CREATE TABLE IF NOT EXISTS income_snapshots (
     created_at          TEXT    DEFAULT (datetime('now'))
 );
 
+-- ── Rent-roll entries ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS rent_roll_entries (
+    rent_roll_entry_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignment_id       INTEGER REFERENCES assignments(assignment_id),
+    property_id         INTEGER REFERENCES properties(property_id),
+    source_doc_id       INTEGER REFERENCES source_documents(doc_id),
+    as_of_date          TEXT,
+    unit_id             TEXT,
+    suite               TEXT,
+    tenant_name         TEXT,
+    tenant_use          TEXT,
+    sf_leased           REAL,
+    lease_start         TEXT,
+    lease_end           TEXT,
+    monthly_rent        REAL,
+    annual_rent         REAL,
+    rent_psf            REAL,
+    reimbursement_structure TEXT,
+    occupancy_status    TEXT,
+    identity_key        TEXT,
+    confidence          TEXT,
+    review_status       TEXT    DEFAULT 'unreviewed',
+    reviewed_at         TEXT,
+    source_record_json  TEXT,
+    created_at          TEXT    DEFAULT (datetime('now'))
+);
+
+-- ── Operating-expense lines ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS operating_expenses (
+    expense_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignment_id       INTEGER REFERENCES assignments(assignment_id),
+    property_id         INTEGER REFERENCES properties(property_id),
+    source_doc_id       INTEGER REFERENCES source_documents(doc_id),
+    period_year         INTEGER,
+    period_type         TEXT,
+    category            TEXT,
+    amount              REAL,
+    amount_per_sf       REAL,
+    notes               TEXT,
+    identity_key        TEXT,
+    confidence          TEXT,
+    review_status       TEXT    DEFAULT 'unreviewed',
+    reviewed_at         TEXT,
+    source_record_json  TEXT,
+    created_at          TEXT    DEFAULT (datetime('now'))
+);
+
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_properties_city    ON properties(address_city);
 CREATE INDEX IF NOT EXISTS idx_properties_county  ON properties(address_county);
@@ -238,6 +285,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_assignments_identity_key
     WHERE identity_key IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_income_snapshots_identity_key
     ON income_snapshots(identity_key)
+    WHERE identity_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rent_roll_entries_identity_key
+    ON rent_roll_entries(identity_key)
+    WHERE identity_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_operating_expenses_identity_key
+    ON operating_expenses(identity_key)
     WHERE identity_key IS NOT NULL;
 """
 
@@ -526,17 +579,201 @@ def insert_income_snapshot(
     return cur.lastrowid
 
 
-def harvest_id_by_identity(record_kind, identity_key, conn):
-    table, id_column = (
-        ("assignments", "assignment_id")
-        if record_kind == "assignment"
-        else ("income_snapshots", "snapshot_id")
+def _insert_harvest_row(
+    table,
+    fields,
+    data,
+    assignment_id,
+    property_id,
+    source_doc_id,
+    conn,
+    *,
+    identity_key,
+    confidence,
+    review,
+    source_record,
+):
+    row = {field: data.get(field) for field in fields}
+    row["assignment_id"] = assignment_id
+    row["property_id"] = property_id
+    row["source_doc_id"] = source_doc_id
+    row["identity_key"] = identity_key
+    row["confidence"] = json.dumps(confidence or {}, sort_keys=True)
+    row["review_status"] = (review or {}).get("status", "unreviewed")
+    row["reviewed_at"] = (review or {}).get("reviewed_at")
+    row["source_record_json"] = json.dumps(
+        source_record or {},
+        sort_keys=True,
+        default=str,
     )
+    columns = ", ".join(row)
+    placeholders = ", ".join("?" for _ in row)
+    cursor = conn.execute(
+        f"INSERT INTO {table} ({columns}) VALUES ({placeholders})",
+        list(row.values()),
+    )
+    return cursor.lastrowid
+
+
+def insert_rent_roll_entry(
+    data,
+    assignment_id,
+    property_id,
+    source_doc_id,
+    conn,
+    **record_metadata,
+):
+    fields = [
+        "as_of_date",
+        "unit_id",
+        "suite",
+        "tenant_name",
+        "tenant_use",
+        "sf_leased",
+        "lease_start",
+        "lease_end",
+        "monthly_rent",
+        "annual_rent",
+        "rent_psf",
+        "reimbursement_structure",
+        "occupancy_status",
+    ]
+    return _insert_harvest_row(
+        "rent_roll_entries",
+        fields,
+        data,
+        assignment_id,
+        property_id,
+        source_doc_id,
+        conn,
+        **record_metadata,
+    )
+
+
+def insert_operating_expense(
+    data,
+    assignment_id,
+    property_id,
+    source_doc_id,
+    conn,
+    **record_metadata,
+):
+    fields = [
+        "period_year",
+        "period_type",
+        "category",
+        "amount",
+        "amount_per_sf",
+        "notes",
+    ]
+    return _insert_harvest_row(
+        "operating_expenses",
+        fields,
+        data,
+        assignment_id,
+        property_id,
+        source_doc_id,
+        conn,
+        **record_metadata,
+    )
+
+
+def harvest_id_by_identity(record_kind, identity_key, conn):
+    table, id_column = {
+        "assignment": ("assignments", "assignment_id"),
+        "income": ("income_snapshots", "snapshot_id"),
+        "rent_roll": ("rent_roll_entries", "rent_roll_entry_id"),
+        "expense": ("operating_expenses", "expense_id"),
+    }[record_kind]
     row = conn.execute(
         f"SELECT {id_column} FROM {table} WHERE identity_key = ?",
         (identity_key,),
     ).fetchone()
     return row[id_column] if row else None
+
+
+def search_rent_roll_entries(
+    db_path=None,
+    *,
+    tenant_contains=None,
+    as_of_date=None,
+    include_unreviewed=False,
+):
+    """Return reviewed historical rent-roll rows."""
+    path = Path(db_path) if db_path else DB_PATH
+    if not path.exists():
+        return []
+    init_db(path, quiet=True)
+    conn = get_conn(path)
+    sql = """
+        SELECT r.*, a.file_no, p.address_street, p.address_city,
+               sd.filename AS source_filename,
+               sd.content_sha256 AS source_sha256
+        FROM rent_roll_entries r
+        LEFT JOIN assignments a ON a.assignment_id = r.assignment_id
+        LEFT JOIN properties p ON p.property_id = r.property_id
+        LEFT JOIN source_documents sd ON sd.doc_id = r.source_doc_id
+        WHERE 1=1
+    """
+    params = []
+    if not include_unreviewed:
+        sql += " AND r.review_status = 'confirmed'"
+    if tenant_contains:
+        sql += " AND lower(r.tenant_name) LIKE lower(?)"
+        params.append(f"%{tenant_contains}%")
+    if as_of_date:
+        sql += " AND r.as_of_date = ?"
+        params.append(as_of_date)
+    sql += " ORDER BY r.as_of_date DESC, r.rent_roll_entry_id"
+    try:
+        rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+    for row in rows:
+        row["confidence"] = json.loads(row.get("confidence") or "{}")
+    return rows
+
+
+def search_operating_expenses(
+    db_path=None,
+    *,
+    period_year=None,
+    category_contains=None,
+    include_unreviewed=False,
+):
+    """Return reviewed historical operating-expense lines."""
+    path = Path(db_path) if db_path else DB_PATH
+    if not path.exists():
+        return []
+    init_db(path, quiet=True)
+    conn = get_conn(path)
+    sql = """
+        SELECT e.*, a.file_no, p.address_street, p.address_city,
+               sd.filename AS source_filename,
+               sd.content_sha256 AS source_sha256
+        FROM operating_expenses e
+        LEFT JOIN assignments a ON a.assignment_id = e.assignment_id
+        LEFT JOIN properties p ON p.property_id = e.property_id
+        LEFT JOIN source_documents sd ON sd.doc_id = e.source_doc_id
+        WHERE 1=1
+    """
+    params = []
+    if not include_unreviewed:
+        sql += " AND e.review_status = 'confirmed'"
+    if period_year is not None:
+        sql += " AND e.period_year = ?"
+        params.append(period_year)
+    if category_contains:
+        sql += " AND lower(e.category) LIKE lower(?)"
+        params.append(f"%{category_contains}%")
+    sql += " ORDER BY e.period_year DESC, e.category, e.expense_id"
+    try:
+        rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+    for row in rows:
+        row["confidence"] = json.loads(row.get("confidence") or "{}")
+    return rows
 
 
 def search_assignments(
