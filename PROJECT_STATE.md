@@ -63,8 +63,9 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Eighteen automated validation, delivery-state, media, comp-page, structured-block,
-  model-routing, contract, and presentation-derivation tests pass.
+- Thirty-nine automated validation, delivery-state, stress, media, comp-page,
+  structured-block, model-routing, contract, and presentation-derivation tests
+  pass.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -84,6 +85,13 @@ Checks were performed without regenerating or modifying assignment outputs.
   placeholders prevent the delivered-state transition.
 - Delivery attempts record status and blocker count while preserving the
   previous assignment stage on failure.
+- Delivery documents are generated to same-directory temporary files and
+  atomically replace prior output only after all insertion steps succeed.
+- Contract v1.2.0 distinguishes required fields from two explicitly optional
+  blank assumption/condition fields; application version is v0.5.0.
+- Stress coverage includes malformed inputs, split-run placeholders, corrupt
+  and oversized media, unsafe paths, locked outputs, 50 comps, 50 photos, and
+  long Unicode text. See `docs/STRESS_TEST_REPORT.md`.
 - Maps, building sketches, and photo blocks use documented assignment asset
   paths; validation identifies missing files and delivery embeds available
   JPG/PNG assets.
@@ -138,9 +146,8 @@ Checks were performed without regenerating or modifying assignment outputs.
    blocks, and unsupported/unresolved blocks.
 3. **Completed:** refuse final delivery unless validation passes; provide an
    explicit `--draft` path with a distinct output filename.
-4. **Completed for validation/placeholder failures:** record attempt status and
-   blocker count without overwriting delivered state. Exception-path hardening
-   remains future work.
+4. **Completed:** record validation, input, placeholder, and generation
+   failures without overwriting prior output or delivered state.
 
 ### P0 — Safe repository baseline
 
@@ -153,9 +160,12 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 1. **Completed:** build a genuinely fictional fixture under `tests/fixtures/`.
 2. **Completed for comp and media insertion:** add representative fictional
-   comp rows, reproducible synthetic media, and end-to-end block tests. Section
-   removal, formatting, and broader failure behavior remain.
-3. Add a golden-output or structural DOCX comparison that ignores unstable
+   comp rows, reproducible synthetic media, and end-to-end block tests. Visual
+   formatting review remains.
+3. **Completed for adversarial structural behavior:** add temporary-assignment
+   torture tests covering malformed, extreme, interrupted, and path-safety
+   cases.
+4. Add a golden-output or structural DOCX comparison that ignores unstable
    package metadata.
 
 ### P1 — Data contract

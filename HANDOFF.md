@@ -2,8 +2,8 @@
 
 - Last updated: 2026-07-01
 - Current agent: Codex
-- Last commit: Comp and media pipeline checkpoint (the commit containing this
-  handoff; use `git log -1 --oneline` for its immutable hash).
+- Last commit: Adversarial delivery hardening checkpoint (the commit containing
+  this handoff; use `git log -1 --oneline` for its immutable hash).
 
 ## Current objective
 
@@ -99,20 +99,42 @@ blocks before connecting external services.
 - Replaced a Unicode console checkmark that crashed comp insertion under the
   Windows CP-1252 console.
 - Expanded the automated baseline to eighteen passing tests.
+- Added 21 isolated torture cases for malformed inputs, split Word runs,
+  corrupt/oversized images, unsafe paths, locked files, 50 comps, 50 photos,
+  long Unicode text, and interrupted generation.
+- Delivery now builds to a same-directory temporary file and atomically
+  replaces prior output only after all report insertion steps succeed.
+- Failed input loading and generation preserve the prior report and assignment
+  stage, clean temporary files, and record `input_failed` or
+  `generation_failed`.
+- Added strict assignment filename safety and exact file-number lookup.
+- Added comp quality checks for duplicate numbers, missing addresses, and
+  missing sale prices.
+- Made placeholder and contract scanning run-aware throughout DOCX packages.
+- Added image readability checks and a 25 MB per-image preflight limit.
+- Added explicit optional-blank field metadata in contract v1.2.0 and advanced
+  the application to v0.5.0.
+- Engagement now uses temporary outputs and cannot transition to `engaged`
+  when templates are missing or document generation fails.
+- Expanded the automated baseline to thirty-nine passing tests.
 
 ## In progress
 
-- Comp and media fixture coverage is ready for a source checkpoint.
+- Adversarial delivery hardening is ready for a source checkpoint.
 
 ## Exact next step
 
-Add structural or golden-output comparison for generated DOCX files, then
-expand section-removal and exception-path delivery tests.
+Perform desktop Word visual QA on representative generated output, then add a
+metadata-normalized golden DOCX comparison.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 18 tests passed.
-- `python axiom.py contract`: passed at v1.1.1 with 220 fields and 20 blocks.
+- `python -m unittest discover -s tests -v`: 39 tests passed.
+- `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
+- `python -m compileall`: passed for runtime modules and tests.
+- Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000
+  Unicode characters, malformed JSON/XLSX, corrupt/oversized media, split-run
+  placeholders, simulated generation failure, and a simulated locked output.
 - Registry-aware fixture freshness check: 0 stale Intake fields and 0 cache
   warnings.
 - `axiom.py --help`: passed with the warning corrected.

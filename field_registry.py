@@ -6,6 +6,8 @@ import zipfile
 from pathlib import Path
 
 import openpyxl
+from docx.oxml.ns import qn
+from lxml import etree
 
 from presentation_variants import VARIANT_RULES
 
@@ -80,8 +82,13 @@ def _docx_placeholders(docx_path):
     with zipfile.ZipFile(docx_path) as package:
         for name in package.namelist():
             if name.startswith("word/") and name.endswith(".xml"):
-                text = package.read(name).decode("utf-8", errors="ignore")
-                placeholders.update(PLACEHOLDER_PATTERN.findall(text))
+                root = etree.fromstring(package.read(name))
+                for paragraph in root.iter(qn("w:p")):
+                    text = "".join(
+                        node.text or ""
+                        for node in paragraph.iter(qn("w:t"))
+                    )
+                    placeholders.update(PLACEHOLDER_PATTERN.findall(text))
     return placeholders
 
 
@@ -195,7 +202,7 @@ def build_registry(
     templates_dir,
     stages,
     fixture_json_path=None,
-    schema_version="1.1.1",
+    schema_version="1.2.0",
 ):
     """Build the initial authoritative registry from the verified baseline."""
     workbook_inventory = inventory_workbook(workbook_path)
@@ -266,6 +273,8 @@ def build_registry(
         description = workbook_inventory["intake"].get(key)
         if description:
             field["description"] = description
+            if description.strip().lower() == "leave blank if none":
+                field["required"] = False
         fields[key] = field
 
     return {

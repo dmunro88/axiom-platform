@@ -78,6 +78,7 @@ def load_comp_data(workbook_path):
     """
     wb = openpyxl.load_workbook(str(workbook_path), data_only=True)
     if "comp_data" not in wb.sheetnames:
+        wb.close()
         print("  Warning: no comp_data sheet found in workbook — skipping comp pages.")
         return []
 
@@ -109,6 +110,7 @@ def load_comp_data(workbook_path):
 
         comps.append(comp)
 
+    wb.close()
     return comps
 
 
@@ -138,8 +140,29 @@ def fill_comp_block(block_elements, comp):
     """
     filled = [copy.deepcopy(el) for el in block_elements]
     for el in filled:
-        for t in el.iter(qn('w:t')):
-            _fill_text_node(t, comp)
+        for paragraph in el.iter(qn('w:p')):
+            text_nodes = list(paragraph.iter(qn('w:t')))
+            if not text_nodes:
+                continue
+            original = ''.join(node.text or '' for node in text_nodes)
+            replacement = original
+            for key, value in comp.items():
+                replacement = replacement.replace(
+                    f"[[{key}]]",
+                    value,
+                )
+            if replacement == original:
+                continue
+            text_nodes[0].text = replacement
+            if replacement and (
+                replacement[0] == ' ' or replacement[-1] == ' '
+            ):
+                text_nodes[0].set(
+                    '{http://www.w3.org/XML/1998/namespace}space',
+                    'preserve',
+                )
+            for node in text_nodes[1:]:
+                node.text = ''
     return filled
 
 

@@ -68,16 +68,19 @@ def load_variables(json_path=None, workbook_path=None):
 
     if workbook_path and Path(workbook_path).exists():
         wb = openpyxl.load_workbook(workbook_path, data_only=True)
-        if 'outputs' in wb.sheetnames:
-            ws = wb['outputs']
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                key   = str(row[1]).strip() if row[1] is not None else ''
-                val_d = str(row[3]).strip() if row[3] is not None else ''
-                val_c = str(row[2]).strip() if row[2] is not None else ''
-                val   = val_d if val_d and val_d != 'None' else val_c
-                if (key and re.fullmatch(r'[A-Z][A-Z0-9_]*', key)
-                        and val and val != 'None'):
-                    variables[key] = val
+        try:
+            if 'outputs' in wb.sheetnames:
+                ws = wb['outputs']
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    key = str(row[1]).strip() if row[1] is not None else ''
+                    val_d = str(row[3]).strip() if row[3] is not None else ''
+                    val_c = str(row[2]).strip() if row[2] is not None else ''
+                    val = val_d if val_d and val_d != 'None' else val_c
+                    if (key and re.fullmatch(r'[A-Z][A-Z0-9_]*', key)
+                            and val and val != 'None'):
+                        variables[key] = val
+        finally:
+            wb.close()
 
     return derive_presentation_variants(variables)
 
@@ -89,6 +92,7 @@ def _replace_in_paragraph(
     variables,
     missing_keys,
     required_keys,
+    optional_blank_keys,
 ):
     full_text = ''.join(run.text for run in paragraph.runs)
     if '[[' not in full_text:
@@ -97,7 +101,14 @@ def _replace_in_paragraph(
     required_keys.update(re.findall(r'\[\[([A-Z0-9_]+)\]\]', full_text))
     new_text = full_text
     for key, value in variables.items():
-        new_text = new_text.replace('[[' + key + ']]', str(value))
+        blank_value = value is None or (
+            isinstance(value, str)
+            and value.strip() in {"", "None"}
+        )
+        if blank_value and key not in optional_blank_keys:
+            continue
+        replacement = "" if blank_value else str(value)
+        new_text = new_text.replace('[[' + key + ']]', replacement)
 
     remaining = re.findall(r'\[\[([A-Z0-9_]+)\]\]', new_text)
     for key in remaining:
@@ -112,9 +123,10 @@ def _replace_in_paragraph(
             run.text = ''
 
 
-def _replace_in_doc(doc, variables):
+def _replace_in_doc(doc, variables, optional_blank_keys=None):
     missing_keys = set()
     required_keys = set()
+    optional_blank_keys = set(optional_blank_keys or [])
 
     def _walk(paragraphs):
         for para in paragraphs:
@@ -123,6 +135,7 @@ def _replace_in_doc(doc, variables):
                 variables,
                 missing_keys,
                 required_keys,
+                optional_blank_keys,
             )
 
     _walk(doc.paragraphs)
@@ -187,7 +200,7 @@ def _remove_conditional_sections(doc, variables):
     body = doc.element.body
 
     for section_text, flag_key in SECTION_REMOVAL_MAP.items():
-        flag_val = variables.get(flag_key, 'No').strip().lower()
+        flag_val = str(variables.get(flag_key, 'No')).strip().lower()
         if flag_val in ('yes', 'true', '1'):
             continue
 
@@ -370,7 +383,13 @@ def _remove_pageref_fields_for_missing_bookmarks(para_el, existing_names):
 
 # -- Public API ----------------------------------------------------------------
 
-def fill_document(template_path, output_path, variables, remove_blank_rows=True):
+def fill_document(
+    template_path,
+    output_path,
+    variables,
+    remove_blank_rows=True,
+    optional_blank_keys=None,
+):
     """
     Fill a Word template with variables and write to output_path.
     Template is never modified.
@@ -387,7 +406,11 @@ def fill_document(template_path, output_path, variables, remove_blank_rows=True)
     removed_sections = _remove_conditional_sections(doc, variables)
 
     # 2. Substitute [[KEY]] placeholders
-    missing_keys, required_keys = _replace_in_doc(doc, variables)
+    missing_keys, required_keys = _replace_in_doc(
+        doc,
+        variables,
+        optional_blank_keys=optional_blank_keys,
+    )
 
     # 3. Remove blank table rows
     if remove_blank_rows:

@@ -13,6 +13,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import openpyxl
+from docx.oxml.ns import qn
+from lxml import etree
 
 from comp_builder import load_comp_data
 from field_registry import audit_assignment_contract, load_registry
@@ -318,14 +320,47 @@ def _classify_blocks(blocks, workbook_path, assignment_dir, variables):
             if media_files_for_block(block, assignment_dir):
                 handled.append(block)
             else:
-                unresolved[block] = missing_media_reason(block)
+                unresolved[block] = missing_media_reason(
+                    block,
+                    assignment_dir,
+                )
             continue
 
         if block == "COMP_SHEETS_BLOCK":
             with contextlib.redirect_stdout(io.StringIO()):
                 comps = load_comp_data(workbook_path)
             if comps:
-                handled.append(block)
+                problems = []
+                seen_numbers = set()
+                for row_number, comp in enumerate(comps, start=1):
+                    comp_number = comp.get("COMP_NO", "").strip()
+                    normalized_number = comp_number.casefold()
+                    if normalized_number in seen_numbers:
+                        problems.append(
+                            f"duplicate comparable number {comp_number!r}"
+                        )
+                    seen_numbers.add(normalized_number)
+                    missing_core = [
+                        label
+                        for key, label in (
+                            ("COMP_ADDRESS_LINE1", "address"),
+                            ("COMP_SALE_PRICE", "sale price"),
+                        )
+                        if not comp.get(key, "").strip()
+                    ]
+                    if missing_core:
+                        problems.append(
+                            f"comparable row {row_number} is missing "
+                            + " and ".join(missing_core)
+                        )
+                if problems:
+                    unresolved[block] = (
+                        "Comp data failed quality checks: "
+                        + "; ".join(problems)
+                        + "."
+                    )
+                else:
+                    handled.append(block)
             else:
                 unresolved[block] = (
                     "Comp-page handler is registered, but the workbook has no "
@@ -358,8 +393,13 @@ def find_docx_placeholders(docx_path):
         for name in package.namelist():
             if not name.startswith("word/") or not name.endswith(".xml"):
                 continue
-            text = package.read(name).decode("utf-8", errors="ignore")
-            placeholders.update(PLACEHOLDER_PATTERN.findall(text))
+            root = etree.fromstring(package.read(name))
+            for paragraph in root.iter(qn("w:p")):
+                text = "".join(
+                    node.text or ""
+                    for node in paragraph.iter(qn("w:t"))
+                )
+                placeholders.update(PLACEHOLDER_PATTERN.findall(text))
     return sorted(placeholders)
 
 
@@ -424,9 +464,22 @@ def validate_assignment(
             json_path=json_path,
             workbook_path=workbook_path,
         )
+        optional_blank_keys = set()
+        if registry_path:
+            registry = load_registry(registry_path)
+            optional_blank_keys = {
+                key
+                for key, definition in registry["fields"].items()
+                if definition.get("required") is False
+            }
         with tempfile.TemporaryDirectory() as temp_dir:
             scratch_path = Path(temp_dir) / "validation.docx"
-            fill_result = fill_document(template_path, scratch_path, variables)
+            fill_result = fill_document(
+                template_path,
+                scratch_path,
+                variables,
+                optional_blank_keys=optional_blank_keys,
+            )
     except Exception as exc:
         result["errors"].append(f"Template fill validation failed: {exc}")
         return result

@@ -9,6 +9,7 @@ from docx.shared import Inches
 
 
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png"})
+MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
 SINGLE_MEDIA_BLOCKS = {
     "REGIONAL_MAP_IMAGE": "assets/maps/regional",
@@ -46,8 +47,22 @@ def _image_files(directory):
     return sorted(
         path
         for path in directory.iterdir()
-        if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+        if (
+            path.is_file()
+            and path.suffix.lower() in IMAGE_SUFFIXES
+            and _is_valid_image(path)
+        )
     )
+
+
+def _is_valid_image(path):
+    if path.stat().st_size > MAX_IMAGE_BYTES:
+        return False
+    try:
+        Image.from_file(str(path))
+    except Exception:
+        return False
+    return True
 
 
 def media_files_for_block(block, assignment_dir):
@@ -59,7 +74,11 @@ def media_files_for_block(block, assignment_dir):
         return [
             candidate
             for candidate in sorted(base_path.parent.glob(f"{base_path.name}.*"))
-            if candidate.is_file() and candidate.suffix.lower() in IMAGE_SUFFIXES
+            if (
+                candidate.is_file()
+                and candidate.suffix.lower() in IMAGE_SUFFIXES
+                and _is_valid_image(candidate)
+            )
         ][:1]
 
     if block in MULTI_MEDIA_BLOCKS:
@@ -68,8 +87,52 @@ def media_files_for_block(block, assignment_dir):
     return []
 
 
-def missing_media_reason(block):
+def _candidate_media_files(block, assignment_dir):
+    assignment_dir = Path(assignment_dir)
+    if block in SINGLE_MEDIA_BLOCKS:
+        base_path = assignment_dir / SINGLE_MEDIA_BLOCKS[block]
+        return [
+            candidate
+            for candidate in sorted(base_path.parent.glob(f"{base_path.name}.*"))
+            if candidate.is_file() and candidate.suffix.lower() in IMAGE_SUFFIXES
+        ]
+    if block in MULTI_MEDIA_BLOCKS:
+        directory = assignment_dir / MULTI_MEDIA_BLOCKS[block]
+        if not directory.is_dir():
+            return []
+        return sorted(
+            path
+            for path in directory.iterdir()
+            if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+        )
+    return []
+
+
+def missing_media_reason(block, assignment_dir=None):
     """Return an actionable description of where media should be placed."""
+    candidates = (
+        _candidate_media_files(block, assignment_dir)
+        if assignment_dir is not None
+        else []
+    )
+    if candidates:
+        oversized = [
+            path.name
+            for path in candidates
+            if path.stat().st_size > MAX_IMAGE_BYTES
+        ]
+        if oversized:
+            return (
+                "Replace oversized media file(s); each image must be 25 MB "
+                "or smaller: "
+                + ", ".join(oversized)
+                + "."
+            )
+        return (
+            "Replace unreadable or unsupported image file(s): "
+            + ", ".join(path.name for path in candidates)
+            + "."
+        )
     if block in SINGLE_MEDIA_BLOCKS:
         relative = SINGLE_MEDIA_BLOCKS[block]
         return f"Add {relative}.jpg or .png to the assignment before delivery."

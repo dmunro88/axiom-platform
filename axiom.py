@@ -28,6 +28,8 @@ import shutil
 import datetime
 import html as html_lib
 import hashlib
+import re
+import tempfile
 from pathlib import Path
 
 from field_registry import (
@@ -60,6 +62,14 @@ WORKBOOK_TPL    = BASE_DIR / CONFIG["workbook_template"]
 FIELD_REGISTRY  = BASE_DIR / CONFIG["field_registry"]
 APP_VERSION     = CONFIG.get("app_version", "unversioned")
 STAGES          = CONFIG["stages"]
+try:
+    OPTIONAL_BLANK_FIELDS = frozenset(
+        key
+        for key, definition in load_registry(FIELD_REGISTRY)["fields"].items()
+        if definition.get("required") is False
+    )
+except Exception:
+    OPTIONAL_BLANK_FIELDS = frozenset()
 
 ASSIGNMENTS_DIR.mkdir(exist_ok=True)
 
@@ -69,9 +79,29 @@ ASSIGNMENTS_DIR.mkdir(exist_ok=True)
 def _find_assignment(file_no):
     """Return the assignment directory for a given file number, or None."""
     for d in ASSIGNMENTS_DIR.iterdir():
-        if d.is_dir() and d.name.startswith(file_no):
+        if d.is_dir() and d.name.startswith(f"{file_no}_"):
             return d
     return None
+
+
+FILE_NO_PATTERN = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$"
+)
+
+
+def _valid_file_no(file_no):
+    return bool(
+        FILE_NO_PATTERN.fullmatch(str(file_no))
+        and ".." not in str(file_no)
+    )
+
+
+def _safe_client_component(client_name):
+    safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "-", str(client_name))
+    safe = re.sub(r"\s+", "_", safe.strip())
+    safe = re.sub(r"\.{2,}", "-", safe)
+    safe = re.sub(r"[-_]{2,}", "_", safe)
+    return safe.strip(" ._-")[:100]
 
 
 def _load_state(adir):
@@ -89,8 +119,8 @@ def _save_state(adir, state):
 
 def _find_json(adir):
     """Find the variables JSON file in an assignment directory."""
-    matches = list(adir.glob("*_variables.json"))
-    return matches[0] if matches else None
+    matches = sorted(adir.glob("*_variables.json"))
+    return matches[0] if len(matches) == 1 else None
 
 
 def _today():
@@ -108,7 +138,16 @@ def cmd_new(args):
 
     file_no     = args[0]
     client_name = " ".join(args[1:])
-    safe_client = client_name.replace(" ", "_").replace("/", "-")
+    if not _valid_file_no(file_no):
+        print(
+            "  Invalid file number. Use 1-64 letters, numbers, dots, "
+            "hyphens, or underscores; path-like values are not allowed."
+        )
+        return False
+    safe_client = _safe_client_component(client_name)
+    if not safe_client:
+        print("  Client name has no usable filename characters.")
+        return False
     folder_name = f"{file_no}_{safe_client}"
     adir        = ASSIGNMENTS_DIR / folder_name
 
@@ -194,7 +233,15 @@ def cmd_engage(args):
             return False
 
     print(f"\n  Loading variables from {json_path.name} ...")
-    variables = load_variables(json_path=json_path)
+    try:
+        variables = load_variables(json_path=json_path)
+    except Exception as exc:
+        state = _load_state(adir)
+        state["last_engagement_status"] = "input_failed"
+        state["last_engagement_error"] = str(exc)
+        _save_state(adir, state)
+        print(f"  Engagement input loading failed: {exc}")
+        return False
     print(f"  {len(variables)} variables loaded")
 
     outputs_dir = adir / "outputs"
@@ -202,28 +249,82 @@ def cmd_engage(args):
     stage_cfg   = STAGES["engage"]
 
     print(f"\n  Generating engagement documents:")
-    count = 0
+    pending_outputs = []
     for doc_cfg in stage_cfg["documents"]:
         template_path = TEMPLATES_DIR / doc_cfg["template"]
         output_name   = f"{file_no}_{doc_cfg['output']}"
         output_path   = outputs_dir / output_name
 
         if not template_path.exists():
-            print(f"    ✗  Template not found: {doc_cfg['template']}")
-            continue
+            error = f"Template not found: {doc_cfg['template']}"
+            for working_path, _ in pending_outputs:
+                working_path.unlink(missing_ok=True)
+            state = _load_state(adir)
+            state["last_engagement_status"] = "generation_failed"
+            state["last_engagement_error"] = error
+            _save_state(adir, state)
+            print(f"    {error}")
+            return False
 
-        fill_document(template_path, output_path, variables)
-        print(f"    ✓  {output_name}")
-        count += 1
+        with tempfile.NamedTemporaryFile(
+            dir=outputs_dir,
+            prefix=f".{output_name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temp_output:
+            working_path = Path(temp_output.name)
+        try:
+            fill_document(
+                template_path,
+                working_path,
+                variables,
+                optional_blank_keys=OPTIONAL_BLANK_FIELDS,
+            )
+        except Exception as exc:
+            working_path.unlink(missing_ok=True)
+            for pending_path, _ in pending_outputs:
+                pending_path.unlink(missing_ok=True)
+            state = _load_state(adir)
+            state["last_engagement_status"] = "generation_failed"
+            state["last_engagement_error"] = str(exc)
+            _save_state(adir, state)
+            print(f"    Engagement generation failed: {exc}")
+            return False
+        pending_outputs.append((working_path, output_path))
+
+    if not pending_outputs:
+        state = _load_state(adir)
+        state["last_engagement_status"] = "generation_failed"
+        state["last_engagement_error"] = "No engagement documents configured."
+        _save_state(adir, state)
+        print("  No engagement documents were generated.")
+        return False
+
+    try:
+        for working_path, output_path in pending_outputs:
+            working_path.replace(output_path)
+            print(f"    OK: {output_path.name}")
+    except Exception as exc:
+        for working_path, _ in pending_outputs:
+            working_path.unlink(missing_ok=True)
+        state = _load_state(adir)
+        state["last_engagement_status"] = "generation_failed"
+        state["last_engagement_error"] = str(exc)
+        _save_state(adir, state)
+        print(f"    Engagement output replacement failed: {exc}")
+        return False
 
     # Update state
     state = _load_state(adir)
     state["stage"]   = "engaged"
     state["engaged"] = _today()
+    state["last_engagement_status"] = "completed"
+    state.pop("last_engagement_error", None)
     _save_state(adir, state)
 
-    print(f"\n  {count} document(s) ready in:")
+    print(f"\n  {len(pending_outputs)} document(s) ready in:")
     print(f"  {outputs_dir}")
+    return True
 
 
 def _inject_all_narratives(doc_path, workbook_path, variables):
@@ -279,6 +380,7 @@ def cmd_deliver(args):
         state["last_delivery_attempt"] = _today()
         state["last_delivery_status"] = "blocked"
         state["last_delivery_blocker_count"] = blocker_count
+        state.pop("last_delivery_error", None)
         _save_state(adir, state)
 
         print(f"\n  Delivery blocked: {blocker_count} validation issue(s).")
@@ -306,7 +408,20 @@ def cmd_deliver(args):
         return False
 
     print(f"\n  Loading variables ...")
-    variables = load_variables(json_path=json_path, workbook_path=workbook_path)
+    try:
+        variables = load_variables(
+            json_path=json_path,
+            workbook_path=workbook_path,
+        )
+    except Exception as exc:
+        state = _load_state(adir)
+        state["last_delivery_attempt"] = _today()
+        state["last_delivery_status"] = "input_failed"
+        state["last_delivery_blocker_count"] = 1
+        state["last_delivery_error"] = str(exc)
+        _save_state(adir, state)
+        print(f"  Delivery input loading failed: {exc}")
+        return False
     print(f"  {len(variables)} variables loaded (JSON + workbook outputs tab)")
 
     outputs_dir = adir / "outputs"
@@ -325,54 +440,105 @@ def cmd_deliver(args):
             print(f"    ✗  Template not found: {doc_cfg['template']}")
             continue
 
-        state = _load_state(adir)
-        state["delivery_provenance"] = {
-            "app_version": APP_VERSION,
-            "schema_version": registry_version(FIELD_REGISTRY),
-            "template": doc_cfg["template"],
-            "template_sha256": hashlib.sha256(
-                template_path.read_bytes()
-            ).hexdigest(),
-        }
-        _save_state(adir, state)
+        with tempfile.NamedTemporaryFile(
+            dir=outputs_dir,
+            prefix=f".{output_name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temp_output:
+            working_path = Path(temp_output.name)
 
-        result = fill_document(template_path, output_path, variables)
-        print(f"    ✓  {output_name}")
-        if result.get("removed_sections"):
-            print(f"       ✂  Removed sections: {', '.join(result['removed_sections'])}")
-        if result["missing"]:
-            print(f"       ⚠  {len(result['missing'])} unfilled keys: {', '.join(result['missing'])}")
-        if result["blocks"]:
-            print(f"       ◈  {len(result['blocks'])} block placeholders left intact: {', '.join(result['blocks'])}")
-        count += 1
+        try:
+            state = _load_state(adir)
+            state["delivery_provenance"] = {
+                "app_version": APP_VERSION,
+                "schema_version": registry_version(FIELD_REGISTRY),
+                "template": doc_cfg["template"],
+                "template_sha256": hashlib.sha256(
+                    template_path.read_bytes()
+                ).hexdigest(),
+            }
+            _save_state(adir, state)
 
-        # After filling the appraisal report, inject comp pages.
-        if doc_cfg.get("inject_comps") and output_path.exists():
-            comp_template = TEMPLATES_DIR / "comp_block_template.docx"
-            if comp_template.exists():
-                print(f"\n  Injecting comp pages ...")
-                inject_comp_section(output_path, comp_template, workbook_path)
-            else:
-                print(f"    Warning: comp_block_template.docx not found in templates/")
+            result = fill_document(
+                template_path,
+                working_path,
+                variables,
+                optional_blank_keys=OPTIONAL_BLANK_FIELDS,
+            )
+            if result.get("removed_sections"):
+                print(
+                    "       Removed sections: "
+                    + ", ".join(result["removed_sections"])
+                )
+            if result["missing"]:
+                print(
+                    f"       {len(result['missing'])} unfilled keys: "
+                    + ", ".join(result["missing"])
+                )
+            if result["blocks"]:
+                print(
+                    f"       {len(result['blocks'])} block placeholders "
+                    "left intact: "
+                    + ", ".join(result["blocks"])
+                )
 
-        if doc_cfg.get("inject_comps") and output_path.exists():
-            print(f"\n  Injecting assignment media ...")
-            media_results = inject_media_blocks(output_path, adir)
-            if media_results:
-                for block, image_count in sorted(media_results.items()):
-                    print(f"    ✓  {block}: {image_count} image(s)")
-            else:
-                print("    (no media assets injected)")
+            if doc_cfg.get("inject_comps") and working_path.exists():
+                comp_template = TEMPLATES_DIR / "comp_block_template.docx"
+                if comp_template.exists():
+                    print("\n  Injecting comp pages ...")
+                    inject_comp_section(
+                        working_path,
+                        comp_template,
+                        workbook_path,
+                    )
+                else:
+                    print(
+                        "    Warning: comp_block_template.docx not found "
+                        "in templates/"
+                    )
 
-        if doc_cfg.get("inject_comps") and output_path.exists():
-            if inject_ownership_history(output_path, variables):
-                print("    ✓  OWNERSHIP_HISTORY_TABLE")
+            if doc_cfg.get("inject_comps") and working_path.exists():
+                print("\n  Injecting assignment media ...")
+                media_results = inject_media_blocks(working_path, adir)
+                if media_results:
+                    for block, image_count in sorted(media_results.items()):
+                        print(f"    OK: {block}: {image_count} image(s)")
+                else:
+                    print("    (no media assets injected)")
 
-        # Generate all AI narratives after comps are injected
-        if doc_cfg.get("inject_comps") and output_path.exists():
-            _inject_all_narratives(output_path, workbook_path, variables)
+            if doc_cfg.get("inject_comps") and working_path.exists():
+                if inject_ownership_history(working_path, variables):
+                    print("    OK: OWNERSHIP_HISTORY_TABLE")
+
+            if doc_cfg.get("inject_comps") and working_path.exists():
+                _inject_all_narratives(
+                    working_path,
+                    workbook_path,
+                    variables,
+                )
+
+            working_path.replace(output_path)
+            print(f"    OK: {output_name}")
+            count += 1
+        except Exception as exc:
+            working_path.unlink(missing_ok=True)
+            state = _load_state(adir)
+            state["last_delivery_attempt"] = _today()
+            state["last_delivery_status"] = "generation_failed"
+            state["last_delivery_blocker_count"] = 1
+            state["last_delivery_error"] = str(exc)
+            _save_state(adir, state)
+            print(f"    Generation failed for {output_name}: {exc}")
+            return False
 
     if count == 0:
+        state = _load_state(adir)
+        state["last_delivery_attempt"] = _today()
+        state["last_delivery_status"] = "generation_failed"
+        state["last_delivery_blocker_count"] = 1
+        state["last_delivery_error"] = "No delivery documents were generated."
+        _save_state(adir, state)
         print("\n  No delivery documents were generated.")
         return False
 
@@ -381,6 +547,7 @@ def cmd_deliver(args):
 
     if draft_mode:
         state["last_delivery_status"] = "draft_generated"
+        state.pop("last_delivery_error", None)
         _save_state(adir, state)
         print(f"\n  Draft generated; assignment stage remains {state.get('stage', 'new')}.")
         print(f"  {count} document(s) ready for review in:")
@@ -397,6 +564,7 @@ def cmd_deliver(args):
     if remaining_placeholders:
         state["last_delivery_status"] = "blocked_after_generation"
         state["last_delivery_blocker_count"] = len(remaining_placeholders)
+        state.pop("last_delivery_error", None)
         _save_state(adir, state)
         print(
             f"\n  Delivery state NOT changed: generated output still contains "
@@ -409,6 +577,7 @@ def cmd_deliver(args):
     state["delivered"] = _today()
     state["last_delivery_status"] = "completed"
     state["last_delivery_blocker_count"] = 0
+    state.pop("last_delivery_error", None)
     _save_state(adir, state)
 
     print(f"\n  {count} document(s) ready in:")

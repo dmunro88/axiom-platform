@@ -42,6 +42,9 @@ Open a terminal, navigate to the axiom_platform folder, then:
 
   python axiom.py new DEMO-001 "Northstar Example Holdings"
       Creates the assignment folder and copies the workbook in.
+      File numbers may contain 1–64 letters, numbers, dots, hyphens, or
+      underscores. Path-like values are rejected; client names are converted
+      to safe folder names.
 
   python axiom.py engage 2026-001
       Generates engagement letter + document request + invoice.
@@ -105,7 +108,8 @@ REPORT MEDIA
 ------------
 
 New assignments include a standard assets folder. Add report images using
-these names before final delivery (JPG and PNG are supported):
+these names before final delivery (JPG and PNG are supported; each file must
+be readable and no larger than 25 MB):
 
   assets/maps/regional.jpg
   assets/maps/aerial.jpg
@@ -141,6 +145,8 @@ The appraisal report template supports auto-generated comp pages.
    - Column A (COMP_NO):      e.g. "Sale No. 1"
    - Columns B–Z, AA–AI:     all comp fields (see row 1 headers for labels)
    - Rows without a value in column A are skipped
+   - Comp numbers must be unique
+   - Every comp must include an address and sale price
 
 3. When you run:
       python axiom.py deliver <file_no>
@@ -149,6 +155,10 @@ The appraisal report template supports auto-generated comp pages.
    - Fill all [[KEY]] placeholders in the report as usual
    - Expand [[COMP_SHEETS_BLOCK]] into N fully-formatted comp pages
    - Add a page break between each comp
+
+Delivery documents are built in a temporary file. An input, insertion, locked
+file, or generation failure leaves any prior report untouched and records the
+failed attempt without changing the assignment stage.
 
 The comp block template (templates/comp_block_template.docx) is the
 single-comp master — edit it to change the layout for all comps.

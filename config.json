@@ -3,7 +3,7 @@
   "assignments_dir": "assignments",
   "workbook_template": "templates/workbook.xlsx",
   "field_registry": "schemas/field_registry.v1.json",
-  "app_version": "0.4.0",
+  "app_version": "0.5.0",
   "models": {
     "_notes": [
       "Model routing for Claude API calls (Phase 7+).",

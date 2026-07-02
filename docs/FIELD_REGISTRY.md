@@ -20,6 +20,8 @@ Each field records:
 - `producers`: every current location that can provide the key.
 - `used_in`: workflow stages whose configured templates consume the key.
 - `description`: Intake guidance when available.
+- `required: false`: an explicit exception allowing a blank value to remove an
+  optional report row. Fields are required by default.
 
 When a key exists in both Intake and workbook Outputs, `workbook_output` is the
 source of truth because `fill_engine.load_variables()` loads JSON first and
@@ -35,6 +37,10 @@ File modification times are not used because ordinary calculation work makes
 the workbook newer without making Intake JSON stale. Formula-cache checks are
 limited to workbook-owned keys actually present after conditional report
 sections are removed.
+
+Contract v1.2.0 explicitly marks `EXTRAORDINARY_ASSUMPTION` and
+`HYPOTHETICAL_CONDITION` optional because their Intake guidance says to leave
+them blank when none apply.
 
 ## Canonical facts and presentation variants
 
