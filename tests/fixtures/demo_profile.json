@@ -1,0 +1,40 @@
+{
+  "fixture_notice": "All people, companies, addresses, parcel references, tenants, and property details in this profile are fictional and used only for software testing.",
+  "file_no": "DEMO-001",
+  "client": {
+    "name": "Northstar Example Holdings, LLC",
+    "contact": "Jordan Example",
+    "salutation": "Ms. Example",
+    "address_1": "1000 Demonstration Plaza, Suite 200",
+    "address_2": "Sample City, Alabama 35000"
+  },
+  "property": {
+    "name": "Example Commerce Center",
+    "address": "100 Example Commerce Way",
+    "city": "Sample City",
+    "county": "Example County",
+    "state": "Alabama",
+    "zip": "35000",
+    "owner": "Example Property Owner, LLC",
+    "submarket": "Demo North",
+    "fema_panel": "00000C0001A",
+    "legal_description": "Demo Lot 1, Example Commerce Center, fictional legal description for software testing only"
+  },
+  "tenants": [
+    "Tenant Alpha, LLC",
+    "Tenant Beta, LLC",
+    "Tenant Gamma, LLC",
+    "Tenant Delta, LLC",
+    "Tenant Epsilon, LLC",
+    "Tenant Zeta, LLC",
+    "Tenant Eta, LLC",
+    "Tenant Theta, LLC",
+    "Tenant Iota, LLC"
+  ],
+  "comparable_cities": [
+    "Sample City",
+    "Demo Hills",
+    "Example Heights",
+    "Test Metro"
+  ]
+}

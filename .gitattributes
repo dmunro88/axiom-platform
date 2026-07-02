@@ -1,0 +1,10 @@
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.txt text
+*.bat text eol=crlf
+*.docx filter=lfs diff=lfs merge=lfs -text
+*.xlsx filter=lfs diff=lfs merge=lfs -text
+*.xlsm binary
+*.jpg binary
+*.png binary

@@ -1,0 +1,87 @@
+' ============================================================
+' Axiom Commercial Appraisal — Intake Form JSON Exporter
+' ============================================================
+' HOW TO INSTALL (one time, ~60 seconds):
+'   1. Open appraisal_workbook_v10.xlsm in Excel
+'   2. Press Alt + F11 to open the VBA Editor
+'   3. In the left panel: Insert > Module
+'   4. Paste this entire block into the new module
+'   5. Close the VBA Editor (Alt + F4 or X)
+'   6. Save the file as .xlsm (macro-enabled)
+'
+' TO ADD THE BUTTON:
+'   1. On the Intake sheet, go to Developer tab > Insert > Button (Form Control)
+'   2. Draw the button over cell A3 (covering the grey banner)
+'   3. When prompted "Assign Macro", choose ExportJSON
+'   4. Right-click the button > Edit Text > type "▶  EXPORT JSON"
+'   5. Format the button: right-click > Format Control
+' ============================================================
+
+Sub ExportJSON()
+
+    Dim ws As Worksheet
+    Dim jsonStr As String
+    Dim fso As Object
+    Dim fileObj As Object
+    Dim filePath As String
+    Dim i As Long
+    Dim lastRow As Long
+    Dim keyVal As String
+    Dim valVal As String
+    Dim isFirst As Boolean
+    Dim fileNo As String
+
+    Set ws = ThisWorkbook.Sheets("Intake")
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+    ' Get FILE_NO for filename
+    fileNo = "assignment"
+    For i = 5 To lastRow
+        If Trim(ws.Cells(i, 1).Value) = "FILE_NO" Then
+            fileNo = Trim(ws.Cells(i, 2).Value)
+            If fileNo = "" Then fileNo = "assignment"
+            Exit For
+        End If
+    Next i
+
+    ' Build JSON string
+    jsonStr = "{" & vbNewLine
+    isFirst = True
+
+    For i = 5 To lastRow
+        keyVal = Trim(ws.Cells(i, 1).Value)
+        valVal = Trim(ws.Cells(i, 2).Value)
+
+        ' Skip section headers (no key) and rows with empty keys
+        If keyVal = "" Then GoTo NextRow
+        ' Skip if value is empty (omit from JSON rather than write blank)
+        If valVal = "" Then GoTo NextRow
+
+        ' Escape backslashes and double quotes in value
+        valVal = Replace(valVal, "\", "\\")
+        valVal = Replace(valVal, """", "\""")
+
+        If Not isFirst Then
+            jsonStr = jsonStr & "," & vbNewLine
+        End If
+
+        jsonStr = jsonStr & "  """ & keyVal & """: """ & valVal & """"
+        isFirst = False
+
+NextRow:
+    Next i
+
+    jsonStr = jsonStr & vbNewLine & "}"
+
+    ' Write JSON file to same folder as workbook
+    filePath = ThisWorkbook.Path & "\" & fileNo & "_variables.json"
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set fileObj = fso.CreateTextFile(filePath, True, False) ' overwrite, ANSI
+    fileObj.Write jsonStr
+    fileObj.Close
+
+    MsgBox "JSON exported successfully!" & vbNewLine & vbNewLine & filePath, _
+           vbInformation, "Axiom — Export Complete"
+
+End Sub

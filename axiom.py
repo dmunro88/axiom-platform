@@ -1,0 +1,987 @@
+"""
+axiom.py — Axiom Commercial Appraisal Platform
+================================================
+The single entry point for all assignment workflow operations.
+
+Commands
+--------
+  python axiom.py new <file_no> <client_name>   Create a new assignment
+  python axiom.py engage <file_no>              Generate engagement documents
+  python axiom.py deliver <file_no>             Generate delivery documents
+  python axiom.py list                          Show all assignments
+  python axiom.py status <file_no>              Show assignment details
+  python axiom.py dashboard                     Build a visual HTML dashboard
+
+Setup
+-----
+Place axiom.py, fill_engine.py, and config.json together in one folder.
+That folder should contain:
+  templates/    — read-only source templates (Word docs + workbook)
+  assignments/  — auto-created; one subfolder per assignment
+
+Requirements: pip install python-docx openpyxl
+"""
+
+import sys
+import json
+import shutil
+import datetime
+import html as html_lib
+from pathlib import Path
+
+from fill_engine import fill_document, load_variables
+from comp_builder import inject_comp_section
+from dilmore import dilmore_factor, dilmore_adj_pct
+from validation import find_docx_placeholders, validate_assignment
+
+
+# ─── Bootstrap ────────────────────────────────────────────────────────────────
+
+BASE_DIR = Path(__file__).parent
+
+with open(BASE_DIR / "config.json", encoding="utf-8") as _f:
+    CONFIG = json.load(_f)
+
+TEMPLATES_DIR   = BASE_DIR / CONFIG["templates_dir"]
+ASSIGNMENTS_DIR = BASE_DIR / CONFIG["assignments_dir"]
+WORKBOOK_TPL    = BASE_DIR / CONFIG["workbook_template"]
+STAGES          = CONFIG["stages"]
+
+ASSIGNMENTS_DIR.mkdir(exist_ok=True)
+
+
+# ─── Assignment helpers ───────────────────────────────────────────────────────
+
+def _find_assignment(file_no):
+    """Return the assignment directory for a given file number, or None."""
+    for d in ASSIGNMENTS_DIR.iterdir():
+        if d.is_dir() and d.name.startswith(file_no):
+            return d
+    return None
+
+
+def _load_state(adir):
+    state_file = adir / ".axiom.json"
+    if state_file.exists():
+        with open(state_file, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def _save_state(adir, state):
+    with open(adir / ".axiom.json", "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+
+
+def _find_json(adir):
+    """Find the variables JSON file in an assignment directory."""
+    matches = list(adir.glob("*_variables.json"))
+    return matches[0] if matches else None
+
+
+def _today():
+    return datetime.date.today().strftime("%B %d, %Y")
+
+
+# ─── Commands ─────────────────────────────────────────────────────────────────
+
+def cmd_new(args):
+    """Create a new assignment folder and copy in the workbook template."""
+    if len(args) < 2:
+        print("Usage: python axiom.py new <file_no> <client_name>")
+        print("Example: python axiom.py new DEMO-001 Northstar Example Holdings")
+        return
+
+    file_no     = args[0]
+    client_name = " ".join(args[1:])
+    safe_client = client_name.replace(" ", "_").replace("/", "-")
+    folder_name = f"{file_no}_{safe_client}"
+    adir        = ASSIGNMENTS_DIR / folder_name
+
+    if adir.exists():
+        print(f"  Assignment {file_no} already exists at:")
+        print(f"  {adir}")
+        return
+
+    # Create folder structure
+    adir.mkdir(parents=True)
+    (adir / "outputs").mkdir()
+
+    # Copy workbook template
+    if WORKBOOK_TPL.exists():
+        shutil.copy(WORKBOOK_TPL, adir / "workbook.xlsx")
+        print(f"  Copied workbook template")
+    else:
+        print(f"  Warning: workbook template not found at {WORKBOOK_TPL}")
+
+    # Write state file
+    _save_state(adir, {
+        "file_no":   file_no,
+        "client":    client_name,
+        "stage":     "new",
+        "created":   _today(),
+        "engaged":   None,
+        "delivered": None,
+    })
+
+    print(f"\n  Created: {folder_name}")
+    print(f"  Location: {adir}")
+    print(f"\n  Next steps:")
+    print(f"    1. Open workbook.xlsx and fill out the Intake tab")
+    print(f"    2. Click the Export JSON button")
+    print(f"    3. Run: python axiom.py engage {file_no}")
+
+
+def cmd_engage(args):
+    """Generate engagement-stage documents (engagement letter + doc request)."""
+    if not args:
+        print("Usage: python axiom.py engage <file_no>")
+        return
+
+    file_no = args[0]
+    adir    = _find_assignment(file_no)
+
+    if not adir:
+        print(f"  Assignment {file_no} not found.")
+        print(f"  Run: python axiom.py new {file_no} <client_name>")
+        return
+
+    # Check for JSON
+    json_path = _find_json(adir)
+    if not json_path:
+        print(f"  No variables.json found in {adir.name}")
+        print(f"  Fill out the Intake tab in workbook.xlsx and click Export JSON first.")
+        return
+
+    print(f"\n  Loading variables from {json_path.name} ...")
+    variables = load_variables(json_path=json_path)
+    print(f"  {len(variables)} variables loaded")
+
+    outputs_dir = adir / "outputs"
+    outputs_dir.mkdir(exist_ok=True)
+    stage_cfg   = STAGES["engage"]
+
+    print(f"\n  Generating engagement documents:")
+    count = 0
+    for doc_cfg in stage_cfg["documents"]:
+        template_path = TEMPLATES_DIR / doc_cfg["template"]
+        output_name   = f"{file_no}_{doc_cfg['output']}"
+        output_path   = outputs_dir / output_name
+
+        if not template_path.exists():
+            print(f"    ✗  Template not found: {doc_cfg['template']}")
+            continue
+
+        fill_document(template_path, output_path, variables)
+        print(f"    ✓  {output_name}")
+        count += 1
+
+    # Update state
+    state = _load_state(adir)
+    state["stage"]   = "engaged"
+    state["engaged"] = _today()
+    _save_state(adir, state)
+
+    print(f"\n  {count} document(s) ready in:")
+    print(f"  {outputs_dir}")
+
+
+def _inject_all_narratives(doc_path, workbook_path, variables):
+    """
+    Replace all [[X_NARRATIVE]] and [[X_OVERVIEW]] placeholders in a filled
+    Word document with AI-generated USPAP-compliant prose.
+    Delegates to narrative_generator.inject_all_narratives().
+    """
+    try:
+        from narrative_generator import inject_all_narratives
+    except ImportError as e:
+        print(f"    Warning: narrative_generator import failed — {e}")
+        return
+
+    print(f"\n  Generating AI narratives ...")
+    try:
+        results = inject_all_narratives(doc_path, workbook_path, variables)
+        if not results:
+            print(f"    (no narrative placeholders found in document)")
+    except Exception as e:
+        print(f"    Warning: narrative injection error — {e}")
+
+
+def cmd_deliver(args):
+    """Generate a validated final report, or an explicitly incomplete draft."""
+    if not args:
+        print("Usage: python axiom.py deliver <file_no> [--draft]")
+        return
+
+    file_no = args[0]
+    options = set(args[1:])
+    unknown_options = options - {"--draft"}
+    if unknown_options:
+        print(f"  Unknown deliver option(s): {', '.join(sorted(unknown_options))}")
+        print("Usage: python axiom.py deliver <file_no> [--draft]")
+        return False
+    draft_mode = "--draft" in options
+
+    adir    = _find_assignment(file_no)
+
+    if not adir:
+        print(f"  Assignment {file_no} not found.")
+        return False
+
+    validation = check_delivery_readiness(adir)
+    if not validation["ready"] and not draft_mode:
+        blocker_count = (
+            len(validation.get("errors", []))
+            + len(validation.get("missing", []))
+            + len(validation.get("unresolved_blocks", {}))
+        )
+        state = _load_state(adir)
+        state["last_delivery_attempt"] = _today()
+        state["last_delivery_status"] = "blocked"
+        state["last_delivery_blocker_count"] = blocker_count
+        _save_state(adir, state)
+
+        print(f"\n  Delivery blocked: {blocker_count} validation issue(s).")
+        print(f"  Run: python axiom.py validate {file_no}")
+        print(
+            f"  To generate an explicitly incomplete report without changing "
+            f"delivery state:"
+        )
+        print(f"    python axiom.py deliver {file_no} --draft")
+        return False
+
+    if draft_mode and not validation["ready"]:
+        print("\n  DRAFT MODE: validation issues will remain visible in the report.")
+        print("  Assignment delivery state will not be changed.")
+
+    json_path     = _find_json(adir)
+    workbook_path = adir / "workbook.xlsx"
+
+    if not json_path:
+        print(f"  No variables.json found. Export from Intake tab first.")
+        return False
+
+    if not workbook_path.exists():
+        print(f"  workbook.xlsx not found in {adir.name}")
+        return False
+
+    print(f"\n  Loading variables ...")
+    variables = load_variables(json_path=json_path, workbook_path=workbook_path)
+    print(f"  {len(variables)} variables loaded (JSON + workbook outputs tab)")
+
+    outputs_dir = adir / "outputs"
+    outputs_dir.mkdir(exist_ok=True)
+    stage_cfg   = STAGES["deliver"]
+
+    print(f"\n  Generating delivery documents:")
+    count = 0
+    for doc_cfg in stage_cfg["documents"]:
+        template_path = TEMPLATES_DIR / doc_cfg["template"]
+        draft_marker  = "DRAFT_" if draft_mode else ""
+        output_name   = f"{file_no}_{draft_marker}{doc_cfg['output']}"
+        output_path   = outputs_dir / output_name
+
+        if not template_path.exists():
+            print(f"    ✗  Template not found: {doc_cfg['template']}")
+            continue
+
+        result = fill_document(template_path, output_path, variables)
+        print(f"    ✓  {output_name}")
+        if result.get("removed_sections"):
+            print(f"       ✂  Removed sections: {', '.join(result['removed_sections'])}")
+        if result["missing"]:
+            print(f"       ⚠  {len(result['missing'])} unfilled keys: {', '.join(result['missing'])}")
+        if result["blocks"]:
+            print(f"       ◈  {len(result['blocks'])} block placeholders left intact: {', '.join(result['blocks'])}")
+        count += 1
+
+        # After filling the appraisal report, inject comp pages at [[COMP_SECTION]]
+        if doc_cfg.get("inject_comps") and output_path.exists():
+            comp_template = TEMPLATES_DIR / "comp_block_template.docx"
+            if comp_template.exists():
+                print(f"\n  Injecting comp pages ...")
+                inject_comp_section(output_path, comp_template, workbook_path)
+            else:
+                print(f"    Warning: comp_block_template.docx not found in templates/")
+
+        # Generate all AI narratives after comps are injected
+        if doc_cfg.get("inject_comps") and output_path.exists():
+            _inject_all_narratives(output_path, workbook_path, variables)
+
+    if count == 0:
+        print("\n  No delivery documents were generated.")
+        return False
+
+    state = _load_state(adir)
+    state["last_delivery_attempt"] = _today()
+
+    if draft_mode:
+        state["last_delivery_status"] = "draft_generated"
+        _save_state(adir, state)
+        print(f"\n  Draft generated; assignment stage remains {state.get('stage', 'new')}.")
+        print(f"  {count} document(s) ready for review in:")
+        print(f"  {outputs_dir}")
+        return True
+
+    remaining_placeholders = []
+    for doc_cfg in stage_cfg["documents"]:
+        output_path = outputs_dir / f"{file_no}_{doc_cfg['output']}"
+        if output_path.exists():
+            remaining_placeholders.extend(find_docx_placeholders(output_path))
+
+    remaining_placeholders = sorted(set(remaining_placeholders))
+    if remaining_placeholders:
+        state["last_delivery_status"] = "blocked_after_generation"
+        state["last_delivery_blocker_count"] = len(remaining_placeholders)
+        _save_state(adir, state)
+        print(
+            f"\n  Delivery state NOT changed: generated output still contains "
+            f"{len(remaining_placeholders)} placeholder(s)."
+        )
+        print(f"  Run: python axiom.py validate {file_no}")
+        return False
+
+    state["stage"] = "delivered"
+    state["delivered"] = _today()
+    state["last_delivery_status"] = "completed"
+    state["last_delivery_blocker_count"] = 0
+    _save_state(adir, state)
+
+    print(f"\n  {count} document(s) ready in:")
+    print(f"  {outputs_dir}")
+    return True
+
+
+def cmd_dilmore(args):
+    """Compute Dilmore size adjustments and write them to the size_adj tab."""
+    if not args:
+        print("Usage: python axiom.py dilmore <file_no>")
+        return
+
+    file_no = args[0]
+    adir    = _find_assignment(file_no)
+
+    if not adir:
+        print(f"  Assignment {file_no} not found.")
+        return
+
+    workbook_path = adir / "workbook.xlsx"
+    if not workbook_path.exists():
+        print(f"  workbook.xlsx not found in {adir.name}")
+        return
+
+    import openpyxl
+    wb = openpyxl.load_workbook(str(workbook_path))
+
+    # Read curve selection from size_adj tab B3
+    if "size_adj" not in wb.sheetnames:
+        print("  size_adj tab not found — is this workbook from the latest template?")
+        return
+
+    sa = wb["size_adj"]
+    curve_val = sa["B3"].value
+    try:
+        curve = float(curve_val) if curve_val else 85.0
+    except (ValueError, TypeError):
+        curve = 85.0
+
+    # Read subject GBA from Intake tab
+    subject_gba = None
+    if "Intake" in wb.sheetnames:
+        intake = wb["Intake"]
+        for row in intake.iter_rows(min_row=2, values_only=True):
+            if row[0] and str(row[0]).strip().upper() == "GBA":
+                try:
+                    raw = str(row[1]).replace(",", "").replace(" SF", "").strip()
+                    subject_gba = float(raw)
+                except (ValueError, TypeError):
+                    pass
+                break
+
+    if not subject_gba:
+        # Try JSON
+        json_path = _find_json(adir)
+        if json_path:
+            import json
+            with open(json_path) as f:
+                jdata = json.load(f)
+            raw = jdata.get("GBA", "")
+            try:
+                subject_gba = float(str(raw).replace(",", "").replace(" SF", ""))
+            except (ValueError, TypeError):
+                pass
+
+    if not subject_gba:
+        print("  Could not find Subject GBA in Intake tab or variables.json.")
+        print("  Enter GBA in the Intake tab (key: GBA) and re-export JSON.")
+        return
+
+    print(f"\n  Subject GBA: {subject_gba:,.0f} SF")
+    print(f"  Curve: {curve}%")
+    print()
+
+    # Read comp GBAs from size_adj B7:B16
+    print(f"  {'Comp':<12} {'Comp GBA':>10}  {'Ratio':>8}  {'Factor':>8}  {'Adj %':>8}")
+    print("  " + "─" * 52)
+
+    count = 0
+    for i in range(1, 11):
+        row_idx = 6 + i   # rows 7–16
+
+        comp_gba_val = sa.cell(row=row_idx, column=2).value
+        if not comp_gba_val:
+            continue
+
+        try:
+            comp_gba = float(str(comp_gba_val).replace(',', '').replace(' SF', ''))
+        except (ValueError, TypeError):
+            continue
+
+        factor  = dilmore_factor(subject_gba, comp_gba, curve)
+        adj_pct = dilmore_adj_pct(subject_gba, comp_gba, curve)
+        ratio   = subject_gba / comp_gba if comp_gba else 0
+
+        sa.cell(row=row_idx, column=3).value = round(factor, 4)
+        sa.cell(row=row_idx, column=4).value = round(adj_pct, 2)
+
+        label = f'Comp {i}'
+        print(f'  {label:<12} {comp_gba:>10,.0f}  {ratio:>8.3f}  {factor:>8.4f}  {adj_pct:>+8.1f}%')
+        count += 1
+
+    if count == 0:
+        print('  No comp GBAs found in size_adj B7:B16.')
+        return
+
+    wb.save(str(workbook_path))
+    print(f'  Wrote {count} size adjustments to workbook.xlsx')
+
+
+# --- Extract command ---
+
+def cmd_extract(args):
+    """Scan a folder and extract comp data from all Word and Excel files.
+
+    Usage:
+      python axiom.py extract <file_no>
+      python axiom.py extract /full/path/to/folder
+    """
+    if not args:
+        print('Usage: python axiom.py extract <file_no | folder_path>')
+        return
+
+    target = args[0]
+    folder = Path(target)
+    if not folder.exists() or not folder.is_dir():
+        adir = _find_assignment(target)
+        if adir:
+            folder = adir
+        else:
+            print(f'  Not found: {target}')
+            return
+
+    print(f'  Extracting from: {folder}')
+    print('  ' + '-' * 60)
+
+    from extractor import extract_from_assignment
+    result = extract_from_assignment(str(folder))
+
+    comps       = result.get('comps', [])
+    lease_comps = result.get('lease_comps', [])
+    narr_data   = result.get('narrative', {}).get('data', {})
+    sources     = result.get('sources', [])
+    warnings    = result.get('warnings', [])
+
+    print(f'  Sources scanned: {len(sources)}')
+    for s in sources:
+        print(f'    - {Path(s).name}')
+
+    print(f'  Sale comps: {len(comps)}')
+    for i, c in enumerate(comps, 1):
+        d     = c['data']
+        addr  = d.get('address_street', '-')[:45]
+        price = d.get('sale_price')
+        psf   = d.get('price_per_sf')
+        date  = d.get('sale_date', '-')
+        src   = c.get('source_file', '')
+        price_str = f'${price:,.0f}' if isinstance(price, (int, float)) else '-'
+        psf_str   = f'${psf:.2f}/SF' if isinstance(psf, (int, float)) else '-'
+        print(f'    {i}. {addr}')
+        print(f'       {price_str}  {psf_str}  {date}  [{Path(src).name}]')
+
+    print(f'  Lease comps: {len(lease_comps)}')
+    for i, c in enumerate(lease_comps, 1):
+        d    = c['data']
+        addr = d.get('address_street', '-')[:45]
+        rent = d.get('base_rent_psf')
+        sf   = d.get('sf_leased')
+        date = d.get('lease_date', '-')
+        src  = c.get('source_file', '')
+        rent_str = f'${rent:.2f}/SF' if isinstance(rent, (int, float)) else '-'
+        sf_str   = f'{sf:,.0f} SF' if isinstance(sf, (int, float)) else '-'
+        print(f'    {i}. {addr}')
+        print(f'       {rent_str}  {sf_str}  {date}  [{Path(src).name}]')
+
+    if narr_data:
+        print(f'  Narrative fields: {len(narr_data)}')
+        for k, v in list(narr_data.items())[:8]:
+            print(f'    {k}: {str(v)[:60]}')
+
+    if warnings:
+        print(f'  Warnings ({len(warnings)}):')
+        for w in warnings:
+            print(f'    ! {w}')
+
+
+def cmd_list(args):
+    """List all assignments with their current stage."""
+    dirs = sorted(
+        (d for d in ASSIGNMENTS_DIR.iterdir() if d.is_dir()),
+        key=lambda d: d.stat().st_mtime, reverse=True
+    )
+    if not dirs:
+        print('  No assignments found.')
+        return
+    print(f'  {"File No":<14} {"Client":<30} {"Stage":<14} {"Last Modified"}')
+    print('  ' + '-' * 72)
+    for d in dirs:
+        state = _load_state(d)
+        parts = d.name.split('_', 1)
+        fno    = parts[0] if parts else d.name
+        client = parts[1].replace('_', ' ') if len(parts) > 1 else ''
+        stage  = state.get('stage', 'new')
+        mtime  = datetime.datetime.fromtimestamp(d.stat().st_mtime).strftime('%Y-%m-%d')
+        print(f'  {fno:<14} {client:<30} {stage:<14} {mtime}')
+
+
+def cmd_status(args):
+    """Show detailed status for one assignment."""
+    if not args:
+        print('Usage: python axiom.py status <file_no>')
+        return
+    file_no = args[0]
+    adir    = _find_assignment(file_no)
+    if not adir:
+        print(f'  Assignment {file_no} not found.')
+        return
+    state = _load_state(adir)
+    print(f'  Assignment: {adir.name}')
+    print(f'  Path:       {adir}')
+    print(f'  Stage:      {state.get("stage", "new")}')
+    for k, v in state.items():
+        if k != 'stage':
+            print(f'  {k}: {v}')
+    files = list(adir.rglob('*'))
+    print(f'  Files ({len(files)}):')
+    for f in sorted(files):
+        if f.is_file():
+            print(f'    {f.relative_to(adir)}')
+
+
+# ─── Delivery readiness check (shared by dashboard + future QC commands) ──────
+
+def check_delivery_readiness(adir):
+    """
+    Dry-run the delivery template fill against an assignment's current
+    variables (JSON + workbook outputs tab) WITHOUT writing any real
+    output file. Returns:
+      {'checked': True,  'missing': [...], 'blocks': [...]}   on success
+      {'checked': False, 'reason': '...'}                     if it can't check
+    Reuses fill_engine.fill_document exactly — same logic `deliver` uses,
+    so what the dashboard shows always matches what `deliver` will do.
+    """
+    return validate_assignment(
+        assignment_dir=adir,
+        templates_dir=TEMPLATES_DIR,
+        deliver_config=STAGES.get('deliver', {}),
+    )
+
+
+def cmd_validate(args):
+    """Check delivery readiness without writing assignment files or state."""
+    if not args:
+        print('Usage: python axiom.py validate <file_no>')
+        return False
+
+    file_no = args[0]
+    adir = _find_assignment(file_no)
+    if not adir:
+        print(f'  Assignment {file_no} not found.')
+        return False
+
+    result = check_delivery_readiness(adir)
+    print(f'\n  Delivery validation: {adir.name}')
+    print('  ' + '-' * 60)
+
+    for error in result['errors']:
+        print(f'  [ERROR] {error}')
+
+    if result['missing']:
+        print(f'\n  Missing required fields ({len(result["missing"])}):')
+        for key in result['missing']:
+            print(f'    - {key}')
+
+    if result['unresolved_blocks']:
+        print(f'\n  Unresolved document blocks ({len(result["unresolved_blocks"])}):')
+        for key, reason in result['unresolved_blocks'].items():
+            print(f'    - {key}: {reason}')
+
+    if result['handled_blocks']:
+        print(f'\n  Pipeline-handled blocks ({len(result["handled_blocks"])}):')
+        for key in result['handled_blocks']:
+            print(f'    - {key}')
+
+    if result['warnings']:
+        print(f'\n  Warnings ({len(result["warnings"])}):')
+        for warning in result['warnings']:
+            print(f'    [!] {warning}')
+
+    if result['ready']:
+        print('\n  [OK] READY TO DELIVER')
+        return True
+
+    print('\n  [X] NOT READY TO DELIVER')
+    return False
+
+
+# ─── Dashboard ────────────────────────────────────────────────────────────────
+
+_STAGE_COLORS = {
+    'new':      ('#EDEDED', '#555555'),
+    'engaged':  ('#FCEFC7', '#8A6D00'),
+    'delivered': ('#DCEFDD', '#1E6B2E'),
+}
+
+_DASHBOARD_CSS = """
+  * { box-sizing: border-box; }
+  body {
+    font-family: Cambria, Georgia, serif;
+    background: #F4F2F8;
+    margin: 0;
+    padding: 32px;
+    color: #2B2530;
+  }
+  h1 {
+    color: #3F2A66;
+    font-size: 22px;
+    margin: 0 0 4px 0;
+  }
+  .subtitle {
+    color: #6B6270;
+    font-size: 13px;
+    margin: 0 0 28px 0;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 18px;
+  }
+  .card {
+    background: #FFFFFF;
+    border: 1px solid #D5CCEB;
+    border-radius: 8px;
+    padding: 18px 20px;
+    box-shadow: 0 1px 3px rgba(63,42,102,0.08);
+  }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+  }
+  .file-no {
+    font-size: 12px;
+    color: #6B6270;
+    letter-spacing: 0.02em;
+  }
+  .client {
+    font-size: 17px;
+    font-weight: bold;
+    color: #3F2A66;
+    margin: 2px 0 0 0;
+  }
+  .stage-badge {
+    font-size: 11px;
+    font-weight: bold;
+    padding: 4px 10px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .property {
+    font-size: 14px;
+    margin: 6px 0;
+    color: #2B2530;
+  }
+  .value-conclusion {
+    font-size: 20px;
+    font-weight: bold;
+    color: #3F2A66;
+    margin: 10px 0 2px 0;
+  }
+  .value-label {
+    font-size: 11px;
+    color: #6B6270;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #6B6270;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #EDE8F5;
+  }
+  .files {
+    margin-top: 10px;
+    font-size: 12px;
+  }
+  .files a {
+    color: #3F2A66;
+    text-decoration: none;
+    margin-right: 10px;
+    display: inline-block;
+    margin-bottom: 4px;
+  }
+  .files a:hover { text-decoration: underline; }
+  .blockers {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+  .blockers.ready {
+    background: #DCEFDD;
+    color: #1E6B2E;
+    font-weight: bold;
+  }
+  .blockers.notready {
+    background: #FBEAEA;
+    color: #9B2C2C;
+  }
+  .blockers.unknown {
+    background: #F0F0F0;
+    color: #6B6270;
+    font-style: italic;
+  }
+  .blockers .count {
+    font-weight: bold;
+  }
+  .blockers details summary {
+    cursor: pointer;
+    outline: none;
+  }
+  .blockers .key-list {
+    margin: 6px 0 0 0;
+    padding-left: 18px;
+    font-size: 11px;
+    line-height: 1.6;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+  .empty {
+    color: #6B6270;
+    font-style: italic;
+    padding: 40px;
+    text-align: center;
+  }
+"""
+
+
+def _dash_get(variables, key, default='—'):
+    val = variables.get(key)
+    if val in (None, '', 'N/A'):
+        return default
+    return val
+
+
+def _blockers_html(adir, esc):
+    check = check_delivery_readiness(adir)
+    if not check['checked']:
+        reasons = check.get('errors') or ['Unknown validation failure.']
+        reason = '; '.join(str(item) for item in reasons)
+        return f'<div class="blockers unknown">Delivery check unavailable — {esc(reason)}</div>'
+
+    missing = check['missing']
+    unresolved = check.get('unresolved_blocks', {})
+    if not missing and not unresolved and not check.get('errors'):
+        return '<div class="blockers ready">&#10003; Ready to deliver — no missing fields</div>'
+
+    items = ''.join(f'<li>Missing field: {esc(k)}</li>' for k in missing)
+    items += ''.join(
+        f'<li>Unresolved block: {esc(k)}</li>'
+        for k in unresolved
+    )
+    count = len(missing) + len(unresolved) + len(check.get('errors', []))
+    return (
+        '<div class="blockers notready">'
+        f'<details><summary><span class="count">{count} issue(s)</span> blocking delivery</summary>'
+        f'<ul class="key-list">{items}</ul>'
+        '</details>'
+        '</div>'
+    )
+
+
+def _dash_card(adir, state):
+    parts  = adir.name.split('_', 1)
+    fno    = state.get('file_no') or (parts[0] if parts else adir.name)
+    client = state.get('client') or (parts[1].replace('_', ' ') if len(parts) > 1 else '')
+    stage  = state.get('stage', 'new')
+    bg, fg = _STAGE_COLORS.get(stage, _STAGE_COLORS['new'])
+
+    json_path = _find_json(adir)
+    variables = {}
+    if json_path and json_path.exists():
+        try:
+            with open(json_path, encoding='utf-8') as f:
+                variables = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            variables = {}
+
+    address = _dash_get(variables, 'PROPERTY_ADDRESS', '')
+    city    = _dash_get(variables, 'PROPERTY_CITY', '')
+    subtype = _dash_get(variables, 'PROPERTY_SUBTYPE_FULL', '')
+    prop_line = ', '.join(p for p in [address, city] if p and p != '—') or 'Property TBD'
+    value_conclusion = _dash_get(variables, 'VALUE_CONCLUSION', None)
+    approaches = _dash_get(variables, 'DEVELOPED_APPROACHES', '')
+
+    esc = html_lib.escape
+
+    out = []
+    out.append('<div class="card">')
+    out.append('  <div class="card-header">')
+    out.append('    <div>')
+    out.append(f'      <div class="file-no">{esc(str(fno))}</div>')
+    out.append(f'      <div class="client">{esc(str(client))}</div>')
+    out.append('    </div>')
+    out.append(f'    <div class="stage-badge" style="background:{bg};color:{fg};">{esc(stage)}</div>')
+    out.append('  </div>')
+    out.append(f'  <div class="property">{esc(prop_line)}' +
+               (f' &mdash; {esc(subtype)}' if subtype and subtype != '—' else '') + '</div>')
+
+    if value_conclusion:
+        out.append('  <div class="value-label">Value Conclusion</div>')
+        out.append(f'  <div class="value-conclusion">{esc(str(value_conclusion))}</div>')
+    if approaches and approaches != '—':
+        out.append(f'  <div class="property" style="font-size:12px;color:#6B6270;">{esc(str(approaches))}</div>')
+
+    # Actionable QC: what's blocking delivery right now, using the exact
+    # same missing-key check that `axiom.py deliver` runs — no separate
+    # logic to fall out of sync.
+    out.append(_blockers_html(adir, esc))
+
+    created   = state.get('created') or '—'
+    engaged   = state.get('engaged') or '—'
+    delivered = state.get('delivered') or '—'
+    out.append('  <div class="meta-row">')
+    out.append(f'    <span>Created<br><b>{esc(str(created))}</b></span>')
+    out.append(f'    <span>Engaged<br><b>{esc(str(engaged))}</b></span>')
+    out.append(f'    <span>Delivered<br><b>{esc(str(delivered))}</b></span>')
+    out.append('  </div>')
+
+    # File links (relative, so they work opened locally from axiom_platform/)
+    rel_base = adir.relative_to(BASE_DIR)
+    link_items = []
+    wb_path = adir / 'workbook.xlsx'
+    if wb_path.exists():
+        link_items.append((str(rel_base / 'workbook.xlsx'), 'Workbook'))
+    if json_path and json_path.exists():
+        link_items.append((str(rel_base / json_path.name), 'Variables JSON'))
+    outputs_dir = adir / 'outputs'
+    if outputs_dir.exists():
+        for f in sorted(outputs_dir.glob('*.docx')):
+            link_items.append((str(rel_base / 'outputs' / f.name), f.stem.split('_', 1)[-1].replace('_', ' ')))
+
+    if link_items:
+        out.append('  <div class="files">')
+        for href, label in link_items:
+            href_escaped = esc(href.replace('\\', '/'))
+            out.append(f'    <a href="{href_escaped}">{esc(label)}</a>')
+        out.append('  </div>')
+
+    out.append('</div>')
+    return '\n'.join(out)
+
+
+def cmd_dashboard(args):
+    """Build dashboard.html — a visual overview of every assignment."""
+    dirs = sorted(
+        (d for d in ASSIGNMENTS_DIR.iterdir() if d.is_dir()),
+        key=lambda d: d.stat().st_mtime, reverse=True
+    )
+
+    cards_html = ''
+    if not dirs:
+        cards_html = '<div class="empty">No assignments yet. Run: python axiom.py new &lt;file_no&gt; &lt;client&gt;</div>'
+    else:
+        cards = []
+        for d in dirs:
+            state = _load_state(d)
+            cards.append(_dash_card(d, state))
+        cards_html = '\n'.join(cards)
+
+    generated = datetime.datetime.now().strftime('%B %d, %Y at %I:%M %p')
+
+    page = []
+    page.append('<!DOCTYPE html>')
+    page.append('<html lang="en">')
+    page.append('<head>')
+    page.append('<meta charset="UTF-8">')
+    page.append('<title>Axiom Commercial Appraisal — Dashboard</title>')
+    page.append(f'<style>{_DASHBOARD_CSS}</style>')
+    page.append('</head>')
+    page.append('<body>')
+    page.append('<h1>Axiom Commercial Appraisal — Assignment Dashboard</h1>')
+    page.append(f'<div class="subtitle">Generated {generated} &middot; {len(dirs)} assignment(s) &middot; refresh with: python axiom.py dashboard</div>')
+    page.append('<div class="grid">')
+    page.append(cards_html)
+    page.append('</div>')
+    page.append('</body>')
+    page.append('</html>')
+
+    out_path = BASE_DIR / 'dashboard.html'
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(page))
+
+    print(f'\n  Dashboard built: {len(dirs)} assignment(s)')
+    print(f'  {out_path}')
+    print(f'  Open it in a browser, or run this command again any time to refresh it.')
+
+
+# Command dispatch
+COMMANDS = {
+    'new':       cmd_new,
+    'engage':    cmd_engage,
+    'deliver':   cmd_deliver,
+    'validate':  cmd_validate,
+    'dilmore':   cmd_dilmore,
+    'extract':   cmd_extract,
+    'list':      cmd_list,
+    'status':    cmd_status,
+    'dashboard': cmd_dashboard,
+}
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ('-h', '--help'):
+        print('Axiom Commercial Appraisal Platform')
+        print('Usage: python axiom.py <command> [args]')
+        for name, fn in COMMANDS.items():
+            doc = (fn.__doc__ or '').split('\n')[0].strip()
+            print(f'  {name:<14} {doc}')
+        return
+    cmd  = sys.argv[1].lower()
+    args = sys.argv[2:]
+    if cmd not in COMMANDS:
+        print(f'  Unknown command: {cmd}')
+        sys.exit(1)
+    result = COMMANDS[cmd](args)
+    if result is False:
+        sys.exit(1)
+
+
+
+if __name__ == '__main__':
+    main()

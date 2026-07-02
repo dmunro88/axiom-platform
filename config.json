@@ -1,0 +1,66 @@
+{
+  "templates_dir": "templates",
+  "assignments_dir": "assignments",
+  "workbook_template": "templates/workbook.xlsx",
+  "models": {
+    "_notes": [
+      "Model routing for Claude API calls (Phase 7+).",
+      "haiku  = fast/cheap: extraction, classification, structured parsing.",
+      "sonnet = balanced: narrative drafting, photo analysis, routine per-assignment AI work.",
+      "opus   = highest reasoning: high-stakes judgment calls that go into signed deliverables.",
+      "Change 'default' to override all commands during testing."
+    ],
+    "default": "claude-sonnet-4-6",
+    "per_command": {
+      "extract": "claude-haiku-4-5-20251001",
+      "classify": "claude-haiku-4-5-20251001",
+      "pdf-import": "claude-haiku-4-5-20251001",
+      "comp-parse": "claude-haiku-4-5-20251001",
+      "draft": "claude-sonnet-4-6",
+      "inspect": "claude-sonnet-4-6",
+      "hbu": "claude-sonnet-4-6",
+      "market-update": "claude-sonnet-4-6",
+      "lease-abstract": "claude-sonnet-4-6",
+      "qc": "claude-sonnet-4-6",
+      "reconcile": "claude-opus-4-8",
+      "adj-justify": "claude-opus-4-8",
+      "review": "claude-opus-4-8"
+    },
+    "tier_guide": {
+      "haiku": "Structured in, structured out. Never narrative.",
+      "sonnet": "Narrative, analysis, vision. Routine per-assignment AI work.",
+      "opus": "High-stakes judgment. Output goes into a signed client deliverable."
+    }
+  },
+  "stages": {
+    "engage": {
+      "description": "Engagement -- send at start of assignment (payment required upfront)",
+      "requires": ["json"],
+      "documents": [
+        {
+          "template": "engagement_letter_template.docx",
+          "output": "engagement_letter.docx"
+        },
+        {
+          "template": "doc_request_template.docx",
+          "output": "doc_request.docx"
+        },
+        {
+          "template": "invoice_template.docx",
+          "output": "invoice.docx"
+        }
+      ]
+    },
+    "deliver": {
+      "description": "Delivery -- appraisal report only",
+      "requires": ["json", "workbook"],
+      "documents": [
+        {
+          "template": "appraisal_template_styled_clean.docx",
+          "output": "appraisal_report.docx",
+          "inject_comps": true
+        }
+      ]
+    }
+  }
+}

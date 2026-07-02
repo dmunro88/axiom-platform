@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy this file to adobe_sign_config.json. Fill in client_id/client_secret/redirect_uri from your Acrobat Sign Application (Account > Acrobat Sign API > API Applications > Configure OAuth). Never share adobe_sign_config.json or paste its contents into chat -- refresh_token grants ongoing API access to your account. authorize_host/token_host only need changing if adobe_sign.py's defaults (na1 shard) don't match your account.",
+  "client_id": "PASTE_CLIENT_ID_HERE",
+  "client_secret": "PASTE_CLIENT_SECRET_HERE",
+  "redirect_uri": "https://example.com"
+}

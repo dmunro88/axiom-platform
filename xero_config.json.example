@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy this file to xero_config.json. Fill in client_id/client_secret from your Xero Custom Connection (developer.xero.com > My Apps > your app). Never share xero_config.json or paste its contents into chat.",
+  "client_id": "PASTE_CLIENT_ID_HERE",
+  "client_secret": "PASTE_CLIENT_SECRET_HERE"
+}

@@ -1,0 +1,31 @@
+# Local credentials and secrets
+adobe_sign_config.json
+xero_config.json
+.env
+.env.*
+!.env.example
+
+# Client assignment data and generated deliverables
+assignments/**
+!assignments/.gitkeep
+
+# Comp-ingest working data and local database files
+ingest/staged/**
+ingest/confirmed/**
+axiom.db
+axiom.db-*
+*.sqlite
+*.sqlite3
+
+# Generated/runtime files
+dashboard.html
+__pycache__/
+*.py[cod]
+*.log
+.sanitization_work/
+node_modules/
+
+# Office and operating-system temporary files
+~$*
+Thumbs.db
+.DS_Store
