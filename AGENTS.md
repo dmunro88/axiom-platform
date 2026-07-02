@@ -52,6 +52,9 @@ created.
   or reported as blockers. They must not be silently treated as ready.
 - Workbook formulas are read through cached Excel values. Validation must
   account for stale or missing cached results.
+- JSON freshness is determined by canonical Intake values, not file modification
+  times. Formula-cache checks apply only to workbook-owned fields required by
+  the conditionally trimmed delivery document.
 - Presentation variants such as lowercase text or words-formal values should be
   derived from canonical facts where practical, not entered independently.
 - `schemas/field_registry.v1.json` is the field contract. Register and version a

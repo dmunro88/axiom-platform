@@ -45,7 +45,7 @@ the signed deliverable.
 | Command | Current behavior |
 |---|---|
 | `new` | Creates an assignment folder, workbook copy, output folder, and `.axiom.json` state |
-| `engage` | Locally generates engagement letter, document request, and invoice |
+| `engage` | Locally generates engagement letter, document request, and invoice after canonical Intake/JSON freshness passes |
 | `deliver` | Generates a final report only after validation passes; `--draft` generates a distinctly named draft without changing delivery stage |
 | `validate` | Checks fields, block handlers, workbook formula caches, and possible JSON staleness without changing assignment files or state |
 | `contract` | Audits workbook and configured template keys against field registry v1 |
@@ -63,7 +63,7 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Twelve automated validation, delivery-state, media, structured-block,
+- Sixteen automated validation, delivery-state, media, structured-block,
   model-routing, contract, and presentation-derivation tests pass.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
@@ -97,9 +97,13 @@ Checks were performed without regenerating or modifying assignment outputs.
   text, title-case value words, and zoning table aliases from canonical facts.
 - The canonical Intake workbook derives `VALUE_WORDS_FORMAL` visibly from
   `VALUE_WORDS`; legacy stored variants remain fallback-compatible.
+- JSON freshness compares canonical Intake values directly; file timestamps no
+  longer create false warnings after normal calculation work.
+- Formula-cache validation is limited to workbook-owned keys still required
+  after conditional report sections are removed.
 - Cached Excel formula values are loaded with `openpyxl(data_only=True)`.
-  Validation warns when the JSON predates the workbook, but that file-level
-  heuristic cannot distinguish Intake edits from normal calculation work.
+  Validation detects missing/error cached results, but cannot prove that a
+  valid-looking cached value is fresh without an Excel-side calculation stamp.
 - Blank workbook templates contain expected formula errors until required
   inputs are populated; these are existing model behaviors, not introduced by
   fictionalization.
@@ -157,7 +161,9 @@ Checks were performed without regenerating or modifying assignment outputs.
 2. **Completed for six deterministic variants:** derive presentation variants
    rather than entering duplicate facts. Semantically distinct short/full
    labels remain explicit.
-3. Detect stale JSON and stale Excel calculation caches.
+3. **Completed for canonical Intake drift and missing/error caches:** detect
+   stale JSON and scope cache checks to active workbook-owned report fields.
+   Valid-but-stale cache proof still requires an Excel-side calculation stamp.
 4. **Completed for new assignments and delivery attempts:** record template,
    schema, and application versions per assignment.
 

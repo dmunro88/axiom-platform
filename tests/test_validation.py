@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import openpyxl
 from docx import Document
+from docx.enum.style import WD_STYLE_TYPE
 
 import axiom
 from field_registry import (
@@ -47,6 +48,22 @@ def _build_assignment(root, template_text, variables=None):
 
     config = {"documents": [{"template": "report.docx"}]}
     return assignment, templates, config
+
+
+def _write_registry(root, fields):
+    registry_path = Path(root) / "field_registry.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "contract_id": "axiom.appraisal.fields",
+                "schema_version": "test",
+                "fields": fields,
+                "blocks": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return registry_path
 
 
 class ValidateAssignmentTests(unittest.TestCase):
@@ -124,6 +141,166 @@ class ValidateAssignmentTests(unittest.TestCase):
             )
             variables = load_variables(json_path=json_path)
             self.assertEqual("class c", variables["PROPERTY_CLASS_LOWER"])
+
+    def test_intake_json_drift_identifies_changed_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment, templates, config = _build_assignment(
+                temp_dir,
+                "Client: [[CLIENT_NAME]]",
+                {"CLIENT_NAME": "Old Example Client"},
+            )
+            workbook_path = assignment / "workbook.xlsx"
+            workbook = openpyxl.load_workbook(workbook_path)
+            intake = workbook.create_sheet("Intake")
+            intake.append(["CLIENT_NAME", "New Example Client"])
+            workbook.save(workbook_path)
+            workbook.close()
+            registry_path = _write_registry(
+                temp_dir,
+                {
+                    "CLIENT_NAME": {
+                        "value_kind": "text",
+                        "source_of_truth": "intake",
+                        "producers": ["intake"],
+                        "used_in": ["deliver"],
+                    }
+                },
+            )
+
+            result = validate_assignment(
+                assignment,
+                templates,
+                config,
+                registry_path=registry_path,
+            )
+
+            self.assertFalse(result["ready"])
+            self.assertEqual(["CLIENT_NAME"], result["stale_intake_fields"])
+            self.assertTrue(
+                any(
+                    "Re-export JSON" in error
+                    for error in result["errors"]
+                )
+            )
+
+    def test_engagement_stops_when_intake_json_is_stale(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment = Path(temp_dir) / "TEST-902_Fictional_Client"
+            assignment.mkdir()
+            (assignment / "outputs").mkdir()
+            (assignment / "TEST-902_variables.json").write_text(
+                json.dumps({"CLIENT_NAME": "Old Example Client"}),
+                encoding="utf-8",
+            )
+            workbook = openpyxl.Workbook()
+            intake = workbook.active
+            intake.title = "Intake"
+            intake.append(["CLIENT_NAME", "New Example Client"])
+            workbook.save(assignment / "workbook.xlsx")
+            workbook.close()
+
+            with patch.object(
+                axiom,
+                "_find_assignment",
+                return_value=assignment,
+            ):
+                result = axiom.cmd_engage(["TEST-902"])
+
+            self.assertFalse(result)
+            self.assertEqual([], list((assignment / "outputs").iterdir()))
+
+    def test_older_json_with_matching_intake_is_not_stale(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment, templates, config = _build_assignment(
+                temp_dir,
+                "Fee: [[FEE_AMOUNT]]",
+                {"FEE_AMOUNT": "$3,250.00"},
+            )
+            workbook_path = assignment / "workbook.xlsx"
+            workbook = openpyxl.load_workbook(workbook_path)
+            intake = workbook.create_sheet("Intake")
+            intake.append(["FEE_AMOUNT", 3250])
+            workbook.save(workbook_path)
+            workbook.close()
+            registry_path = _write_registry(
+                temp_dir,
+                {
+                    "FEE_AMOUNT": {
+                        "value_kind": "currency_text",
+                        "source_of_truth": "intake",
+                        "producers": ["intake"],
+                        "used_in": ["deliver"],
+                    }
+                },
+            )
+            json_path = assignment / "TEST-900_variables.json"
+            os.utime(json_path, (1, 1))
+
+            result = validate_assignment(
+                assignment,
+                templates,
+                config,
+                registry_path=registry_path,
+            )
+
+            self.assertTrue(result["ready"])
+            self.assertEqual([], result["stale_intake_fields"])
+            self.assertFalse(
+                any("older than workbook" in warning for warning in result["warnings"])
+            )
+
+    def test_disabled_approach_ignores_its_formula_errors(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment, templates, config = _build_assignment(
+                temp_dir,
+                "temporary",
+                {
+                    "CA_DEVELOPED": "No",
+                    "VALUE_CONCLUSION": "$1,000,000",
+                },
+            )
+            workbook_path = assignment / "workbook.xlsx"
+            workbook = openpyxl.load_workbook(workbook_path)
+            outputs = workbook["outputs"]
+            outputs.append(["", "CA_VALUE", "#DIV/0!", "#DIV/0!"])
+            workbook.save(workbook_path)
+            workbook.close()
+
+            document = Document()
+            document.styles.add_style(
+                "MainSectionHeading",
+                WD_STYLE_TYPE.PARAGRAPH,
+            )
+            document.add_paragraph("[[VALUE_CONCLUSION]]")
+            document.add_paragraph(
+                "Cost Approach",
+                style="MainSectionHeading",
+            )
+            document.add_paragraph("[[CA_VALUE]]")
+            document.add_paragraph(
+                "Sales Comparison Approach",
+                style="MainSectionHeading",
+            )
+            document.save(templates / "report.docx")
+
+            disabled = validate_assignment(assignment, templates, config)
+            self.assertTrue(disabled["ready"])
+
+            json_path = assignment / "TEST-900_variables.json"
+            json_path.write_text(
+                json.dumps(
+                    {
+                        "CA_DEVELOPED": "Yes",
+                        "VALUE_CONCLUSION": "$1,000,000",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            enabled = validate_assignment(assignment, templates, config)
+            self.assertFalse(enabled["ready"])
+            self.assertTrue(
+                any("CA_VALUE" in error for error in enabled["errors"])
+            )
 
     def test_missing_value_and_unsupported_block_prevent_readiness(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -205,10 +382,12 @@ class ValidateAssignmentTests(unittest.TestCase):
             project_root / "tests" / "fixtures" / "DEMO-001",
             project_root / config["templates_dir"],
             config["stages"]["deliver"],
+            registry_path=project_root / config["field_registry"],
         )
 
         self.assertTrue(result["checked"])
         self.assertEqual([], result["missing"])
+        self.assertEqual([], result["stale_intake_fields"])
         self.assertEqual("DEMO-001", result["assignment"])
 
     def test_media_asset_is_validated_and_injected(self):

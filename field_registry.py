@@ -52,6 +52,29 @@ def _is_block(key):
     return any(key.endswith(suffix) for suffix in BLOCK_SUFFIXES)
 
 
+def _output_row_is_produced(row_number, raw_value, formatted_value):
+    if raw_value not in (None, ""):
+        return True
+    if formatted_value in (None, ""):
+        return False
+    if not (
+        isinstance(formatted_value, str)
+        and formatted_value.startswith("=")
+    ):
+        return True
+
+    references = re.findall(
+        r"(?:'[^']+'!|[A-Za-z0-9_]+!)?\$?([A-Z]{1,3})\$?(\d+)",
+        formatted_value,
+    )
+    if not references:
+        return True
+    return any(
+        column != "C" or int(referenced_row) != row_number
+        for column, referenced_row in references
+    )
+
+
 def _docx_placeholders(docx_path):
     placeholders = set()
     with zipfile.ZipFile(docx_path) as package:
@@ -71,6 +94,7 @@ def inventory_workbook(workbook_path):
     )
     intake = {}
     outputs = set()
+    produced_outputs = set()
     try:
         if "Intake" in workbook.sheetnames:
             sheet = workbook["Intake"]
@@ -81,14 +105,33 @@ def inventory_workbook(workbook_path):
 
         if "outputs" in workbook.sheetnames:
             sheet = workbook["outputs"]
-            for row in sheet.iter_rows(min_row=1, min_col=2, max_col=2, values_only=True):
+            for row_number, row in enumerate(
+                sheet.iter_rows(
+                min_row=1,
+                min_col=2,
+                max_col=4,
+                values_only=True,
+                ),
+                start=1,
+            ):
                 key = row[0]
                 if _is_key(key):
-                    outputs.add(key.strip())
+                    normalized_key = key.strip()
+                    outputs.add(normalized_key)
+                    if _output_row_is_produced(
+                        row_number,
+                        row[1],
+                        row[2],
+                    ):
+                        produced_outputs.add(normalized_key)
     finally:
         workbook.close()
 
-    return {"intake": intake, "workbook_output": outputs}
+    return {
+        "intake": intake,
+        "workbook_output": outputs,
+        "workbook_output_produced": produced_outputs,
+    }
 
 
 def inventory_templates(templates_dir, stages):
@@ -152,7 +195,7 @@ def build_registry(
     templates_dir,
     stages,
     fixture_json_path=None,
-    schema_version="1.1.0",
+    schema_version="1.1.1",
 ):
     """Build the initial authoritative registry from the verified baseline."""
     workbook_inventory = inventory_workbook(workbook_path)
@@ -193,7 +236,7 @@ def build_registry(
         producers = []
         if key in workbook_inventory["intake"]:
             producers.append("intake")
-        if key in workbook_inventory["workbook_output"]:
+        if key in workbook_inventory["workbook_output_produced"]:
             producers.append("workbook_output")
         if key in fixture_keys:
             producers.append("json_export")
@@ -202,7 +245,7 @@ def build_registry(
         if variant_rule:
             source_of_truth = "application"
             producers = ["application"]
-        elif key in workbook_inventory["workbook_output"]:
+        elif key in workbook_inventory["workbook_output_produced"]:
             source_of_truth = "workbook_output"
         elif key in workbook_inventory["intake"]:
             source_of_truth = "intake"

@@ -84,11 +84,17 @@ def load_variables(json_path=None, workbook_path=None):
 
 # -- Run-merge replacement -----------------------------------------------------
 
-def _replace_in_paragraph(paragraph, variables, missing_keys):
+def _replace_in_paragraph(
+    paragraph,
+    variables,
+    missing_keys,
+    required_keys,
+):
     full_text = ''.join(run.text for run in paragraph.runs)
     if '[[' not in full_text:
         return
 
+    required_keys.update(re.findall(r'\[\[([A-Z0-9_]+)\]\]', full_text))
     new_text = full_text
     for key, value in variables.items():
         new_text = new_text.replace('[[' + key + ']]', str(value))
@@ -108,10 +114,16 @@ def _replace_in_paragraph(paragraph, variables, missing_keys):
 
 def _replace_in_doc(doc, variables):
     missing_keys = set()
+    required_keys = set()
 
     def _walk(paragraphs):
         for para in paragraphs:
-            _replace_in_paragraph(para, variables, missing_keys)
+            _replace_in_paragraph(
+                para,
+                variables,
+                missing_keys,
+                required_keys,
+            )
 
     _walk(doc.paragraphs)
 
@@ -131,7 +143,7 @@ def _replace_in_doc(doc, variables):
             for table in container.tables:
                 _walk_table(table)
 
-    return missing_keys
+    return missing_keys, required_keys
 
 
 # -- Blank-row removal ---------------------------------------------------------
@@ -375,7 +387,7 @@ def fill_document(template_path, output_path, variables, remove_blank_rows=True)
     removed_sections = _remove_conditional_sections(doc, variables)
 
     # 2. Substitute [[KEY]] placeholders
-    missing_keys = _replace_in_doc(doc, variables)
+    missing_keys, required_keys = _replace_in_doc(doc, variables)
 
     # 3. Remove blank table rows
     if remove_blank_rows:
@@ -397,5 +409,6 @@ def fill_document(template_path, output_path, variables, remove_blank_rows=True)
         'filled':           len(variables),
         'missing':          missing,
         'blocks':           blocks,
+        'required_keys':    sorted(required_keys),
         'removed_sections': removed_sections,
     }

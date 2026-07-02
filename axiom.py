@@ -40,7 +40,11 @@ from comp_builder import inject_comp_section
 from dilmore import dilmore_factor, dilmore_adj_pct
 from media_blocks import create_media_directories, inject_media_blocks
 from structured_blocks import inject_ownership_history
-from validation import find_docx_placeholders, validate_assignment
+from validation import (
+    find_docx_placeholders,
+    intake_json_findings,
+    validate_assignment,
+)
 
 
 # ─── Bootstrap ────────────────────────────────────────────────────────────────
@@ -165,6 +169,29 @@ def cmd_engage(args):
         print(f"  No variables.json found in {adir.name}")
         print(f"  Fill out the Intake tab in workbook.xlsx and click Export JSON first.")
         return
+
+    workbook_path = adir / "workbook.xlsx"
+    if workbook_path.exists():
+        try:
+            stale_fields, freshness_warnings = intake_json_findings(
+                workbook_path,
+                json_path,
+                FIELD_REGISTRY,
+            )
+        except Exception as exc:
+            print(f"  Intake/JSON freshness check failed: {exc}")
+            return False
+        for warning in freshness_warnings:
+            print(f"  Warning: {warning}")
+        if stale_fields:
+            print(
+                f"  Engagement blocked: {len(stale_fields)} canonical Intake "
+                "field(s) differ from exported JSON."
+            )
+            for key in stale_fields:
+                print(f"    - {key}")
+            print("  Re-export JSON from the current workbook, then retry.")
+            return False
 
     print(f"\n  Loading variables from {json_path.name} ...")
     variables = load_variables(json_path=json_path)
@@ -655,6 +682,12 @@ def cmd_validate(args):
     for error in result['errors']:
         print(f'  [ERROR] {error}')
 
+    if result.get("stale_intake_fields"):
+        stale_fields = result["stale_intake_fields"]
+        print(f'\n  Stale exported Intake fields ({len(stale_fields)}):')
+        for key in stale_fields:
+            print(f'    - {key}')
+
     if result['missing']:
         print(f'\n  Missing required fields ({len(result["missing"])}):')
         for key in result['missing']:
@@ -892,6 +925,10 @@ def _blockers_html(adir, esc):
     items += ''.join(
         f'<li>Unresolved block: {esc(k)}</li>'
         for k in unresolved
+    )
+    items += ''.join(
+        f'<li>Validation error: {esc(str(error))}</li>'
+        for error in check.get('errors', [])
     )
     count = len(missing) + len(unresolved) + len(check.get('errors', []))
     return (

@@ -1,6 +1,6 @@
 {
   "contract_id": "axiom.appraisal.fields",
-  "schema_version": "1.1.0",
+  "schema_version": "1.1.1",
   "status": "baseline",
   "load_order": [
     "json_export",
@@ -173,10 +173,9 @@
     },
     "CA_WEIGHT": {
       "value_kind": "percentage_text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "intake",
       "producers": [
         "intake",
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -352,9 +351,8 @@
     },
     "DEVELOPER_PROFIT_AMOUNT": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -363,9 +361,8 @@
     },
     "DEVELOPER_PROFIT_RATE": {
       "value_kind": "percentage_text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -775,10 +772,9 @@
     },
     "IA_WEIGHT": {
       "value_kind": "percentage_text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "intake",
       "producers": [
         "intake",
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -910,20 +906,16 @@
     },
     "LAND_ADJ_RELEVANT_MEAN": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
-      "producers": [
-        "workbook_output"
-      ],
+      "source_of_truth": "application",
+      "producers": [],
       "used_in": [
         "deliver"
       ]
     },
     "LAND_ADJ_RELEVANT_MEDIAN": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
-      "producers": [
-        "workbook_output"
-      ],
+      "source_of_truth": "application",
+      "producers": [],
       "used_in": [
         "deliver"
       ]
@@ -1038,30 +1030,24 @@
     },
     "LAND_CONCLUDED_RANGE": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
-      "producers": [
-        "workbook_output"
-      ],
+      "source_of_truth": "application",
+      "producers": [],
       "used_in": [
         "deliver"
       ]
     },
     "LAND_CONCLUDED_UNIT": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
-      "producers": [
-        "workbook_output"
-      ],
+      "source_of_truth": "application",
+      "producers": [],
       "used_in": [
         "deliver"
       ]
     },
     "LAND_PRIMARY_SALES": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
-      "producers": [
-        "workbook_output"
-      ],
+      "source_of_truth": "application",
+      "producers": [],
       "used_in": [
         "deliver"
       ]
@@ -1098,10 +1084,8 @@
     },
     "LAND_UNIT_OF_COMPARISON": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
-      "producers": [
-        "workbook_output"
-      ],
+      "source_of_truth": "application",
+      "producers": [],
       "used_in": [
         "deliver"
       ]
@@ -1142,9 +1126,8 @@
     },
     "LOAN_RATE": {
       "value_kind": "percentage_text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1196,9 +1179,8 @@
     },
     "MARSHALL_AREA_ADJ": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1207,9 +1189,8 @@
     },
     "MARSHALL_BASE_COST": {
       "value_kind": "currency_text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1218,9 +1199,8 @@
     },
     "MARSHALL_CURRENT_ADJ": {
       "value_kind": "currency_text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1229,9 +1209,8 @@
     },
     "MARSHALL_LOCAL_ADJ": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1240,9 +1219,8 @@
     },
     "MARSHALL_SECTION_DESC": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1251,9 +1229,8 @@
     },
     "MARSHALL_SECTION_REF": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1665,9 +1642,8 @@
     },
     "SCA_ADJ_NARROW_HIGH": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1676,9 +1652,8 @@
     },
     "SCA_ADJ_NARROW_LOW": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1687,9 +1662,8 @@
     },
     "SCA_ADJ_NARROW_MEAN": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1698,9 +1672,8 @@
     },
     "SCA_ADJ_NARROW_MEDIAN": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1709,9 +1682,8 @@
     },
     "SCA_ADJ_RELEVANT_MEAN": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1720,9 +1692,8 @@
     },
     "SCA_ADJ_RELEVANT_MEDIAN": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1894,9 +1865,8 @@
     },
     "SCA_QUAL_CONCLUSION": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "json_export",
       "producers": [
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -1917,10 +1887,9 @@
     },
     "SCA_WEIGHT": {
       "value_kind": "percentage_text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "intake",
       "producers": [
         "intake",
-        "workbook_output",
         "json_export"
       ],
       "used_in": [
@@ -2348,10 +2317,9 @@
     },
     "VALUE_WORDS": {
       "value_kind": "text",
-      "source_of_truth": "workbook_output",
+      "source_of_truth": "intake",
       "producers": [
         "intake",
-        "workbook_output",
         "json_export"
       ],
       "used_in": [

@@ -1,18 +1,21 @@
 """Non-mutating delivery validation for Axiom assignments."""
 
 import contextlib
+import datetime
 import importlib.util
 import io
+import json
 import os
 import re
 import tempfile
 import zipfile
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import openpyxl
 
 from comp_builder import load_comp_data
-from field_registry import audit_assignment_contract
+from field_registry import audit_assignment_contract, load_registry
 from fill_engine import fill_document, load_variables
 from media_blocks import MEDIA_BLOCKS, media_files_for_block, missing_media_reason
 from structured_blocks import (
@@ -59,10 +62,12 @@ def _find_variables_json(assignment_dir):
     return None, f"Multiple variables JSON files found: {names}"
 
 
-def _formula_cache_findings(workbook_path):
+def _formula_cache_findings(workbook_path, relevant_keys=None):
     """Return output-formula errors and warnings without modifying the workbook."""
     errors = []
     warnings = []
+    restrict_to_relevant = relevant_keys is not None
+    relevant_keys = set(relevant_keys or [])
 
     try:
         formula_wb = openpyxl.load_workbook(
@@ -97,9 +102,12 @@ def _formula_cache_findings(workbook_path):
                 key = f"outputs!B{row_number}"
             if not key or " " in key:
                 continue
+            if restrict_to_relevant and key not in relevant_keys:
+                continue
 
             has_formula = False
             has_usable_cached_value = False
+            key_errors = []
             for column in (3, 4):
                 source_value = formula_ws.cell(
                     row=row_number, column=column
@@ -115,14 +123,27 @@ def _formula_cache_findings(workbook_path):
                     isinstance(cached_value, str)
                     and cached_value.upper() in EXCEL_ERROR_VALUES
                 ):
-                    errors.append(
-                        f"{key} has Excel error {cached_value} "
-                        f"in outputs!{formula_ws.cell(row=row_number, column=column).coordinate}."
+                    key_errors.append(
+                        (
+                            formula_ws.cell(
+                                row=row_number,
+                                column=column,
+                            ).coordinate,
+                            cached_value,
+                        )
                     )
                 elif cached_value not in (None, "", "None"):
                     has_usable_cached_value = True
 
-            if has_formula and not has_usable_cached_value:
+            if key_errors:
+                locations = ", ".join(
+                    f"{coordinate} ({value})"
+                    for coordinate, value in key_errors
+                )
+                errors.append(
+                    f"{key} has Excel error cache(s) at outputs!{locations}."
+                )
+            elif has_formula and not has_usable_cached_value:
                 uncached.append(key)
 
         if uncached:
@@ -140,6 +161,137 @@ def _formula_cache_findings(workbook_path):
         value_wb.close()
 
     return errors, warnings
+
+
+def _normalized_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        return value.isoformat()
+    return " ".join(str(value).strip().split())
+
+
+def _decimal_value(value, percentage=False):
+    text = _normalized_text(value)
+    if not text:
+        return None
+    has_percent = text.endswith("%")
+    text = (
+        text.removesuffix("%")
+        .replace("$", "")
+        .replace(",", "")
+        .strip()
+    )
+    try:
+        number = Decimal(text)
+    except InvalidOperation:
+        return None
+    if percentage and has_percent:
+        number /= Decimal("100")
+    return number
+
+
+def _date_value(value):
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    text = _normalized_text(value)
+    for date_format in (
+        "%Y-%m-%d",
+        "%m/%d/%Y",
+        "%B %d, %Y",
+        "%b %d, %Y",
+    ):
+        try:
+            return datetime.datetime.strptime(text, date_format).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _field_values_match(workbook_value, json_value, value_kind):
+    workbook_text = _normalized_text(workbook_value)
+    json_text = _normalized_text(json_value)
+    if workbook_text == json_text:
+        return True
+    if not workbook_text or not json_text:
+        return False
+
+    if value_kind == "date_text":
+        workbook_date = _date_value(workbook_value)
+        json_date = _date_value(json_value)
+        return (
+            workbook_date is not None
+            and json_date is not None
+            and workbook_date == json_date
+        )
+
+    if value_kind in {"currency_text", "number_text"}:
+        workbook_number = _decimal_value(workbook_value)
+        json_number = _decimal_value(json_value)
+        return (
+            workbook_number is not None
+            and json_number is not None
+            and workbook_number == json_number
+        )
+
+    if value_kind == "percentage_text":
+        workbook_number = _decimal_value(workbook_value, percentage=True)
+        json_number = _decimal_value(json_value, percentage=True)
+        return (
+            workbook_number is not None
+            and json_number is not None
+            and workbook_number == json_number
+        )
+
+    return False
+
+
+def intake_json_findings(workbook_path, json_path, registry_path):
+    """Return canonical Intake keys that differ from the exported JSON."""
+    registry = load_registry(registry_path)
+    with open(json_path, encoding="utf-8") as json_file:
+        exported = json.load(json_file)
+
+    workbook = openpyxl.load_workbook(
+        workbook_path,
+        data_only=True,
+        read_only=True,
+    )
+    try:
+        if "Intake" not in workbook.sheetnames:
+            return [], ["Workbook has no Intake sheet for JSON freshness checks."]
+        sheet = workbook["Intake"]
+        intake_values = {}
+        for row in sheet.iter_rows(
+            min_row=1,
+            min_col=1,
+            max_col=2,
+            values_only=True,
+        ):
+            key = row[0]
+            if isinstance(key, str) and re.fullmatch(
+                r"[A-Z][A-Z0-9_]*",
+                key.strip(),
+            ):
+                intake_values[key.strip()] = row[1]
+    finally:
+        workbook.close()
+
+    stale = []
+    for key, workbook_value in intake_values.items():
+        definition = registry["fields"].get(key)
+        if not definition or definition.get("source_of_truth") != "intake":
+            continue
+        json_value = exported.get(key)
+        if not _field_values_match(
+            workbook_value,
+            json_value,
+            definition.get("value_kind", "text"),
+        ):
+            stale.append(key)
+    return sorted(stale), []
 
 
 def _classify_blocks(blocks, workbook_path, assignment_dir, variables):
@@ -237,6 +389,7 @@ def validate_assignment(
         "handled_blocks": [],
         "unresolved_blocks": {},
         "schema_version": None,
+        "stale_intake_fields": [],
     }
 
     if not assignment_dir.is_dir():
@@ -266,16 +419,6 @@ def validate_assignment(
     if result["errors"]:
         return result
 
-    formula_errors, formula_warnings = _formula_cache_findings(workbook_path)
-    result["errors"].extend(formula_errors)
-    result["warnings"].extend(formula_warnings)
-
-    if json_path.stat().st_mtime < workbook_path.stat().st_mtime:
-        result["warnings"].append(
-            "The variables JSON is older than workbook.xlsx. This can be normal "
-            "after calculation work, but Intake changes may not have been exported."
-        )
-
     try:
         variables = load_variables(
             json_path=json_path,
@@ -298,6 +441,42 @@ def validate_assignment(
         result["schema_version"] = contract["schema_version"]
         result["errors"].extend(contract["errors"])
         result["warnings"].extend(contract["warnings"])
+        try:
+            stale_fields, stale_warnings = intake_json_findings(
+                workbook_path,
+                json_path,
+                registry_path,
+            )
+        except Exception as exc:
+            result["errors"].append(
+                f"Intake/JSON freshness check failed: {exc}"
+            )
+        else:
+            result["stale_intake_fields"] = stale_fields
+            result["warnings"].extend(stale_warnings)
+            if stale_fields:
+                result["errors"].append(
+                    f"{len(stale_fields)} canonical Intake field(s) differ "
+                    "from the exported JSON. Re-export JSON from the current "
+                    "workbook."
+                )
+
+    formula_relevant_keys = set(fill_result["required_keys"])
+    if registry_path:
+        registry = load_registry(registry_path)
+        formula_relevant_keys = {
+            key
+            for key in formula_relevant_keys
+            if registry["fields"].get(key, {}).get("source_of_truth")
+            == "workbook_output"
+        }
+
+    formula_errors, formula_warnings = _formula_cache_findings(
+        workbook_path,
+        relevant_keys=formula_relevant_keys,
+    )
+    result["errors"].extend(formula_errors)
+    result["warnings"].extend(formula_warnings)
 
     result["checked"] = True
     result["missing"] = fill_result["missing"]

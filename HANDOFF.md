@@ -2,7 +2,8 @@
 
 - Last updated: 2026-07-01
 - Current agent: Codex
-- Last commit: `e7b3d1c` — Add versioned appraisal field contract.
+- Last commit: Field-aware freshness checkpoint (the commit containing this
+  handoff; use `git log -1 --oneline` for its immutable hash).
 
 ## Current objective
 
@@ -76,21 +77,37 @@ blocks before connecting external services.
   fixture loading now proves they are regenerated from canonical facts.
 - Kept semantically meaningful short/full property and value labels explicit.
 - Expanded the automated baseline to twelve passing tests.
+- Replaced workbook/JSON modification-time warnings with exact comparisons of
+  canonical Intake-owned fields.
+- Validation now names changed Intake keys and requires a fresh JSON export
+  before final delivery.
+- Engagement generation uses the same freshness gate and stops before creating
+  documents when canonical Intake fields differ.
+- Formula-cache checks now inspect only workbook-owned fields required by the
+  conditionally trimmed report; disabled approaches no longer create blockers.
+- Corrected output ownership so same-row formatting formulas do not falsely
+  claim Intake/JSON fields.
+- Populated the approved fictional fixture's Intake sheet from its canonical
+  JSON for full registry-aware testing.
+- Advanced the field contract to v1.1.1 and the application to v0.4.0.
+- Expanded the automated baseline to sixteen passing tests.
 
 ## In progress
 
-- Canonical presentation-variant derivation is ready for a source checkpoint.
+- Field-aware freshness and formula-cache validation are ready for a source
+  checkpoint.
 
 ## Exact next step
 
-Replace file-level JSON freshness heuristics with field-aware stale-input and
-formula-cache checks. Fixture media and comp rows should be added when
-representative fictional assets are available.
+Add representative fictional comparable rows and media to exercise the
+remaining report-block pipelines and visual layout.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 12 tests passed.
-- `python axiom.py contract`: passed at v1.1.0 with 220 fields and 20 blocks.
+- `python -m unittest discover -s tests -v`: 16 tests passed.
+- `python axiom.py contract`: passed at v1.1.1 with 220 fields and 20 blocks.
+- Registry-aware fixture freshness check: 0 stale Intake fields and 0 cache
+  warnings.
 - `axiom.py --help`: passed with the warning corrected.
 - `DEMO-001` fixture validation: 0 ordinary missing fields and 17 unresolved
   blocks (eight missing media inputs, eight AI narratives, and comp data).
@@ -114,6 +131,9 @@ representative fictional assets are available.
   Python runtime was used for checks.
 - DOCX media layout has structural test coverage but still needs visual QA with
   representative landscape and portrait photos.
+- Missing/error Excel caches are detectable. A valid-looking but stale cached
+  value cannot be proven stale from XLSX alone without an Excel-side
+  calculation stamp or automation.
 - The existing parent-folder `PROJECT_STATE.md` is historical and contains
   stale claims. This file and the project-root `PROJECT_STATE.md` are the
   canonical handoff documents going forward.

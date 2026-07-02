@@ -46,6 +46,7 @@ Open a terminal, navigate to the axiom_platform folder, then:
   python axiom.py engage 2026-001
       Generates engagement letter + document request + invoice.
       Run this after filling out the Intake tab and exporting JSON.
+      Stops if canonical Intake fields no longer match that JSON export.
 
   python axiom.py deliver 2026-001
       Generates a final appraisal report only when validation passes.
@@ -91,6 +92,9 @@ WORKFLOW
 5. Validate
    → python axiom.py validate 2026-001
    → Resolve all required fields and document blocks
+   → Re-export JSON only when named canonical Intake fields differ
+   → Formula-cache errors are limited to workbook-owned fields used by the
+     active report sections
 
 6. Deliver
    → python axiom.py deliver 2026-001

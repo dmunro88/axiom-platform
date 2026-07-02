@@ -25,6 +25,17 @@ When a key exists in both Intake and workbook Outputs, `workbook_output` is the
 source of truth because `fill_engine.load_variables()` loads JSON first and
 then applies the last nonblank workbook output.
 
+An Outputs row is a workbook producer only when its raw-value cell contains a
+value/formula or its formatted-value formula derives from another cell. A
+formatting formula that merely references the blank raw cell on the same row
+does not take ownership away from Intake or JSON.
+
+Validation compares only Intake-owned canonical fields with exported JSON.
+File modification times are not used because ordinary calculation work makes
+the workbook newer without making Intake JSON stale. Formula-cache checks are
+limited to workbook-owned keys actually present after conditional report
+sections are removed.
+
 ## Canonical facts and presentation variants
 
 Presentation variants are generated after JSON and workbook values are merged.

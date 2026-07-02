@@ -26,3 +26,6 @@ now generated from the fixture's existing assignment fields.
 Presentation-only lowercase, title-case, and zoning-table aliases are omitted
 from fixture JSON. `fill_engine.load_variables()` derives them from canonical
 fields during every test and report generation.
+
+The fixture workbook's Intake sheet mirrors its canonical JSON fields so
+registry-aware freshness validation can run without special fixture bypasses.
