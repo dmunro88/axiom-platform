@@ -59,8 +59,8 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Seven automated validation, delivery-state, media, and structured-block tests
-  pass.
+- Eight automated validation, delivery-state, media, structured-block, and
+  model-routing tests pass.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -82,8 +82,8 @@ Checks were performed without regenerating or modifying assignment outputs.
   JPG/PNG assets.
 - Ownership history is generated as a table from the existing owner,
   transfer-history, and prior-price fields.
-- Narrative model routing reads the wrong configuration level. It falls back to
-  `claude-sonnet-4-6` rather than honoring `models.per_command`.
+- Narrative generation honors `models.per_command`: drafting, adjustment
+  justification, and reconciliation can use separate configured models.
 - Cached Excel formula values are loaded with `openpyxl(data_only=True)`.
   Validation warns when the JSON predates the workbook, but that file-level
   heuristic cannot distinguish Intake edits from normal calculation work.

@@ -12,6 +12,7 @@ from docx import Document
 
 import axiom
 from media_blocks import inject_media_blocks
+from narrative_generator import _get_model
 from structured_blocks import inject_ownership_history
 from validation import find_docx_placeholders, validate_assignment
 
@@ -201,6 +202,37 @@ class ValidateAssignmentTests(unittest.TestCase):
             output_doc = Document(output_path)
             self.assertEqual("Owner of Record", output_doc.tables[0].cell(0, 0).text)
             self.assertEqual("Example Owner, LLC", output_doc.tables[0].cell(0, 1).text)
+
+    def test_narrative_model_uses_nested_command_routing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "models": {
+                            "default": "default-model",
+                            "per_command": {
+                                "draft": "draft-model",
+                                "reconcile": "reconcile-model",
+                            },
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                "draft-model",
+                _get_model(config_path, command="draft"),
+            )
+            self.assertEqual(
+                "reconcile-model",
+                _get_model(config_path, command="reconcile"),
+            )
+            self.assertEqual(
+                "default-model",
+                _get_model(config_path, command="unconfigured"),
+            )
 
 
 if __name__ == "__main__":

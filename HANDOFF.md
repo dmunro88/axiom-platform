@@ -2,7 +2,7 @@
 
 - Last updated: 2026-07-01
 - Current agent: Codex
-- Last commit: `b8a309d` — Establish safe Axiom platform baseline.
+- Last commit: `3ef3378` — Add report media and ownership block handlers.
 
 ## Current objective
 
@@ -56,20 +56,22 @@ blocks before connecting external services.
 - Added ownership-history table generation from the existing owner and
   prior-transfer fields.
 - Expanded the automated baseline to seven passing tests.
+- Fixed nested narrative model configuration and routed adjustment and
+  reconciliation prose through their configured command models.
+- Expanded the automated baseline to eight passing tests.
 
 ## In progress
 
-- Media and structured-block handlers are ready for a source checkpoint.
+- Narrative model routing is ready for a source checkpoint.
 
 ## Exact next step
 
-Fix narrative model routing, then define the versioned field/data contract.
-Fixture media and comp rows should be added when representative fictional
-assets are available.
+Define the versioned field/data contract. Fixture media and comp rows should be
+added when representative fictional assets are available.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 7 tests passed.
+- `python -m unittest discover -s tests -v`: 8 tests passed.
 - `axiom.py --help`: passed with the warning corrected.
 - `DEMO-001` fixture validation: 0 ordinary missing fields and 17 unresolved
   blocks (eight missing media inputs, eight AI narratives, and comp data).

@@ -36,16 +36,23 @@ from pathlib import Path
 
 # ── Model selection ────────────────────────────────────────────────────────────
 
-def _get_model(config_path=None):
+DEFAULT_MODEL = "claude-sonnet-4-6"
+
+
+def _get_model(config_path=None, command="draft"):
+    """Resolve a command model from the top-level ``models`` configuration."""
     if config_path is None:
         config_path = Path(__file__).parent / "config.json"
     try:
         with open(config_path, encoding="utf-8") as f:
             cfg = json.load(f)
-        return cfg.get("per_command", {}).get("draft",
-               cfg.get("default", "claude-sonnet-4-6"))
+        models = cfg.get("models", cfg)
+        return models.get("per_command", {}).get(
+            command,
+            models.get("default", DEFAULT_MODEL),
+        )
     except Exception:
-        return "claude-sonnet-4-6"
+        return DEFAULT_MODEL
 
 
 # ── Claude API caller ─────────────────────────────────────────────────────────
@@ -456,6 +463,13 @@ _PROMPT_BUILDERS = {
     "RECONCILIATION_NARRATIVE": _prompt_reconciliation,
 }
 
+_MODEL_COMMANDS = {
+    "SCA_ADJUSTMENT_NARRATIVE": "adj-justify",
+    "LAND_ADJUSTMENT_NARRATIVE": "adj-justify",
+    "SCA_CONCLUSION_NARRATIVE": "reconcile",
+    "RECONCILIATION_NARRATIVE": "reconcile",
+}
+
 
 # ── Public interface ──────────────────────────────────────────────────────────
 
@@ -479,7 +493,6 @@ def inject_all_narratives(doc_path, workbook_path, variables, config_path=None):
 
     doc_path      = Path(doc_path)
     workbook_path = Path(workbook_path)
-    model         = _get_model(config_path)
     doc           = _Document(str(doc_path))
 
     # Quick scan: which placeholders actually appear in this document?
@@ -493,7 +506,9 @@ def inject_all_narratives(doc_path, workbook_path, variables, config_path=None):
     results = {}
 
     for key in present:
-        print(f"  Generating {key} ...")
+        command = _MODEL_COMMANDS.get(key, "draft")
+        model = _get_model(config_path, command=command)
+        print(f"  Generating {key} via {model} ...")
         try:
             if key == "LAND_ADJUSTMENT_NARRATIVE":
                 comps = _read_land_adj(workbook_path)
@@ -538,7 +553,7 @@ def generate_adjustment_narrative(workbook_path, variables=None, config_path=Non
     if not comps:
         print("  Warning: land tab empty — [[LAND_ADJUSTMENT_NARRATIVE]] skipped.")
         return ""
-    model  = _get_model(config_path)
+    model = _get_model(config_path, command="adj-justify")
     prompt, max_tok = _prompt_land_adjustment(comps, variables)
     print(f"  Generating LAND_ADJUSTMENT_NARRATIVE via {model} ({len(comps)} comps) ...")
     narrative = _call_claude(prompt, model, max_tokens=max_tok)
