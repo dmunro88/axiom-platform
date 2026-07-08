@@ -1,6 +1,6 @@
 # Axiom Platform — Project State
 
-- Last verified: 2026-07-01
+- Last verified: 2026-07-08
 - Status: Functional prototype in active local use; production safeguards and
   repeatable tests are incomplete.
 
@@ -69,7 +69,7 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Sixty-two automated validation, delivery-state, stress, golden-DOCX,
+- Sixty-three automated validation, delivery-state, stress, golden-DOCX,
   comparable, historical-harvest, media, comp-page,
   structured-block, model-routing, contract, and presentation-derivation tests
   pass.
@@ -131,6 +131,10 @@ Checks were performed without regenerating or modifying assignment outputs.
   now produce searchable source-artifact records with binary/container hashes,
   dimensions, package locators, alternate duplicate provenance, explicit
   review, and changed-source rejection. Application version is v0.10.0.
+- Basic wide multi-year operating statements now explode into canonical
+  operating-expense lines, combining amount and per-square-foot columns by
+  year/scenario while preserving worksheet row/column provenance. Application
+  version is v0.10.1.
 - Maps, building sketches, and photo blocks use documented assignment asset
   paths; validation identifies missing files and delivery embeds available
   JPG/PNG assets.
@@ -228,8 +232,8 @@ Checks were performed without regenerating or modifying assignment outputs.
    CSV/workbook export.
 3. **Completed:** extend provenance/review to assignment conclusions and
    compact income snapshots.
-4. **Completed:** extend the model to row-level rent rolls and normalized
-   operating expenses.
+4. **Completed:** extend the model to row-level rent rolls, normalized
+   operating expenses, and basic wide multi-year operating statements.
 5. **Completed:** extend the model to bounded reusable market observations.
 6. **Completed:** extend the model to external and Office-embedded charts,
    maps, photos, sketches, and archived exhibits.

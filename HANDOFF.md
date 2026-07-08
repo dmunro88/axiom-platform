@@ -1,8 +1,8 @@
 # Current Handoff
 
-- Last updated: 2026-07-01
+- Last updated: 2026-07-08
 - Current agent: Codex
-- Last commit: Comparable intelligence vertical-slice checkpoint (the commit containing
+- Last commit: Wide operating-statement adapter checkpoint (the commit containing
   this handoff; use `git log -1 --oneline` for its immutable hash).
 
 ## Current objective
@@ -193,19 +193,29 @@ blocks before connecting external services.
   and full transactional rollback.
 - Advanced the application to v0.10.0 and expanded the baseline to sixty-two
   passing tests.
+- Added a basic wide operating-statement adapter for multi-year Excel layouts
+  with year/scenario columns, including two-row year-over-Actual/`$/SF`
+  headers.
+- Wide statements now explode to canonical operating-expense lines, combine
+  amount and amount-per-square-foot columns by year/scenario, skip total rows,
+  and retain worksheet row/column layout provenance.
+- Verified fictional wide-statement extraction, review, commit, persisted
+  layout metadata, and reviewed search.
+- Advanced the application to v0.10.1 and expanded the baseline to sixty-three
+  passing tests.
 
 ## In progress
 
-- Comparable intelligence vertical slice is ready for a source checkpoint.
+- Wide operating-statement adapter is ready for a source checkpoint.
 
 ## Exact next step
 
-Add layout adapters for wide multi-year operating statements, then design the
-canonical assignment-event model for bid-log/appraisal-log synchronization.
+Design the canonical assignment-event model for bid-log/appraisal-log
+synchronization before wiring any live external sync.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 62 tests passed.
+- `python -m unittest discover -s tests -v`: 63 tests passed.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000

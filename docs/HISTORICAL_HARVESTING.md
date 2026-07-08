@@ -102,9 +102,13 @@ market lease comparables. Each row can retain unit/suite, tenant, use, area,
 lease dates, monthly/annual rent, rent per square foot, reimbursement
 structure, occupancy status, and rent-roll date.
 
-Operating expenses use normalized long-form rows with period year/type,
-category, amount, amount per square foot, and notes. Total/subtotal rows are
-excluded so downstream analysis does not double count detail and totals.
+Operating expenses use period year/type, category, amount, amount per square
+foot, and notes. The extractor supports normalized long-form rows as well as
+basic wide multi-year statements where year/scenario columns are spread across
+the worksheet, including two-row headers such as year above `Actual` and
+`$/SF`. Wide rows are exploded into the same canonical expense-line contract.
+Total/subtotal rows are excluded so downstream analysis does not double count
+detail and totals.
 
 Both record identities include the parent assignment identity. Worksheet and
 source-row locators make every database row traceable to its original cell
@@ -121,21 +125,23 @@ python axiom.py financial-search --expenses --year 2025 --category taxes
 ## Verified fictional slice
 
 `tests/test_historical_harvest.py` builds a fictional old report and standalone
-income chart. `tests/test_financial_harvest.py` adds fictional rent-roll and
-expense workbooks, while `tests/test_observation_harvest.py` proves bounded
-heading-based narrative sections. `tests/test_artifact_harvest.py` adds
-external files, duplicate paths, Word-embedded images, and a native Excel
-chart. Together they prove scan, extraction, normalization, staging, review
-edits, commit, duplicate recommit, reviewed search, changed-source rejection,
-rollback, and database initialization/migration behavior.
+income chart. `tests/test_financial_harvest.py` adds fictional rent-roll,
+normalized expense, and wide multi-year operating-statement workbooks, while
+`tests/test_observation_harvest.py` proves bounded heading-based narrative
+sections. `tests/test_artifact_harvest.py` adds external files, duplicate
+paths, Word-embedded images, and a native Excel chart. Together they prove
+scan, extraction, normalization, staging, review edits, commit, duplicate
+recommit, reviewed search, changed-source rejection, rollback, and database
+initialization/migration behavior.
 
 ## Deliberate limits
 
-The expense extractor currently expects normalized long-form rows. Historical
-workbooks with years spread across columns or custom subtotal layouts will
-need layout adapters before archive-scale import. Neither rent-roll rows nor
-expense lines are automatically treated as market evidence; that distinction
-requires a later analytical promotion step.
+The expense extractor handles normalized long-form rows and basic wide
+multi-year operating statements. Highly customized statements with stacked
+sections, inconsistent subtotal bands, or non-year scenario columns will need
+additional layout adapters before archive-scale import. Neither rent-roll rows
+nor expense lines are automatically treated as market evidence; that
+distinction requires a later analytical promotion step.
 
 PDFs are currently indexed as whole-file exhibits rather than page-level
 artifacts. Embedded media classification uses filenames, container names, and

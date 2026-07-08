@@ -71,6 +71,21 @@ EXPENSE_SYNONYMS = {
 RENT_NUMBERS = {"sf_leased", "monthly_rent", "annual_rent", "rent_psf"}
 RENT_DATES = {"lease_start", "lease_end", "as_of_date"}
 EXPENSE_NUMBERS = {"period_year", "amount", "amount_per_sf"}
+TOTAL_PREFIXES = (
+    "total",
+    "subtotal",
+    "net operating income",
+    "effective gross",
+)
+PER_SF_MARKERS = (
+    "$/sf",
+    "$ / sf",
+    "per sf",
+    "psf",
+    "/sf",
+    "amount/sf",
+    "expense/sf",
+)
 
 
 def _norm(value):
@@ -183,6 +198,10 @@ def _coerce_expense(field, value):
     return str(value).strip() if value is not None else None
 
 
+def _is_total_category(category):
+    return _norm(category).startswith(TOTAL_PREFIXES)
+
+
 def _extract_rows(ws, header_row, mapping, kind, source_path):
     records = []
     as_of_date = _as_of_date(ws) if kind == "rent_roll" else None
@@ -217,9 +236,7 @@ def _extract_rows(ws, header_row, mapping, kind, source_path):
             category = data.get("category")
             if not category or data.get("amount") is None:
                 continue
-            if _norm(category).startswith(
-                ("total", "subtotal", "net operating income", "effective gross")
-            ):
+            if _is_total_category(category):
                 continue
         records.append({
             "data": data,
@@ -228,6 +245,193 @@ def _extract_rows(ws, header_row, mapping, kind, source_path):
             "sheet": ws.title,
             "source_row": row_number,
         })
+    return records
+
+
+def _left_fill(row):
+    filled = []
+    last = None
+    for value in row:
+        if value not in (None, ""):
+            last = value
+        filled.append(last)
+    return filled
+
+
+def _period_type_from_text(text):
+    normalized = _norm(text).replace("-", " ")
+    if "budget" in normalized:
+        return "budget", "high"
+    if "pro forma" in normalized or "proforma" in normalized:
+        return "proforma", "high"
+    if "projected" in normalized or "projection" in normalized:
+        return "proforma", "medium"
+    if "forecast" in normalized:
+        return "forecast", "medium"
+    if "stabilized" in normalized or "stabilised" in normalized:
+        return "stabilized", "medium"
+    if "actual" in normalized or "audited" in normalized or "historical" in normalized:
+        return "actual", "high"
+    return None, None
+
+
+def _parse_period_header(*parts):
+    text = " ".join(str(part) for part in parts if part not in (None, "")).strip()
+    if not text:
+        return None
+    match = re.search(r"\b(19|20)\d{2}\b", text)
+    if not match:
+        return None
+    normalized = _norm(text)
+    value_field = (
+        "amount_per_sf"
+        if any(marker in normalized for marker in PER_SF_MARKERS)
+        else "amount"
+    )
+    period_type, period_confidence = _period_type_from_text(text)
+    return {
+        "period_year": int(match.group(0)),
+        "period_type": period_type,
+        "period_type_confidence": period_confidence,
+        "value_field": value_field,
+    }
+
+
+def _candidate_period_header(row, previous_row, column):
+    current = row[column] if column < len(row) else None
+    previous = previous_row[column] if previous_row and column < len(previous_row) else None
+    if previous not in (None, "") and current not in (None, ""):
+        parsed = _parse_period_header(previous, current)
+        if parsed:
+            return parsed
+    parsed = _parse_period_header(current)
+    if parsed:
+        return parsed
+    return _parse_period_header(previous)
+
+
+def _find_wide_expense_header(ws):
+    rows = list(
+        ws.iter_rows(
+            min_row=1,
+            max_row=min(ws.max_row, 40),
+            values_only=True,
+        )
+    )
+    for index, row in enumerate(rows):
+        previous_row = _left_fill(rows[index - 1]) if index else []
+        category_columns = [
+            column
+            for column, value in enumerate(row)
+            if _field_for_header(value, EXPENSE_SYNONYMS) == "category"
+        ]
+        for category_column in category_columns:
+            period_columns = {}
+            notes_column = None
+            for column, value in enumerate(row):
+                if column == category_column:
+                    continue
+                field = _field_for_header(value, EXPENSE_SYNONYMS)
+                if field == "notes":
+                    notes_column = column
+                    continue
+                parsed = _candidate_period_header(row, previous_row, column)
+                if parsed:
+                    period_columns[column] = parsed
+            amount_columns = [
+                column
+                for column, parsed in period_columns.items()
+                if parsed["value_field"] == "amount"
+            ]
+            if amount_columns:
+                return {
+                    "header_row": index + 1,
+                    "category_column": category_column,
+                    "period_columns": period_columns,
+                    "notes_column": notes_column,
+                }
+    return None
+
+
+def _extract_wide_expense_rows(ws, header, source_path):
+    records = []
+    header_row = header["header_row"]
+    category_column = header["category_column"]
+    period_columns = header["period_columns"]
+    notes_column = header.get("notes_column")
+    for row_number, row in enumerate(
+        ws.iter_rows(min_row=header_row + 1, values_only=True),
+        start=header_row + 1,
+    ):
+        category = (
+            str(row[category_column]).strip()
+            if category_column < len(row) and row[category_column] not in (None, "")
+            else None
+        )
+        if not category or _is_total_category(category):
+            continue
+        notes = (
+            str(row[notes_column]).strip()
+            if notes_column is not None
+            and notes_column < len(row)
+            and row[notes_column] not in (None, "")
+            else None
+        )
+        grouped = {}
+        source_columns = {}
+        for column, parsed in period_columns.items():
+            if column >= len(row) or row[column] in (None, ""):
+                continue
+            value = _coerce_expense(parsed["value_field"], row[column])
+            if value is None:
+                continue
+            key = (parsed["period_year"], parsed.get("period_type"))
+            group = grouped.setdefault(
+                key,
+                {
+                    "category": category,
+                    "period_year": parsed["period_year"],
+                },
+            )
+            group[parsed["value_field"]] = value
+            if parsed.get("period_type"):
+                group["period_type"] = parsed["period_type"]
+            if notes:
+                group["notes"] = notes
+            source_columns.setdefault(key, []).append(column + 1)
+        for key, data in grouped.items():
+            if data.get("amount") is None:
+                continue
+            confidence = {
+                "category": "high",
+                "period_year": "high",
+                "amount": "high",
+            }
+            if data.get("period_type"):
+                confidence["period_type"] = (
+                    period_columns[source_columns[key][0] - 1].get(
+                        "period_type_confidence"
+                    )
+                    or "medium"
+                )
+            if data.get("amount_per_sf") is not None:
+                confidence["amount_per_sf"] = "medium"
+            if data.get("notes"):
+                confidence["notes"] = "medium"
+            first_col = min(source_columns[key])
+            last_col = max(source_columns[key])
+            locator = f"worksheet:{ws.title}:row:{row_number}:cols:{first_col}-{last_col}"
+            records.append({
+                "data": data,
+                "confidence": confidence,
+                "source": str(source_path),
+                "sheet": ws.title,
+                "source_row": row_number,
+                "provenance": {
+                    "source_locator": locator,
+                    "layout": "wide_operating_statement",
+                },
+            })
     return records
 
 
@@ -249,15 +453,29 @@ def extract_financial_workbook(path):
         for ws in workbook.worksheets:
             rent_header, rent_map = _find_header(ws, RENT_ROLL_SYNONYMS, 3)
             expense_header, expense_map = _find_header(ws, EXPENSE_SYNONYMS, 3)
+            wide_expense_header = _find_wide_expense_header(ws)
             sheet_name = _norm(ws.title)
             prefer_expense = "expense" in sheet_name
-            if expense_header and (prefer_expense or not rent_header):
+            normalized_expense_records = []
+            if (
+                expense_header
+                and "amount" in expense_map.values()
+                and (prefer_expense or not rent_header)
+            ):
+                normalized_expense_records = _extract_rows(
+                    ws,
+                    expense_header,
+                    expense_map,
+                    "expense",
+                    path,
+                )
+            if normalized_expense_records:
+                result["expense_records"].extend(normalized_expense_records)
+            elif wide_expense_header and (prefer_expense or not rent_header):
                 result["expense_records"].extend(
-                    _extract_rows(
+                    _extract_wide_expense_rows(
                         ws,
-                        expense_header,
-                        expense_map,
-                        "expense",
+                        wide_expense_header,
                         path,
                     )
                 )

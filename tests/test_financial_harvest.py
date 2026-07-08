@@ -116,6 +116,51 @@ def _build_expenses(path):
     workbook.close()
 
 
+def _build_wide_expenses(path):
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Operating Statement"
+    sheet.append([None, "2023", None, "2024", None, "2025 Budget", "Notes"])
+    sheet.append([
+        "Expense Category",
+        "Actual",
+        "Actual $/SF",
+        "Actual",
+        "Actual $/SF",
+        "Budget",
+        "Notes",
+    ])
+    sheet.append([
+        "Real Estate Taxes",
+        20_000,
+        8,
+        25_000,
+        10,
+        30_000,
+        "Fictional two-row header",
+    ])
+    sheet.append([
+        "Insurance",
+        10_000,
+        4,
+        12_000,
+        4.8,
+        15_000,
+        "Fictional two-row header",
+    ])
+    sheet.append([
+        "Total Operating Expenses",
+        30_000,
+        12,
+        37_000,
+        14.8,
+        45_000,
+        None,
+    ])
+    workbook.save(path)
+    workbook.close()
+
+
 class FinancialHarvestTests(unittest.TestCase):
     def test_contract_descriptor_matches_financial_runtime(self):
         schema_path = (
@@ -221,6 +266,91 @@ class FinancialHarvestTests(unittest.TestCase):
             self.assertEqual(1, len(expense_rows))
             self.assertEqual(25_000, expense_rows[0]["amount"])
             self.assertEqual("confirmed", expense_rows[0]["review_status"])
+
+    def test_wide_operating_statement_explodes_to_expense_lines(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment = (
+                root
+                / "historical"
+                / "25C902 - Office - 999 Fictional Finance Road, Demo City"
+            )
+            assignment.mkdir(parents=True)
+            _build_report(assignment / "REPORT 25C902.docx")
+            _build_wide_expenses(
+                assignment / "Wide Operating Statement 2023-2025.xlsx"
+            )
+
+            staged_path = run_extraction(
+                root / "historical",
+                staged_dir=root / "staged",
+            )[0]
+            staged = json.loads(staged_path.read_text(encoding="utf-8"))
+            self.assertEqual(6, len(staged["expense_records"]))
+
+            taxes_2023 = next(
+                record
+                for record in staged["expense_records"]
+                if record["data"]["category"] == "Real Estate Taxes"
+                and record["data"]["period_year"] == 2023
+            )
+            taxes_2025 = next(
+                record
+                for record in staged["expense_records"]
+                if record["data"]["category"] == "Real Estate Taxes"
+                and record["data"]["period_year"] == 2025
+            )
+            self.assertEqual(20_000, taxes_2023["data"]["amount"])
+            self.assertEqual(8, taxes_2023["data"]["amount_per_sf"])
+            self.assertEqual("actual", taxes_2023["data"]["period_type"])
+            self.assertEqual("budget", taxes_2025["data"]["period_type"])
+            self.assertEqual(
+                "worksheet:Operating Statement:row:3:cols:2-3",
+                taxes_2023["provenance"]["source_locator"],
+            )
+            self.assertEqual(
+                "wide_operating_statement",
+                taxes_2023["provenance"]["layout"],
+            )
+
+            confirmed = confirm_extraction_result(
+                staged,
+                reviewer="fictional-wide-financial-qa",
+                reviewed_at="2026-07-02T15:00:00+00:00",
+            )
+            db_path = root / "wide-financial.db"
+            init_db(db_path, quiet=True)
+            connection = get_conn(db_path)
+            try:
+                with connection:
+                    counts = commit_extraction_result(confirmed, connection)
+                self.assertEqual(6, counts["operating_expenses"])
+                rows = connection.execute(
+                    """
+                    SELECT amount, amount_per_sf, period_type, source_record_json
+                    FROM operating_expenses
+                    WHERE category = ? AND period_year = ?
+                    """,
+                    ("Real Estate Taxes", 2025),
+                ).fetchall()
+                self.assertEqual(1, len(rows))
+                self.assertEqual(30_000, rows[0]["amount"])
+                self.assertEqual("budget", rows[0]["period_type"])
+                self.assertIn(
+                    "wide_operating_statement",
+                    rows[0]["source_record_json"],
+                )
+            finally:
+                connection.close()
+
+            searched = search_operating_expenses(
+                db_path,
+                period_year=2024,
+                category_contains="insurance",
+            )
+            self.assertEqual(1, len(searched))
+            self.assertEqual(12_000, searched[0]["amount"])
+            self.assertEqual(4.8, searched[0]["amount_per_sf"])
 
     def test_unconfirmed_financial_row_rolls_back_everything(self):
         with tempfile.TemporaryDirectory() as temp_dir:
