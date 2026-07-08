@@ -2,7 +2,7 @@
 
 - Last updated: 2026-07-08
 - Current agent: Codex
-- Last commit: Wide operating-statement adapter checkpoint (the commit containing
+- Last commit: Specialty Excel rent-roll adapter checkpoint (the commit containing
   this handoff; use `git log -1 --oneline` for its immutable hash).
 
 ## Current objective
@@ -203,19 +203,32 @@ blocks before connecting external services.
   layout metadata, and reviewed search.
 - Advanced the application to v0.10.1 and expanded the baseline to sixty-three
   passing tests.
+- Added specialty Excel rent-roll handling for mini-storage, mobile-home,
+  apartment, and RV/site-style headers without changing the database schema.
+- Rent-roll parsing now understands site/lot/room/apartment identifiers,
+  resident/name fields, move-in dates, lease-expiration variants, generic rent
+  columns, status, discounts, and notes.
+- Added defensive worksheet-dimension handling for workbooks whose `max_row`
+  metadata is missing.
+- Exact duplicate rent-roll and expense source rows collapse before review,
+  retaining alternate worksheet provenance.
+- Verified fictional specialty rent-roll extraction, duplicate collapse,
+  review, commit, reviewed search, and no-dimension header detection.
+- Advanced the application to v0.10.2 and expanded the baseline to sixty-five
+  passing tests.
 
 ## In progress
 
-- Wide operating-statement adapter is ready for a source checkpoint.
+- Specialty Excel rent-roll adapter is ready for a source checkpoint.
 
 ## Exact next step
 
-Design the canonical assignment-event model for bid-log/appraisal-log
-synchronization before wiring any live external sync.
+Add native PDF rent-roll/table parsing, then native text-position accounting
+PDF parsing. Keep OCR for scanned/image-only PDFs as a separate later lane.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 63 tests passed.
+- `python -m unittest discover -s tests -v`: 65 tests passed.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000

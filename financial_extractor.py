@@ -6,12 +6,59 @@ from pathlib import Path
 
 import openpyxl
 
+from comparable_contract import source_metadata
+
 
 RENT_ROLL_SYNONYMS = {
-    "unit_id": ["unit", "unit no", "unit number", "space", "space no"],
+    "unit_id": [
+        "unit",
+        "unit no",
+        "unit number",
+        "unit #",
+        "space",
+        "space no",
+        "space number",
+        "space #",
+        "lot",
+        "lot no",
+        "lot number",
+        "lot #",
+        "site",
+        "site no",
+        "site number",
+        "site #",
+        "room",
+        "room no",
+        "room number",
+        "room #",
+        "apt",
+        "apt no",
+        "apartment",
+        "apartment no",
+    ],
     "suite": ["suite", "suite no", "suite number"],
-    "tenant_name": ["tenant", "tenant name", "lessee", "occupant"],
-    "tenant_use": ["use", "tenant use", "business", "space use"],
+    "tenant_name": [
+        "tenant",
+        "tenant name",
+        "lessee",
+        "occupant",
+        "resident",
+        "resident name",
+        "name",
+    ],
+    "tenant_first_name": ["first name", "resident first", "tenant first"],
+    "tenant_last_name": ["last name", "resident last", "tenant last"],
+    "tenant_use": [
+        "use",
+        "tenant use",
+        "business",
+        "space use",
+        "unit type",
+        "site type",
+        "lot type",
+        "room type",
+        "size",
+    ],
     "sf_leased": [
         "sf",
         "square feet",
@@ -25,6 +72,10 @@ RENT_ROLL_SYNONYMS = {
         "start date",
         "commencement",
         "commencement date",
+        "move in",
+        "move-in",
+        "move in date",
+        "move-in date",
     ],
     "lease_end": [
         "lease end",
@@ -32,8 +83,22 @@ RENT_ROLL_SYNONYMS = {
         "expiration",
         "expiration date",
         "lease expiration",
+        "lease exp",
+        "exp date",
     ],
-    "monthly_rent": ["monthly rent", "rent monthly", "rent/mo", "base rent/mo"],
+    "monthly_rent": [
+        "monthly rent",
+        "rent monthly",
+        "rent/mo",
+        "base rent/mo",
+        "rent",
+        "lot rent",
+        "site rent",
+        "room rent",
+        "current rent",
+        "rate",
+        "payment",
+    ],
     "annual_rent": ["annual rent", "rent annual", "base rent annual"],
     "rent_psf": [
         "rent psf",
@@ -50,6 +115,9 @@ RENT_ROLL_SYNONYMS = {
         "lease basis",
     ],
     "occupancy_status": ["status", "occupancy", "occupancy status"],
+    "discounts": ["discount", "discounts", "concession", "concessions"],
+    "notes": ["notes", "note", "comments", "memo"],
+    "balance": ["balance", "amount due", "arrears"],
 }
 
 EXPENSE_SYNONYMS = {
@@ -68,7 +136,14 @@ EXPENSE_SYNONYMS = {
     "notes": ["notes", "comments", "source notes"],
 }
 
-RENT_NUMBERS = {"sf_leased", "monthly_rent", "annual_rent", "rent_psf"}
+RENT_NUMBERS = {
+    "sf_leased",
+    "monthly_rent",
+    "annual_rent",
+    "rent_psf",
+    "discounts",
+    "balance",
+}
 RENT_DATES = {"lease_start", "lease_end", "as_of_date"}
 EXPENSE_NUMBERS = {"period_year", "amount", "amount_per_sf"}
 TOTAL_PREFIXES = (
@@ -107,6 +182,25 @@ def _number(value):
         return None
 
 
+def _worksheet_max_row(ws, fallback=40):
+    max_row = getattr(ws, "max_row", None)
+    if isinstance(max_row, int) and max_row > 0:
+        return max_row
+    calculate_dimension = getattr(ws, "calculate_dimension", None)
+    if callable(calculate_dimension):
+        try:
+            dimension = calculate_dimension(force=True)
+        except TypeError:
+            dimension = calculate_dimension()
+        except Exception:
+            dimension = None
+        if dimension and dimension != "A1:A1":
+            matches = re.findall(r"\d+", dimension)
+            if matches:
+                return max(int(match) for match in matches)
+    return fallback
+
+
 def _date(value):
     if value in (None, ""):
         return None
@@ -119,8 +213,12 @@ def _date(value):
         "%Y-%m-%d",
         "%m/%d/%Y",
         "%m/%d/%y",
+        "%m %d %Y",
+        "%m.%d.%Y",
         "%B %d, %Y",
         "%b %d, %Y",
+        "%B %Y",
+        "%b %Y",
     ):
         try:
             return datetime.datetime.strptime(text, fmt).date().isoformat()
@@ -147,8 +245,9 @@ def _field_for_header(header, synonyms):
 
 def _find_header(ws, synonyms, minimum_fields):
     best = None
+    max_row = _worksheet_max_row(ws)
     for row_number, row in enumerate(
-        ws.iter_rows(min_row=1, max_row=min(ws.max_row, 40), values_only=True),
+        ws.iter_rows(min_row=1, max_row=min(max_row, 40), values_only=True),
         start=1,
     ):
         mapping = {}
@@ -166,9 +265,10 @@ def _find_header(ws, synonyms, minimum_fields):
 
 
 def _as_of_date(ws):
+    max_row = _worksheet_max_row(ws, 12)
     for row in ws.iter_rows(
         min_row=1,
-        max_row=min(ws.max_row, 12),
+        max_row=min(max_row, 12),
         values_only=True,
     ):
         text = " ".join(str(value) for value in row if value is not None)
@@ -180,6 +280,18 @@ def _as_of_date(ws):
         )
         if match:
             return _date(match.group(1))
+    for text in (getattr(ws, "title", ""),):
+        month_year = re.search(
+            r"\b("
+            r"January|February|March|April|May|June|July|August|"
+            r"September|October|November|December|"
+            r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec"
+            r")\s+(\d{4})\b",
+            text,
+            re.IGNORECASE,
+        )
+        if month_year:
+            return _date(month_year.group(0))
     return None
 
 
@@ -189,6 +301,28 @@ def _coerce_rent(field, value):
     if field in RENT_DATES:
         return _date(value)
     return str(value).strip() if value is not None else None
+
+
+def _prepare_rent_data(data, confidence):
+    first_name = data.get("tenant_first_name")
+    last_name = data.get("tenant_last_name")
+    if not data.get("tenant_name") and (first_name or last_name):
+        parts = [part for part in (first_name, last_name) if part]
+        data["tenant_name"] = " ".join(str(part).strip() for part in parts)
+        confidence["tenant_name"] = "medium"
+    if data.get("tenant_use"):
+        lowered = _norm(data["tenant_use"])
+        if lowered in {"vacant", "vacancy", "occupied"}:
+            data.setdefault("occupancy_status", data["tenant_use"])
+            confidence.setdefault("occupancy_status", "medium")
+            data.pop("tenant_use", None)
+            confidence.pop("tenant_use", None)
+    for field in ("discounts", "balance"):
+        if data.get(field) is not None and "reimbursement_structure" not in data:
+            label = field.replace("_", " ")
+            data["reimbursement_structure"] = f"{label}: {data[field]}"
+            confidence["reimbursement_structure"] = "low"
+    return data, confidence
 
 
 def _coerce_expense(field, value):
@@ -223,11 +357,12 @@ def _extract_rows(ws, header_row, mapping, kind, source_path):
                 data[field] = value
                 confidence[field] = "high"
         if kind == "rent_roll":
+            data, confidence = _prepare_rent_data(data, confidence)
             anchor = data.get("tenant_name") or data.get("unit_id") or data.get("suite")
             if not anchor:
                 continue
             label = _norm(anchor)
-            if label.startswith(("total", "subtotal", "average")):
+            if label.startswith(("total", "subtotal", "average", "grand total")):
                 continue
             if as_of_date:
                 data["as_of_date"] = as_of_date
@@ -311,10 +446,11 @@ def _candidate_period_header(row, previous_row, column):
 
 
 def _find_wide_expense_header(ws):
+    max_row = _worksheet_max_row(ws)
     rows = list(
         ws.iter_rows(
             min_row=1,
-            max_row=min(ws.max_row, 40),
+            max_row=min(max_row, 40),
             values_only=True,
         )
     )
@@ -435,6 +571,50 @@ def _extract_wide_expense_rows(ws, header, source_path):
     return records
 
 
+def _record_dedupe_key(record, fields):
+    data = record.get("data", {})
+    return tuple(_norm(data.get(field)) for field in fields)
+
+
+def _alternate_provenance(record, metadata_cache):
+    source_path = record.get("source")
+    provenance = {
+        "source_path": source_path,
+        "source_locator": (
+            f"worksheet:{record.get('sheet')}:row:{record.get('source_row')}"
+            if record.get("sheet") and record.get("source_row")
+            else None
+        ),
+    }
+    if source_path and Path(source_path).is_file():
+        metadata = metadata_cache.get(source_path)
+        if metadata is None:
+            metadata = source_metadata(source_path)
+            metadata_cache[source_path] = metadata
+        provenance.update(metadata)
+    return provenance
+
+
+def _dedupe_records(records, fields):
+    deduped = []
+    by_key = {}
+    metadata_cache = {}
+    for record in records:
+        key = _record_dedupe_key(record, fields)
+        if not any(key):
+            deduped.append(record)
+            continue
+        existing = by_key.get(key)
+        if existing:
+            existing.setdefault("alternate_provenance", []).append(
+                _alternate_provenance(record, metadata_cache)
+            )
+            continue
+        by_key[key] = record
+        deduped.append(record)
+    return deduped
+
+
 def extract_financial_workbook(path):
     """Extract normalized long-form rent-roll and expense rows from XLSX."""
     path = Path(path)
@@ -491,6 +671,31 @@ def extract_financial_workbook(path):
                 )
     finally:
         workbook.close()
+    result["rent_roll_entries"] = _dedupe_records(
+        result["rent_roll_entries"],
+        (
+            "as_of_date",
+            "unit_id",
+            "suite",
+            "tenant_name",
+            "tenant_use",
+            "lease_start",
+            "lease_end",
+            "monthly_rent",
+            "annual_rent",
+            "sf_leased",
+        ),
+    )
+    result["expense_records"] = _dedupe_records(
+        result["expense_records"],
+        (
+            "period_year",
+            "period_type",
+            "category",
+            "amount",
+            "amount_per_sf",
+        ),
+    )
     if not result["rent_roll_entries"] and not result["expense_records"]:
         result["warnings"].append(
             f"  [{path.name}] No normalized rent-roll or expense table found."

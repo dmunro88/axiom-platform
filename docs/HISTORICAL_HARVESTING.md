@@ -102,6 +102,15 @@ market lease comparables. Each row can retain unit/suite, tenant, use, area,
 lease dates, monthly/annual rent, rent per square foot, reimbursement
 structure, occupancy status, and rent-roll date.
 
+The Excel rent-roll adapter recognizes standard commercial rows plus common
+specialty-property variants from archive examples: mini-storage unit lists,
+mobile-home lot rolls, apartment room/unit rolls, and RV-site rolls. Site,
+lot, room, apartment, and unit identifiers normalize to the same canonical
+`unit_id` field. Resident/name, move-in, lease-expiration, rent, status,
+discount, and note-style columns are normalized where possible while retaining
+the original source record for review. Duplicate master-list/category-sheet
+rows collapse before review, with alternate worksheet provenance retained.
+
 Operating expenses use period year/type, category, amount, amount per square
 foot, and notes. The extractor supports normalized long-form rows as well as
 basic wide multi-year statements where year/scenario columns are spread across
@@ -125,8 +134,9 @@ python axiom.py financial-search --expenses --year 2025 --category taxes
 ## Verified fictional slice
 
 `tests/test_historical_harvest.py` builds a fictional old report and standalone
-income chart. `tests/test_financial_harvest.py` adds fictional rent-roll,
-normalized expense, and wide multi-year operating-statement workbooks, while
+income chart. `tests/test_financial_harvest.py` adds fictional standard and
+specialty rent-roll workbooks, normalized expense workbooks, and wide
+multi-year operating-statement workbooks, while
 `tests/test_observation_harvest.py` proves bounded heading-based narrative
 sections. `tests/test_artifact_harvest.py` adds external files, duplicate
 paths, Word-embedded images, and a native Excel chart. Together they prove
@@ -136,12 +146,14 @@ initialization/migration behavior.
 
 ## Deliberate limits
 
-The expense extractor handles normalized long-form rows and basic wide
-multi-year operating statements. Highly customized statements with stacked
-sections, inconsistent subtotal bands, or non-year scenario columns will need
-additional layout adapters before archive-scale import. Neither rent-roll rows
-nor expense lines are automatically treated as market evidence; that
-distinction requires a later analytical promotion step.
+The rent-roll extractor handles common Excel specialty-property layouts, but
+does not yet parse rent-roll PDFs or OCR scanned/image-only rent rolls. The
+expense extractor handles normalized long-form rows and basic wide multi-year
+operating statements. Highly customized statements with stacked sections,
+inconsistent subtotal bands, or non-year scenario columns will need additional
+layout adapters before archive-scale import. Neither rent-roll rows nor
+expense lines are automatically treated as market evidence; that distinction
+requires a later analytical promotion step.
 
 PDFs are currently indexed as whole-file exhibits rather than page-level
 artifacts. Embedded media classification uses filenames, container names, and
