@@ -522,12 +522,98 @@ def _assign_words_to_bands(words, bands):
     return result
 
 
+# Relative tolerance for cross-checking OCR'd rent-roll numbers against each
+# other (e.g. annual rent vs. monthly rent x 12). OCR digit errors on an
+# otherwise well-formed row (each field individually looks plausible) are the
+# hardest kind of mistake for a human reviewer to catch by eye -- these
+# checks catch them arithmetically instead of relying on confidence="low"
+# plus a rendered page image alone.
+_ARITHMETIC_TOLERANCE = 0.02
+_TOTAL_ROW_TOLERANCE = 0.03
+
+
+def _within_tolerance(actual, expected, tolerance=_ARITHMETIC_TOLERANCE):
+    if not expected:
+        return actual == expected
+    return abs(actual - expected) / abs(expected) <= tolerance
+
+
+def _rent_roll_arithmetic_warning(data, filename, page_number, row_number):
+    """Flag a row whose OCR'd numbers don't reconcile with each other, even
+    though every individual field looked plausible on its own -- usually a
+    sign of a single misread digit."""
+    monthly_rent = data.get("monthly_rent")
+    annual_rent = data.get("annual_rent")
+    sf_leased = data.get("sf_leased")
+    rent_psf = data.get("rent_psf")
+    issues = []
+    if monthly_rent and annual_rent:
+        expected_annual = monthly_rent * 12
+        if not _within_tolerance(annual_rent, expected_annual):
+            issues.append(
+                f"annual rent {annual_rent:,.2f} does not reconcile with "
+                f"monthly rent {monthly_rent:,.2f} (expected ~"
+                f"{expected_annual:,.2f})"
+            )
+    if annual_rent and sf_leased and rent_psf:
+        expected_psf = annual_rent / sf_leased
+        if not _within_tolerance(rent_psf, expected_psf):
+            issues.append(
+                f"rent/SF {rent_psf:,.2f} does not reconcile with annual "
+                f"rent divided by leased SF (expected ~{expected_psf:,.2f})"
+            )
+    if not issues:
+        return None
+    return (
+        f"  [{filename}] page {page_number} row {row_number}: "
+        + "; ".join(issues)
+        + " -- likely an OCR digit error; verify against the source scan."
+    )
+
+
+def _rent_roll_total_reconciliation_warning(records, total_row_data, filename, page_number):
+    """Compare summed data-row values against the page's own discarded
+    Total row (if OCR found one). A mismatch usually means a row was
+    misread badly enough to be dropped, or a value on a kept row was
+    misread -- either way, a silent shortfall a checksum can catch even
+    though every kept row individually passed review."""
+    if not total_row_data:
+        return None
+    issues = []
+    for field, label in (
+        ("monthly_rent", "monthly rent"),
+        ("annual_rent", "annual rent"),
+        ("sf_leased", "leased SF"),
+    ):
+        total_value = total_row_data.get(field)
+        if total_value is None:
+            continue
+        summed = sum(record["data"].get(field) or 0 for record in records)
+        if not _within_tolerance(summed, total_value, tolerance=_TOTAL_ROW_TOLERANCE):
+            issues.append(
+                f"{label} column sums to {summed:,.2f} but the page's Total "
+                f"row reports {total_value:,.2f}"
+            )
+    if not issues:
+        return None
+    return (
+        f"  [{filename}] page {page_number}: " + "; ".join(issues)
+        + " -- a row may be missing or misread; verify against the source scan."
+    )
+
+
 def _ocr_rent_roll_rows(lines, path, page_number, as_of_date, extra_provenance=None):
+    """Returns (records, header_found, warnings). `header_found` lets the
+    caller warn when a page has no recognizable rent-roll header at all
+    (e.g. a continuation page of a multi-page rent roll that doesn't repeat
+    the header row) instead of silently yielding zero rows for that page."""
     header_line, bands = _ocr_header_bands(lines, RENT_ROLL_SYNONYMS, 3)
     if header_line is None:
-        return []
+        return [], False, []
     header_index = lines.index(header_line)
     records = []
+    warnings = []
+    total_row_data = None
     for row_number, line in enumerate(lines[header_index + 1:], start=1):
         cells = _assign_words_to_bands(line["words"], bands)
         data = {}
@@ -544,7 +630,13 @@ def _ocr_rent_roll_rows(lines, path, page_number, as_of_date, extra_provenance=N
             continue
         label = _norm(anchor)
         if label.startswith(("total", "subtotal", "average", "grand total")):
+            total_row_data = data
             continue
+        row_warning = _rent_roll_arithmetic_warning(
+            data, path.name, page_number, row_number
+        )
+        if row_warning:
+            warnings.append(row_warning)
         if as_of_date:
             data["as_of_date"] = as_of_date
             confidence["as_of_date"] = "low"
@@ -562,7 +654,12 @@ def _ocr_rent_roll_rows(lines, path, page_number, as_of_date, extra_provenance=N
             "source_locator": source_locator,
             "provenance": provenance,
         })
-    return records
+    total_warning = _rent_roll_total_reconciliation_warning(
+        records, total_row_data, path.name, page_number
+    )
+    if total_warning:
+        warnings.append(total_warning)
+    return records, True, warnings
 
 
 def _extract_via_ocr(path):
@@ -637,15 +734,23 @@ def _extract_via_ocr(path):
     period_type, period_confidence = _period_type_from_text(all_text)
 
     for page_number, lines in page_lines:
-        result["rent_roll_entries"].extend(
-            _ocr_rent_roll_rows(
-                lines,
-                path,
-                page_number,
-                as_of_date,
-                provenance_by_page.get(page_number),
-            )
+        page_records, header_found, row_warnings = _ocr_rent_roll_rows(
+            lines,
+            path,
+            page_number,
+            as_of_date,
+            provenance_by_page.get(page_number),
         )
+        result["rent_roll_entries"].extend(page_records)
+        result["warnings"].extend(row_warnings)
+        if not header_found:
+            result["warnings"].append(
+                f"  [{path.name}] page {page_number}: no rent-roll header "
+                "recognized on this page; its rows (if any) were not "
+                "extracted. If this is a continuation page of a multi-page "
+                "rent roll that doesn't repeat the header, review the "
+                "source scan manually."
+            )
 
     result["expense_records"].extend(
         _expense_rows_from_pages(

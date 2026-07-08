@@ -2,9 +2,10 @@
 
 - Last updated: 2026-07-08
 - Current agent: Claude
-- Last commit before this session's changes: `f13ff45` "Add native text PDF
-  expense harvesting" (Codex). This session's OCR-lane work is implemented but
-  **not yet committed** — see "Do not touch" below.
+- Commits this session: `af29fb2` "Add OCR lane for scanned rent-roll and
+  expense PDFs" (built on Codex's `f13ff45`), plus a same-day follow-up
+  commit addressing three issues a Fable-model review of `af29fb2` surfaced
+  (see "Completed this session" below for both).
 
 ## Current objective
 
@@ -285,41 +286,78 @@ baseline before connecting external services.
   recovery (`test_ocr_rotated_scan_recovers_orientation`), illegible-scan
   bail-out (`test_ocr_illegible_scan_bails_out_with_warning`), and graceful
   degradation when Tesseract isn't installed
-  (`test_ocr_lane_degrades_gracefully_without_tesseract`). All four, plus the
-  9 pre-existing financial-harvest tests, pass (13/13) — verified against an
-  isolated sandbox copy of the changed modules with byte-identical content to
-  what's in this checkout (see "Known limitations" for why not verified
-  directly in this checkout).
+  (`test_ocr_lane_degrades_gracefully_without_tesseract`).
+- Ran the full suite live in this checkout — `python -m unittest discover -s
+  tests -v` — and confirmed 71/71 pass, then `python axiom.py contract`
+  passed at v1.2.0. Committed as `af29fb2`.
+- Asked for and got three parallel Fable-model reviews of `af29fb2`
+  (data-safety/confidentiality, architecture-consistency, and an OCR
+  column-detection deep-dive). Two issues warranted an immediate follow-up
+  fix rather than backlog:
+  - The commit had shipped `HANDOFF.md`/`PROJECT_STATE.md` text saying the
+    work was "not yet committed" and the live test run "has not yet been
+    re-confirmed" — self-contradictory the moment it landed. Corrected in
+    this update.
+  - The 4 new OCR tests imported `fitz`/`numpy`/`Pillow` unguarded at module
+    level and had no skip guard for a missing Tesseract binary — since this
+    repo has no tracked `requirements.txt`, either could crash or fail the
+    whole test module on a machine that doesn't have them yet (exactly the
+    machine HANDOFF told the next session to test on). Added a guarded
+    import block plus `unittest.skipUnless` on all OCR tests (Tesseract-
+    dependent ones additionally gated on a live `_ocr_available()` check).
+  - The column-detection deep-dive independently confirmed a real (not just
+    theoretical) risk: an OCR-misread digit on an otherwise well-formed row
+    can slip past confidence="low" plus a review image because nothing
+    catches internal arithmetic inconsistency, and a page whose OCR'd text
+    has no recognizable header (e.g. an unheaded continuation page of a
+    multi-page rent roll) silently drops all its rows with no warning at
+    all. Added both checks to `pdf_financial_extractor.py`:
+    `_rent_roll_arithmetic_warning` (annual rent vs. monthly rent x 12,
+    rent/SF vs. annual rent / leased SF) and
+    `_rent_roll_total_reconciliation_warning` (summed column values vs. the
+    page's own discarded Total row), plus a warning whenever
+    `_ocr_rent_roll_rows` can't find a header on a page at all. Rows that
+    fail these checks are still staged for review (not dropped) — the
+    checks only add a warning naming the page/row.
+  - Two new regression tests cover these:
+    `test_ocr_arithmetic_mismatch_warns_without_dropping_row` and
+    `test_ocr_continuation_page_without_header_warns_instead_of_silent_loss`.
+  - The remaining review findings (page-image cleanup/lifecycle, the
+    rent-roll OCR path not being unified with the native path the way the
+    expense path was, the OCR→low-confidence rule being enforced by a
+    string-prefix check in three places instead of centrally, no
+    `app_version` bump for this lane) were judged lower-priority hardening,
+    not immediate bugs — left as backlog, not fixed this session.
+  - Ran the full suite live again — 73/73 pass (71 prior + 2 new regression
+    tests) — then `python axiom.py contract` passed at v1.2.0. Committed as
+    a follow-up to `af29fb2`.
 
 ## In progress
 
-- None — the OCR lane is functionally complete for its approved v1 scope.
+- None — the OCR lane and its post-review hardening pass are both complete
+  for the approved v1 scope.
 
 ## Exact next step
 
-1. **Re-run the full suite in this actual checkout** —
-   `python -m unittest discover -s tests -v` — to confirm all ~71 tests
-   (67 prior + 4 new OCR tests) pass here, then `python axiom.py contract`
-   (no field-registry keys changed, so this should still pass at v1.2.0).
-   This session could not do that final live run itself; see "Known
-   limitations."
-2. Review and commit this session's changes (see "Do not touch" for the file
-   list) — small, behavior-described commits per `AGENTS.md`.
-3. After that: extend the OCR lane's real-world install (Tesseract on
-   Derek's Windows machine) and do a live test against an actual scanned
-   rent roll or P&L, not just the synthetic fixtures.
-4. Longer-term, still open from before: add database migrations/backfills
+1. Extend the OCR lane's real-world install (Tesseract on Derek's Windows
+   machine) and do a live test against an actual scanned rent roll or P&L,
+   not just the synthetic fixtures.
+2. Consider the lower-priority hardening backlog from the Fable reviews
+   (see "Completed this session" above) if the OCR lane sees real use:
+   page-image retention/cleanup for `ingest/staged/ocr_pages/`, unifying the
+   OCR rent-roll path with the native path the way the expense path already
+   is, and centralizing the OCR→confidence="low" rule in `harvest_contract`
+   instead of a string-prefix check duplicated in three files.
+3. Longer-term, still open from before: add database migrations/backfills
    for legacy local comp rows before importing Derek's real historical
    archive (last remaining P1 comparable-intelligence item in
    `PROJECT_STATE.md`).
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 67 tests passed as of the prior
-  (Codex) checkpoint. This session added 4 OCR tests and verified 13/13
-  financial-harvest tests (9 prior + 4 new) pass in an isolated sandbox copy
-  of only the changed modules; the full ~71-test suite has not been re-run
-  live in this checkout this session — do that before committing.
+- `python -m unittest discover -s tests -v`: 73 tests pass, confirmed live
+  in this checkout (67 prior + 4 original OCR tests + 2 follow-up hardening
+  regression tests).
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000
@@ -355,35 +393,43 @@ baseline before connecting external services.
 - Do not live-test Adobe Sign, Xero, or Anthropic without explicit approval and
   local credentials.
 
-## Uncommitted changes this session (Claude, 2026-07-08)
+## Changed files this session (Claude, 2026-07-08)
 
-Not committed yet — see "Exact next step" item 1 (re-run the full suite
-live in this checkout) before committing. Changed/added files:
+Both commits described above (`af29fb2` and the same-day follow-up) together
+touch:
 
-- `pdf_financial_extractor.py` — OCR lane implementation.
+- `pdf_financial_extractor.py` — OCR lane implementation, plus the
+  follow-up's arithmetic/total-reconciliation checks and missing-header
+  warning.
 - `ingest.py` — OCR-aware terminal review markers (`_is_ocr_record`,
   `_ocr_flag`); no logic changes to extraction/commit.
 - `comp_review.py` — OCR warning banner + inline rendered-page-image display
   in `_render_record`.
-- `tests/test_financial_harvest.py` — 4 new OCR tests + 2 fixture-building
-  helpers (`_rasterize_to_scanned_pdf`, `_build_illegible_scan_pdf`).
+- `tests/test_financial_harvest.py` — 6 OCR tests total (the original 4 plus
+  2 follow-up regression tests) + fixture-building helpers.
 - `docs/OCR_LANE_DESIGN.md` — new design doc (approved and implemented).
-- `PROJECT_STATE.md`, `HANDOFF.md` — this update.
+- `PROJECT_STATE.md`, `HANDOFF.md` — updated both times.
 
 ## Known limitations
 
-- **This session's sandbox could not reliably run tests against this actual
-  checkout.** The bash tool's mount of this OneDrive-synced folder did not
-  pick up edits made through the file-editing tool even after repeated waits
-  (multiple minutes); it appears to reflect a snapshot rather than a live
-  sync within a session. Every change was verified correct by re-reading the
-  authoritative file content after each edit, and the exact same content was
-  separately verified to pass 13/13 relevant tests in an isolated sandbox
-  copy — but the full suite has not been executed live in this checkout.
-  **Whoever picks this up next should run
-  `python -m unittest discover -s tests -v` and `python axiom.py contract`
-  here first, before assuming anything beyond the financial-harvest tests is
-  unaffected.**
+- **This sandbox's bash tool mounts this OneDrive-synced folder in a way
+  that can lag behind edits made through the file-editing tool** — it can
+  take a snapshot-like view rather than a live sync within a session. This
+  was worked around successfully both times this session (once for the
+  original OCR-lane commit, once for the follow-up): after editing via the
+  file-editing tool and confirming correctness by re-reading, the same
+  content was pushed into bash's view via bash-native writes (`cp` from a
+  verified copy, or a heredoc write) before running tests — bash-native
+  writes to this mount are immediately self-consistent, unlike edits made
+  through the file-editing tool. Both times, the full suite was then run
+  live in this checkout and confirmed passing (71/71, then 73/73) before
+  committing — this is no longer an open verification gap, just a technique
+  worth knowing about for the next session's own edit/test cycles.
+- This same mount also does not let git commands unlink their own lock/temp
+  files after normal use (`.git/index.lock`, `.git/HEAD.lock`,
+  `.git/objects/**/tmp_obj_*` all warn "Operation not permitted" on cleanup,
+  even on a successful command). `mv` (not `rm`) clears a stale lock before
+  the next git command; the warnings themselves don't indicate corruption.
 - Plain `python` is not on PATH in the current Codex environment. The bundled
   Python runtime was used for checks.
 - DOCX media layout has structural test coverage but still needs visual QA with

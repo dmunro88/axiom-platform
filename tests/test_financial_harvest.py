@@ -10,7 +10,14 @@ from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from comparable_contract import confirm_extraction_result
 from db import (
@@ -29,10 +36,26 @@ from financial_extractor import (
     _find_header,
     extract_financial_workbook,
 )
-from pdf_financial_extractor import extract_financial_pdf
-import fitz  # PyMuPDF
-import numpy as np
-from PIL import Image
+from pdf_financial_extractor import _ocr_available, extract_financial_pdf
+
+# PyMuPDF/numpy/Pillow are only needed to *build* the synthetic scanned-PDF
+# fixtures below; unlike every other test dependency in this file, they're
+# new as of the OCR lane and not guaranteed to be installed yet (there's no
+# repo-tracked requirements.txt). Guard them so a missing package skips only
+# the OCR tests instead of crashing this entire module's collection.
+try:
+    import fitz  # PyMuPDF
+    import numpy as np
+    from PIL import Image
+    _OCR_TEST_DEPS_AVAILABLE = True
+except ImportError:
+    _OCR_TEST_DEPS_AVAILABLE = False
+
+# Whether the Tesseract OCR *binary* (not just the pytesseract pip wrapper)
+# is actually installed and reachable. `_ocr_available()` is safe to call
+# even when PyMuPDF/pytesseract failed to import -- it's guarded internally
+# in pdf_financial_extractor.py and just returns False.
+_TESSERACT_AVAILABLE = _ocr_available()
 
 
 def _build_report(path):
@@ -340,6 +363,110 @@ def _build_pdf_rent_roll(path):
         Spacer(1, 8),
         table,
     ])
+
+
+def _build_pdf_rent_roll_with_bad_annual_rent(path):
+    """A single row whose annual rent doesn't reconcile with monthly rent x
+    12 (every individual field still looks plausible) -- simulates an OCR
+    digit misread that the arithmetic cross-check is meant to catch."""
+    document = SimpleDocTemplate(str(path), pagesize=landscape(letter))
+    styles = getSampleStyleSheet()
+    rows = [
+        [
+            "Suite", "Tenant", "Use", "Rentable SF", "Lease Start",
+            "Expiration", "Monthly Rent", "Annual Rent", "Rent/SF", "Status",
+        ],
+        [
+            "201", "Fictional PDF Tenant Alpha", "Retail", "1,200",
+            "01/01/2024", "12/31/2028", "$2,400", "$38,800", "$24.00",
+            "Occupied",
+        ],
+    ]
+    table = Table(rows, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+    ]))
+    document.build([
+        Paragraph("Fictional Mismatched Rent Roll", styles["Title"]),
+        Spacer(1, 8),
+        table,
+    ])
+
+
+def _build_pdf_rent_roll_with_unheaded_continuation_page(path):
+    """Page 1: a normal headered rent-roll table. Page 2: a continuation
+    table with a data row only and no repeated header -- a common
+    real-world multi-page rent-roll layout that the original OCR lane
+    silently dropped without any warning."""
+    document = SimpleDocTemplate(str(path), pagesize=landscape(letter))
+    styles = getSampleStyleSheet()
+    page1_rows = [
+        [
+            "Suite", "Tenant", "Use", "Rentable SF", "Lease Start",
+            "Expiration", "Monthly Rent", "Annual Rent", "Rent/SF", "Status",
+        ],
+        [
+            "201", "Fictional PDF Tenant Alpha", "Retail", "1,200",
+            "01/01/2024", "12/31/2028", "$2,400", "$28,800", "$24.00",
+            "Occupied",
+        ],
+    ]
+    page1_table = Table(page1_rows, repeatRows=1)
+    page1_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+    ]))
+    page2_rows = [
+        [
+            "202", "Fictional PDF Tenant Beta", "Office", "900",
+            "03/01/2025", "02/28/2030", "$1,950", "$23,400", "$26.00",
+            "Occupied",
+        ],
+    ]
+    page2_table = Table(page2_rows)
+    page2_table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+    ]))
+    document.build([
+        Paragraph("Fictional Two-Page Rent Roll", styles["Title"]),
+        Spacer(1, 8),
+        page1_table,
+        PageBreak(),
+        page2_table,
+    ])
+
+
+def _rasterize_all_pages_to_scanned_pdf(native_pdf_path, dest_path, dpi=300):
+    """Like _rasterize_to_scanned_pdf but renders every page of the source
+    PDF into the resulting image-only PDF, instead of just page 1 -- used
+    to simulate a multi-page scanned document."""
+    zoom = dpi / 72.0
+    matrix = fitz.Matrix(zoom, zoom)
+    src = fitz.open(str(native_pdf_path))
+    doc = fitz.open()
+    img_paths = []
+    try:
+        for page in src:
+            pix = page.get_pixmap(matrix=matrix)
+            image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+            img_path = dest_path.with_suffix(f".p{page.number}.png")
+            image.save(img_path, format="PNG")
+            img_paths.append(img_path)
+            rect = fitz.Rect(0, 0, image.width * 72 / dpi, image.height * 72 / dpi)
+            new_page = doc.new_page(width=rect.width, height=rect.height)
+            new_page.insert_image(rect, filename=str(img_path))
+        doc.save(str(dest_path))
+    finally:
+        doc.close()
+        src.close()
+        for img_path in img_paths:
+            img_path.unlink()
 
 
 def _build_pdf_profit_and_loss(path):
@@ -918,6 +1045,10 @@ class FinancialHarvestTests(unittest.TestCase):
                 connection.close()
 
 
+    @unittest.skipUnless(
+        _OCR_TEST_DEPS_AVAILABLE and _TESSERACT_AVAILABLE,
+        "requires PyMuPDF/Pillow and a working local Tesseract install",
+    )
     def test_ocr_scanned_pdf_rent_roll_end_to_end(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1004,6 +1135,10 @@ class FinancialHarvestTests(unittest.TestCase):
             self.assertEqual(2, len(rows))
             self.assertEqual("confirmed", rows[0]["review_status"])
 
+    @unittest.skipUnless(
+        _OCR_TEST_DEPS_AVAILABLE and _TESSERACT_AVAILABLE,
+        "requires PyMuPDF/Pillow and a working local Tesseract install",
+    )
     def test_ocr_rotated_scan_recovers_orientation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1019,6 +1154,10 @@ class FinancialHarvestTests(unittest.TestCase):
             self.assertEqual("201", first["data"]["suite"])
             self.assertEqual(2_400, first["data"]["monthly_rent"])
 
+    @unittest.skipUnless(
+        _OCR_TEST_DEPS_AVAILABLE,
+        "requires PyMuPDF/numpy/Pillow to build the synthetic scan fixture",
+    )
     def test_ocr_illegible_scan_bails_out_with_warning(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1037,6 +1176,10 @@ class FinancialHarvestTests(unittest.TestCase):
                 result["warnings"],
             )
 
+    @unittest.skipUnless(
+        _OCR_TEST_DEPS_AVAILABLE,
+        "requires PyMuPDF/Pillow to build the synthetic scan fixture",
+    )
     def test_ocr_lane_degrades_gracefully_without_tesseract(self):
         import pdf_financial_extractor as pf
 
@@ -1059,6 +1202,56 @@ class FinancialHarvestTests(unittest.TestCase):
             self.assertEqual(1, len(result["warnings"]))
             self.assertIn("Tesseract is not installed", result["warnings"][0])
 
+    @unittest.skipUnless(
+        _OCR_TEST_DEPS_AVAILABLE and _TESSERACT_AVAILABLE,
+        "requires PyMuPDF/Pillow and a working local Tesseract install",
+    )
+    def test_ocr_arithmetic_mismatch_warns_without_dropping_row(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            native_pdf = root / "native_mismatch.pdf"
+            _build_pdf_rent_roll_with_bad_annual_rent(native_pdf)
+            scanned_pdf = root / "Fictional Mismatched Scan.pdf"
+            _rasterize_to_scanned_pdf(native_pdf, scanned_pdf)
+
+            result = extract_financial_pdf(scanned_pdf)
+
+            # The row is still staged for review -- confidence="low" plus a
+            # warning, not silently dropped -- because a checksum failure
+            # doesn't mean the row is worthless, just that it needs a human
+            # to check it against the source scan.
+            self.assertEqual(1, len(result["rent_roll_entries"]))
+            self.assertEqual(
+                38_800, result["rent_roll_entries"][0]["data"]["annual_rent"]
+            )
+            joined = " ".join(result["warnings"]).lower()
+            self.assertIn("does not reconcile", joined)
+
+    @unittest.skipUnless(
+        _OCR_TEST_DEPS_AVAILABLE and _TESSERACT_AVAILABLE,
+        "requires PyMuPDF/Pillow and a working local Tesseract install",
+    )
+    def test_ocr_continuation_page_without_header_warns_instead_of_silent_loss(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            native_pdf = root / "native_two_page.pdf"
+            _build_pdf_rent_roll_with_unheaded_continuation_page(native_pdf)
+            scanned_pdf = root / "Fictional Two Page Scan.pdf"
+            _rasterize_all_pages_to_scanned_pdf(native_pdf, scanned_pdf)
+
+            result = extract_financial_pdf(scanned_pdf)
+
+            # Page 1's headered row still extracts normally.
+            self.assertEqual(1, len(result["rent_roll_entries"]))
+            self.assertEqual(
+                "201", result["rent_roll_entries"][0]["data"]["suite"]
+            )
+            # Page 2's headerless continuation row can't be column-matched
+            # and is correctly not extracted -- but that gap must be
+            # surfaced as a warning naming the page, not swallowed silently.
+            joined = " ".join(result["warnings"]).lower()
+            self.assertIn("no rent-roll header recognized", joined)
+            self.assertIn("page 2", joined)
 
 
 if __name__ == "__main__":

@@ -69,14 +69,12 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Seventy-one automated validation, delivery-state, stress, golden-DOCX,
+- Seventy-three automated validation, delivery-state, stress, golden-DOCX,
   comparable, historical-harvest, media, comp-page,
   structured-block, model-routing, contract, presentation-derivation, and
-  OCR-lane tests pass. (The four new OCR tests were verified in this session
-  against an isolated copy of the changed modules with byte-identical content
-  to the committed files; a live `python -m unittest discover -s tests -v` run
-  in the real repo checkout has not yet been re-confirmed this session — see
-  `HANDOFF.md`.)
+  OCR-lane tests pass, confirmed live with `python -m unittest discover -s
+  tests -v` in this checkout (67 prior + 4 original OCR tests + 2 follow-up
+  hardening regression tests — see `HANDOFF.md`).
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -192,9 +190,17 @@ Checks were performed without regenerating or modifying assignment outputs.
 - Requires Tesseract OCR (a system binary, not a pip package) installed
   locally for the OCR lane to activate; if it's missing, extraction degrades
   to a clear warning instead of failing.
-- Four new tests cover the OCR lane: end-to-end scanned rent-roll extraction
+- A same-day follow-up hardening pass, prompted by a Fable-model review, added
+  two more safeguards to the OCR rent-roll lane: an arithmetic cross-check per
+  row (annual rent vs. monthly rent x12, rent/SF vs. annual rent / leased SF)
+  that warns on likely OCR digit errors without dropping the row, and a
+  warning whenever a page's OCR'd text has no recognizable rent-roll header
+  at all (previously silent — the common case on continuation pages of
+  multi-page rent rolls that don't repeat the header row).
+- Six tests cover the OCR lane: end-to-end scanned rent-roll extraction
   through commit, rotated-scan orientation recovery, illegible-scan bail-out,
-  and graceful degradation when Tesseract isn't installed.
+  graceful degradation when Tesseract isn't installed, an arithmetic-mismatch
+  warning case, and a headerless-continuation-page warning case.
 
 ## Data-safety status
 
