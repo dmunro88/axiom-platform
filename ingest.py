@@ -184,6 +184,29 @@ def _fmt(val, field=None):
     return str(val)
 
 
+def _is_ocr_record(record):
+    method = record.get("provenance", {}).get("extraction_method", "")
+    return str(method).startswith("ocr")
+
+
+def _ocr_flag(record):
+    """Terminal-review marker for OCR-derived rows: scanned source, lower
+    trust than native extraction, and a pointer to the saved page image so
+    Derek can visually cross-check it before confirming."""
+    if not _is_ocr_record(record):
+        return ""
+    provenance = record.get("provenance", {})
+    conf = provenance.get("ocr_avg_word_confidence")
+    image = provenance.get("rendered_page_image")
+    bits = ["  [OCR"]
+    if conf is not None:
+        bits.append(f" {conf:.0f}/100")
+    bits.append("]")
+    if image:
+        bits.append(f" see {image}")
+    return "".join(bits)
+
+
 def _print_comp(comp, idx, total):
     d = comp["data"]
     c = comp.get("confidence", {})
@@ -325,7 +348,9 @@ def review_staged(interactive=True):
                     print(f"    {key:<25} {_fmt(value, key)}")
 
         if rent_roll_entries:
-            print(f"\n  Rent roll: {len(rent_roll_entries)} row(s) found")
+            ocr_count = sum(1 for r in rent_roll_entries if _is_ocr_record(r))
+            print(f"\n  Rent roll: {len(rent_roll_entries)} row(s) found"
+                  + (f"  ({ocr_count} from OCR — verify against scans)" if ocr_count else ""))
             for record in rent_roll_entries:
                 data = record.get("data", {})
                 label = data.get("tenant_name") or data.get("suite") or data.get("unit_id")
@@ -333,15 +358,19 @@ def review_staged(interactive=True):
                     f"    {str(label):<25} "
                     f"{_fmt(data.get('sf_leased'), 'sf_leased')} SF  "
                     f"{_fmt(data.get('monthly_rent'), 'monthly_rent')}/mo"
+                    f"{_ocr_flag(record)}"
                 )
 
         if expense_records:
-            print(f"\n  Operating expenses: {len(expense_records)} line(s) found")
+            ocr_count = sum(1 for r in expense_records if _is_ocr_record(r))
+            print(f"\n  Operating expenses: {len(expense_records)} line(s) found"
+                  + (f"  ({ocr_count} from OCR — verify against scans)" if ocr_count else ""))
             for record in expense_records:
                 data = record.get("data", {})
                 print(
                     f"    {str(data.get('category')):<25} "
                     f"{_fmt(data.get('amount'), 'amount')}"
+                    f"{_ocr_flag(record)}"
                 )
 
         if market_observations:

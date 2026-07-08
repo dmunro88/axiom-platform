@@ -69,10 +69,14 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Sixty-seven automated validation, delivery-state, stress, golden-DOCX,
+- Seventy-one automated validation, delivery-state, stress, golden-DOCX,
   comparable, historical-harvest, media, comp-page,
-  structured-block, model-routing, contract, and presentation-derivation tests
-  pass.
+  structured-block, model-routing, contract, presentation-derivation, and
+  OCR-lane tests pass. (The four new OCR tests were verified in this session
+  against an isolated copy of the changed modules with byte-identical content
+  to the committed files; a live `python -m unittest discover -s tests -v` run
+  in the real repo checkout has not yet been re-confirmed this session — see
+  `HANDOFF.md`.)
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -174,6 +178,23 @@ Checks were performed without regenerating or modifying assignment outputs.
   fictionalization.
 - `README.txt` now reflects the current workbook name, invoice stage,
   validation command, comp marker, and draft-delivery behavior.
+- Scanned/image-only rent-roll and operating-expense PDFs are no longer a
+  dead end: an OCR lane (PyMuPDF rasterization + Tesseract, see
+  `docs/OCR_LANE_DESIGN.md`) rasterizes each page, corrects orientation, and
+  reuses the existing native-PDF table/expense matching logic against the
+  OCR'd words. Every OCR-derived field is forced to `confidence: "low"` and
+  flows through the same stage -> review -> commit gate as every other
+  harvest record — no new commit path was introduced. Pages that OCR too
+  poorly to trust (below ~40/100 average word confidence) are skipped with a
+  warning instead of staging speculative rows. Streamlit's comp-review view
+  shows the actual rendered page image inline for OCR-sourced rows so Derek
+  can visually cross-check before confirming.
+- Requires Tesseract OCR (a system binary, not a pip package) installed
+  locally for the OCR lane to activate; if it's missing, extraction degrades
+  to a clear warning instead of failing.
+- Four new tests cover the OCR lane: end-to-end scanned rent-roll extraction
+  through commit, rotated-scan orientation recovery, illegible-scan bail-out,
+  and graceful degradation when Tesseract isn't installed.
 
 ## Data-safety status
 

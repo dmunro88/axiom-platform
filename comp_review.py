@@ -153,6 +153,23 @@ def _render_record(staged_name, kind, idx, record, display_fields, edit_fields):
         with top[1]:
             st.checkbox("Keep", value=True, key=keep_key)
 
+        provenance = record.get("provenance", {})
+        if str(provenance.get("extraction_method", "")).startswith("ocr"):
+            ocr_conf = provenance.get("ocr_avg_word_confidence")
+            rotation = provenance.get("rotation_degrees_applied")
+            note = "OCR-derived — verify every field against the source scan below."
+            if ocr_conf is not None:
+                note += f" (OCR confidence: {ocr_conf:.0f}/100"
+                note += f", rotated {rotation}°)" if rotation else ")"
+            st.warning(note, icon="⚠️")
+            rendered_page_image = provenance.get("rendered_page_image")
+            if rendered_page_image:
+                image_path = Path(__file__).parent / rendered_page_image
+                if image_path.is_file():
+                    st.image(str(image_path), caption=rendered_page_image, width=500)
+                else:
+                    st.caption(f"(source page image not found: {rendered_page_image})")
+
         cols = st.columns(3)
         shown = 0
         for field, label in display_fields:

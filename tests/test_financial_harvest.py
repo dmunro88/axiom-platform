@@ -30,6 +30,9 @@ from financial_extractor import (
     extract_financial_workbook,
 )
 from pdf_financial_extractor import extract_financial_pdf
+import fitz  # PyMuPDF
+import numpy as np
+from PIL import Image
 
 
 def _build_report(path):
@@ -389,6 +392,51 @@ class NoDimensionSheet:
             ["L-1", "Fictional Resident", date(2025, 1, 1), 450],
         ]
         return iter(rows[min_row - 1:max_row])
+
+
+
+def _rasterize_to_scanned_pdf(native_pdf_path, dest_path, rotate_degrees=0, dpi=300):
+    """Render page 1 of a native PDF to an image and re-embed it as a new
+    image-only PDF (no text layer), optionally rotated, to simulate a
+    scanned/photographed document for OCR-lane testing."""
+    zoom = dpi / 72.0
+    matrix = fitz.Matrix(zoom, zoom)
+    src = fitz.open(str(native_pdf_path))
+    pix = src[0].get_pixmap(matrix=matrix)
+    image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    src.close()
+    if rotate_degrees:
+        image = image.rotate(-rotate_degrees, expand=True)
+    img_path = dest_path.with_suffix(".png")
+    image.save(img_path, format="PNG")
+    doc = fitz.open()
+    rect = fitz.Rect(0, 0, image.width * 72 / dpi, image.height * 72 / dpi)
+    page = doc.new_page(width=rect.width, height=rect.height)
+    page.insert_image(rect, filename=str(img_path))
+    doc.save(str(dest_path))
+    doc.close()
+    img_path.unlink()
+
+
+def _build_illegible_scan_pdf(dest_path, dpi=300):
+    """Build an image-only PDF containing pure random noise -- no legible
+    text at all -- to exercise the OCR lane's low-confidence bail-out path."""
+    rng = np.random.default_rng(42)
+    # A small noisy source image upscaled to a full page is still
+    # illegible and keeps fixture generation fast.
+    small = rng.integers(0, 256, size=(200, 160, 3), dtype=np.uint8)
+    image = Image.fromarray(small, mode="RGB").resize(
+        (int(8.5 * dpi), int(11 * dpi)), Image.NEAREST
+    )
+    img_path = dest_path.with_suffix(".png")
+    image.save(img_path, format="PNG")
+    doc = fitz.open()
+    rect = fitz.Rect(0, 0, image.width * 72 / dpi, image.height * 72 / dpi)
+    page = doc.new_page(width=rect.width, height=rect.height)
+    page.insert_image(rect, filename=str(img_path))
+    doc.save(str(dest_path))
+    doc.close()
+    img_path.unlink()
 
 
 class FinancialHarvestTests(unittest.TestCase):
@@ -868,6 +916,149 @@ class FinancialHarvestTests(unittest.TestCase):
                 self.assertIn("operating_expenses", tables)
             finally:
                 connection.close()
+
+
+    def test_ocr_scanned_pdf_rent_roll_end_to_end(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            native_pdf = root / "native.pdf"
+            _build_pdf_rent_roll(native_pdf)
+            scanned_pdf = root / "Fictional Scanned Rent Roll.pdf"
+            _rasterize_to_scanned_pdf(native_pdf, scanned_pdf)
+
+            result = extract_financial_pdf(scanned_pdf)
+            self.assertEqual([], result["warnings"])
+            self.assertEqual(2, len(result["rent_roll_entries"]))
+
+            first = result["rent_roll_entries"][0]
+            self.assertEqual(
+                "ocr_pdf_table_extractor",
+                first["provenance"]["extraction_method"],
+            )
+            self.assertEqual("tesseract", first["provenance"]["ocr_engine"])
+            self.assertGreater(
+                first["provenance"]["ocr_avg_word_confidence"], 0
+            )
+            self.assertTrue(
+                all(value == "low" for value in first["confidence"].values()),
+                "every OCR-derived field must be tagged confidence low",
+            )
+            rendered = first["provenance"].get("rendered_page_image")
+            self.assertIsNotNone(rendered)
+            image_path = Path(__file__).resolve().parents[1] / rendered
+            self.assertTrue(image_path.is_file())
+
+            # Numeric/date columns should still resolve correctly even though
+            # the source has no text layer at all.
+            self.assertEqual("201", first["data"]["suite"])
+            self.assertEqual(1_200, first["data"]["sf_leased"])
+            self.assertEqual(2_400, first["data"]["monthly_rent"])
+            self.assertEqual(28_800, first["data"]["annual_rent"])
+            self.assertEqual(24.0, first["data"]["rent_psf"])
+            self.assertEqual("2024-01-01", first["data"]["lease_start"])
+            self.assertEqual("2028-12-31", first["data"]["lease_end"])
+            self.assertEqual("2025-06-30", first["data"]["as_of_date"])
+            self.assertEqual("Occupied", first["data"]["occupancy_status"])
+
+            second = result["rent_roll_entries"][1]
+            self.assertEqual("202", second["data"]["suite"])
+            self.assertEqual(1_950, second["data"]["monthly_rent"])
+
+            # Confirm this flows through the normal stage -> review -> commit
+            # gate exactly like every other harvest record -- no special
+            # OCR-only commit path exists.
+            assignment = root / "historical" / "25C906 - Retail - 444 Fictional Scan Road, Demo City"
+            assignment.mkdir(parents=True)
+            _build_report(assignment / "REPORT 25C906.docx")
+            import shutil
+            shutil.copy(scanned_pdf, assignment / "Fictional Scanned Rent Roll.pdf")
+
+            staged_path = run_extraction(
+                root / "historical",
+                staged_dir=root / "staged",
+            )[0]
+            staged = json.loads(staged_path.read_text(encoding="utf-8"))
+            self.assertEqual(2, len(staged["rent_roll_entries"]))
+            self.assertEqual("unreviewed", staged["rent_roll_entries"][0]["review"]["status"])
+
+            confirmed = confirm_extraction_result(
+                staged,
+                reviewer="fictional-ocr-qa",
+                reviewed_at="2026-07-08T15:00:00+00:00",
+            )
+            db_path = root / "ocr-rent.db"
+            init_db(db_path, quiet=True)
+            connection = get_conn(db_path)
+            try:
+                with connection:
+                    counts = commit_extraction_result(confirmed, connection)
+                self.assertEqual(2, counts["rent_roll_entries"])
+            finally:
+                connection.close()
+
+            rows = search_rent_roll_entries(
+                db_path,
+                tenant_contains="",
+                as_of_date="2025-06-30",
+            )
+            self.assertEqual(2, len(rows))
+            self.assertEqual("confirmed", rows[0]["review_status"])
+
+    def test_ocr_rotated_scan_recovers_orientation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            native_pdf = root / "native.pdf"
+            _build_pdf_rent_roll(native_pdf)
+            scanned_pdf = root / "Fictional Rotated Rent Roll.pdf"
+            _rasterize_to_scanned_pdf(native_pdf, scanned_pdf, rotate_degrees=180)
+
+            result = extract_financial_pdf(scanned_pdf)
+            self.assertEqual(2, len(result["rent_roll_entries"]))
+            first = result["rent_roll_entries"][0]
+            self.assertEqual(180, first["provenance"]["rotation_degrees_applied"])
+            self.assertEqual("201", first["data"]["suite"])
+            self.assertEqual(2_400, first["data"]["monthly_rent"])
+
+    def test_ocr_illegible_scan_bails_out_with_warning(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            garbage_pdf = root / "Fictional Illegible Scan.pdf"
+            _build_illegible_scan_pdf(garbage_pdf)
+
+            result = extract_financial_pdf(garbage_pdf)
+            self.assertEqual([], result["rent_roll_entries"])
+            self.assertEqual([], result["expense_records"])
+            self.assertTrue(result["warnings"], "expected a bail-out warning")
+            joined = " ".join(result["warnings"]).lower()
+            self.assertTrue(
+                "confidence too low" in joined
+                or "no recognizable" in joined
+                or "ocr is required" in joined,
+                result["warnings"],
+            )
+
+    def test_ocr_lane_degrades_gracefully_without_tesseract(self):
+        import pdf_financial_extractor as pf
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            native_pdf = root / "native.pdf"
+            _build_pdf_rent_roll(native_pdf)
+            scanned_pdf = root / "Fictional Scanned Rent Roll No Engine.pdf"
+            _rasterize_to_scanned_pdf(native_pdf, scanned_pdf)
+
+            original = pf._tesseract_binary_ok
+            pf._tesseract_binary_ok = False
+            try:
+                result = extract_financial_pdf(scanned_pdf)
+            finally:
+                pf._tesseract_binary_ok = original
+
+            self.assertEqual([], result["rent_roll_entries"])
+            self.assertEqual([], result["expense_records"])
+            self.assertEqual(1, len(result["warnings"]))
+            self.assertIn("Tesseract is not installed", result["warnings"][0])
+
 
 
 if __name__ == "__main__":

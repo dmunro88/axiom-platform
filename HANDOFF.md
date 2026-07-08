@@ -1,14 +1,16 @@
 # Current Handoff
 
 - Last updated: 2026-07-08
-- Current agent: Codex
-- Last commit: Native text-position PDF expense checkpoint (the commit containing
-  this handoff; use `git log -1 --oneline` for its immutable hash).
+- Current agent: Claude
+- Last commit before this session's changes: `f13ff45` "Add native text PDF
+  expense harvesting" (Codex). This session's OCR-lane work is implemented but
+  **not yet committed** — see "Do not touch" below.
 
 ## Current objective
 
-Maintain a safe Claude ↔ Codex handoff baseline and close the report-generation
-blocks before connecting external services.
+Close the OCR lane Codex named as the exact next step (scanned/image-only
+rent-roll and P&L extraction), then maintain a safe Claude ↔ Codex handoff
+baseline before connecting external services.
 
 ## Completed
 
@@ -243,20 +245,81 @@ blocks before connecting external services.
 - Advanced the application to v0.10.4 and expanded the baseline to sixty-seven
   passing tests.
 
+## Completed this session (Claude, 2026-07-08)
+
+- Designed the OCR lane in `docs/OCR_LANE_DESIGN.md` and got Derek's explicit
+  sign-off on three open questions before writing code: local Tesseract
+  install is approved, v1 scope is rent-roll + operating-expense PDFs only
+  (no scanned narrative reports), and low-quality scans bail out with a
+  warning rather than staging speculative rows.
+- Implemented the OCR lane in `pdf_financial_extractor.py`: PyMuPDF
+  rasterization (`_rasterize_pdf`), orientation correction with OSD +
+  brute-force rotation fallback (`_correct_orientation`), Tesseract word
+  extraction (`_ocr_words`, filters misread gridline punctuation), gap-based
+  header-cell clustering (`_cluster_header_cells` / `_ocr_header_bands` —
+  matches whole header cells instead of guessing at word n-grams, which
+  avoids false multi-word matches across unrelated adjacent columns), and
+  edge-boundary column assignment for data rows (`_assign_words_to_bands`).
+  Refactored `_extract_text_expense_rows` into a shared
+  `_expense_rows_from_pages` so native and OCR expense parsing use identical
+  logic. Wired into `extract_financial_pdf`'s existing "OCR is required"
+  branch — no new entry point for callers.
+- Every OCR-derived field is forced to `confidence: "low"`; provenance gains
+  `extraction_method` (`ocr_pdf_table_extractor` /
+  `ocr_pdf_text_position_extractor`), `ocr_engine`,
+  `ocr_avg_word_confidence`, `rotation_degrees_applied`, and
+  `rendered_page_image` (saved under `ingest/staged/ocr_pages/`). No schema
+  or DB change was needed — these are free-form provenance keys, and the
+  existing stage -> review -> commit gate applies unchanged.
+- Added OCR-aware review surfacing: Streamlit's comp-review view now shows a
+  warning banner plus the actual rendered page image inline for OCR-sourced
+  rent-roll/expense rows (reusing the Keep-checkbox gate that already existed
+  for all rent-roll/expense rows); the terminal `review_staged` path prints
+  an `[OCR NN/100 see <path>]` marker per OCR row. Terminal review still
+  lacks true per-record keep/skip for rent-roll/expense rows generally
+  (native or OCR) — that's a pre-existing gap, not newly introduced, and is
+  called out as future work in the design doc.
+- Added four tests to `tests/test_financial_harvest.py`: end-to-end scanned
+  rent-roll extraction through commit
+  (`test_ocr_scanned_pdf_rent_roll_end_to_end`), 180°-rotated scan orientation
+  recovery (`test_ocr_rotated_scan_recovers_orientation`), illegible-scan
+  bail-out (`test_ocr_illegible_scan_bails_out_with_warning`), and graceful
+  degradation when Tesseract isn't installed
+  (`test_ocr_lane_degrades_gracefully_without_tesseract`). All four, plus the
+  9 pre-existing financial-harvest tests, pass (13/13) — verified against an
+  isolated sandbox copy of the changed modules with byte-identical content to
+  what's in this checkout (see "Known limitations" for why not verified
+  directly in this checkout).
+
 ## In progress
 
-- Native text-position accounting PDF adapter is ready for a source checkpoint.
+- None — the OCR lane is functionally complete for its approved v1 scope.
 
 ## Exact next step
 
-Design the OCR lane for scanned/image-only rent rolls and P&Ls. Keep it
-explicitly review-first: rendered page images, rotation/layout detection,
-OCR text/table reconstruction, low-confidence provenance, and no automatic
-commit without human confirmation.
+1. **Re-run the full suite in this actual checkout** —
+   `python -m unittest discover -s tests -v` — to confirm all ~71 tests
+   (67 prior + 4 new OCR tests) pass here, then `python axiom.py contract`
+   (no field-registry keys changed, so this should still pass at v1.2.0).
+   This session could not do that final live run itself; see "Known
+   limitations."
+2. Review and commit this session's changes (see "Do not touch" for the file
+   list) — small, behavior-described commits per `AGENTS.md`.
+3. After that: extend the OCR lane's real-world install (Tesseract on
+   Derek's Windows machine) and do a live test against an actual scanned
+   rent roll or P&L, not just the synthetic fixtures.
+4. Longer-term, still open from before: add database migrations/backfills
+   for legacy local comp rows before importing Derek's real historical
+   archive (last remaining P1 comparable-intelligence item in
+   `PROJECT_STATE.md`).
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 67 tests passed.
+- `python -m unittest discover -s tests -v`: 67 tests passed as of the prior
+  (Codex) checkpoint. This session added 4 OCR tests and verified 13/13
+  financial-harvest tests (9 prior + 4 new) pass in an isolated sandbox copy
+  of only the changed modules; the full ~71-test suite has not been re-run
+  live in this checkout this session — do that before committing.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000
@@ -292,8 +355,35 @@ commit without human confirmation.
 - Do not live-test Adobe Sign, Xero, or Anthropic without explicit approval and
   local credentials.
 
+## Uncommitted changes this session (Claude, 2026-07-08)
+
+Not committed yet — see "Exact next step" item 1 (re-run the full suite
+live in this checkout) before committing. Changed/added files:
+
+- `pdf_financial_extractor.py` — OCR lane implementation.
+- `ingest.py` — OCR-aware terminal review markers (`_is_ocr_record`,
+  `_ocr_flag`); no logic changes to extraction/commit.
+- `comp_review.py` — OCR warning banner + inline rendered-page-image display
+  in `_render_record`.
+- `tests/test_financial_harvest.py` — 4 new OCR tests + 2 fixture-building
+  helpers (`_rasterize_to_scanned_pdf`, `_build_illegible_scan_pdf`).
+- `docs/OCR_LANE_DESIGN.md` — new design doc (approved and implemented).
+- `PROJECT_STATE.md`, `HANDOFF.md` — this update.
+
 ## Known limitations
 
+- **This session's sandbox could not reliably run tests against this actual
+  checkout.** The bash tool's mount of this OneDrive-synced folder did not
+  pick up edits made through the file-editing tool even after repeated waits
+  (multiple minutes); it appears to reflect a snapshot rather than a live
+  sync within a session. Every change was verified correct by re-reading the
+  authoritative file content after each edit, and the exact same content was
+  separately verified to pass 13/13 relevant tests in an isolated sandbox
+  copy — but the full suite has not been executed live in this checkout.
+  **Whoever picks this up next should run
+  `python -m unittest discover -s tests -v` and `python axiom.py contract`
+  here first, before assuming anything beyond the financial-harvest tests is
+  unaffected.**
 - Plain `python` is not on PATH in the current Codex environment. The bundled
   Python runtime was used for checks.
 - DOCX media layout has structural test coverage but still needs visual QA with
