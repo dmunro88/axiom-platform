@@ -2,7 +2,7 @@
 
 - Last updated: 2026-07-08
 - Current agent: Codex
-- Last commit: Native PDF rent-roll table checkpoint (the commit containing
+- Last commit: Native text-position PDF expense checkpoint (the commit containing
   this handoff; use `git log -1 --oneline` for its immutable hash).
 
 ## Current objective
@@ -227,20 +227,36 @@ blocks before connecting external services.
   commit, reviewed search, and source-artifact coexistence.
 - Advanced the application to v0.10.3 and expanded the baseline to sixty-six
   passing tests.
+- Added native text-position accounting PDF extraction for PDFs with
+  selectable text but no clean table structure.
+- Accounting PDFs are scanned for recognized expense sections, parsed into
+  canonical `axiom.operating_expense.line` records, and retain page/line
+  provenance through `native_pdf_text_position_extractor`.
+- Period year/type are inferred conservatively from the statement text and
+  filename; totals, subtotals, income, NOI, and net-income rows are excluded.
+- Expense-statement PDFs are now processed through the main historical
+  assignment pipeline, not only direct parser calls.
+- Verified fictional ReportLab/PDF P&L extraction, staging, review, commit,
+  and reviewed operating-expense search.
+- Scanned/image-only PDFs still return OCR-required warnings instead of
+  speculative output.
+- Advanced the application to v0.10.4 and expanded the baseline to sixty-seven
+  passing tests.
 
 ## In progress
 
-- Native PDF rent-roll table adapter is ready for a source checkpoint.
+- Native text-position accounting PDF adapter is ready for a source checkpoint.
 
 ## Exact next step
 
-Add native text-position accounting PDF parsing for AccountEdge/iText/Drake-
-style statements. Keep OCR for scanned/image-only PDFs as a separate later
-lane.
+Design the OCR lane for scanned/image-only rent rolls and P&Ls. Keep it
+explicitly review-first: rendered page images, rotation/layout detection,
+OCR text/table reconstruction, low-confidence provenance, and no automatic
+commit without human confirmation.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 66 tests passed.
+- `python -m unittest discover -s tests -v`: 67 tests passed.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000

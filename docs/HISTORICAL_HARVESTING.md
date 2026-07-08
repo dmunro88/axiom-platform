@@ -125,6 +125,13 @@ the worksheet, including two-row headers such as year above `Actual` and
 Total/subtotal rows are excluded so downstream analysis does not double count
 detail and totals.
 
+Native text-position accounting PDFs are also parsed when the PDF exposes
+selectable words but not a clean table grid. The adapter looks for recognized
+expense sections, takes the rightmost money value on each detail line, excludes
+totals/subtotals and income/NOI/net-income rows, infers period year/type from
+statement text and filename, and records locators such as
+`pdf:page:1:line:7`.
+
 Both record identities include the parent assignment identity. Worksheet and
 source-row locators make every database row traceable to its original cell
 region. Exact duplicate source rows collapse before review.
@@ -141,8 +148,9 @@ python axiom.py financial-search --expenses --year 2025 --category taxes
 
 `tests/test_historical_harvest.py` builds a fictional old report and standalone
 income chart. `tests/test_financial_harvest.py` adds fictional standard and
-specialty rent-roll workbooks, native PDF rent-roll tables, normalized expense
-workbooks, and wide multi-year operating-statement workbooks, while
+specialty rent-roll workbooks, native PDF rent-roll tables, native
+text-position accounting PDFs, normalized expense workbooks, and wide
+multi-year operating-statement workbooks, while
 `tests/test_observation_harvest.py` proves bounded heading-based narrative
 sections. `tests/test_artifact_harvest.py` adds external files, duplicate
 paths, Word-embedded images, and a native Excel chart. Together they prove
@@ -154,12 +162,14 @@ initialization/migration behavior.
 
 The rent-roll extractor handles common Excel specialty-property layouts and
 native PDF rent-roll tables, but does not OCR scanned/image-only rent rolls.
-The expense extractor handles normalized long-form rows and basic wide
-multi-year operating statements. Highly customized statements with stacked
-sections, inconsistent subtotal bands, or non-year scenario columns will need
-additional layout adapters before archive-scale import. Neither rent-roll rows
-nor expense lines are automatically treated as market evidence; that
-distinction requires a later analytical promotion step.
+The expense extractor handles normalized long-form rows, basic wide multi-year
+operating statements, and native text-position accounting PDFs. It does not
+OCR scanned/image-only statements. Highly customized statements with stacked
+sections, inconsistent subtotal bands, multi-column side-by-side periods, or
+non-year scenario columns will need additional layout adapters before
+archive-scale import. Neither rent-roll rows nor expense lines are
+automatically treated as market evidence; that distinction requires a later
+analytical promotion step.
 
 PDFs are currently indexed as whole-file exhibits rather than page-level
 artifacts. Embedded media classification uses filenames, container names, and

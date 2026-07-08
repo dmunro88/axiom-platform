@@ -1444,6 +1444,13 @@ def extract_assignment(scan):
         result["expense_records"].extend(data["expense_records"])
         result["warnings"].extend(data["warnings"])
 
+    for pdf_path in scan["expense_pdfs"]:
+        result["sources"].append(pdf_path)
+        data = extract_financial_pdf(Path(pdf_path))
+        result["rent_roll_entries"].extend(data["rent_roll_entries"])
+        result["expense_records"].extend(data["expense_records"])
+        result["warnings"].extend(data["warnings"])
+
     office_containers = (
         scan["reports"]
         + scan["exhibits"]

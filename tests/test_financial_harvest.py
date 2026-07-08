@@ -6,6 +6,7 @@ from pathlib import Path
 
 import openpyxl
 from docx import Document
+from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import getSampleStyleSheet
@@ -336,6 +337,46 @@ def _build_pdf_rent_roll(path):
         Spacer(1, 8),
         table,
     ])
+
+
+def _build_pdf_profit_and_loss(path):
+    pdf = canvas.Canvas(str(path), pagesize=letter)
+    pdf.setTitle("Fictional Native Text P&L")
+    width, height = letter
+    y = height - 72
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(72, y, "Fictional Profit and Loss Statement 2024 Actual")
+    y -= 30
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawString(72, y, "Income")
+    y -= 18
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(90, y, "Rental Income")
+    pdf.drawRightString(width - 72, y, "$120,000")
+    y -= 18
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(72, y, "Total Income")
+    pdf.drawRightString(width - 72, y, "$120,000")
+    y -= 28
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawString(72, y, "Expenses")
+    y -= 18
+    pdf.setFont("Helvetica", 10)
+    for label, amount in (
+        ("Repairs and Maintenance", "$12,500"),
+        ("Insurance", "$4,200"),
+        ("Utilities", "$7,800"),
+    ):
+        pdf.drawString(90, y, label)
+        pdf.drawRightString(width - 72, y, amount)
+        y -= 18
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(72, y, "Total Expenses")
+    pdf.drawRightString(width - 72, y, "$24,500")
+    y -= 18
+    pdf.drawString(72, y, "Net Income")
+    pdf.drawRightString(width - 72, y, "$95,500")
+    pdf.save()
 
 
 class NoDimensionSheet:
@@ -683,6 +724,81 @@ class FinancialHarvestTests(unittest.TestCase):
             )
             self.assertEqual(1, len(rows))
             self.assertEqual("25C904", rows[0]["file_no"])
+            self.assertEqual("confirmed", rows[0]["review_status"])
+
+    def test_native_text_position_pdf_expenses_end_to_end(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment = (
+                root
+                / "historical"
+                / "25C905 - Retail - 333 Fictional Text PDF Road, Demo City"
+            )
+            assignment.mkdir(parents=True)
+            _build_report(assignment / "REPORT 25C905.docx")
+            pdf_path = assignment / "Fictional Profit and Loss 2024.pdf"
+            _build_pdf_profit_and_loss(pdf_path)
+
+            direct = extract_financial_pdf(pdf_path)
+            self.assertEqual(3, len(direct["expense_records"]))
+            self.assertEqual([], direct["warnings"])
+
+            staged_path = run_extraction(
+                root / "historical",
+                staged_dir=root / "staged",
+            )[0]
+            staged = json.loads(staged_path.read_text(encoding="utf-8"))
+            self.assertEqual(3, len(staged["expense_records"]))
+            categories = {
+                record["data"]["category"]: record
+                for record in staged["expense_records"]
+            }
+            self.assertEqual(
+                12_500,
+                categories["Repairs and Maintenance"]["data"]["amount"],
+            )
+            self.assertEqual(
+                "actual",
+                categories["Repairs and Maintenance"]["data"]["period_type"],
+            )
+            self.assertEqual(
+                2024,
+                categories["Repairs and Maintenance"]["data"]["period_year"],
+            )
+            self.assertEqual(
+                "native_pdf_text_position_extractor",
+                categories["Repairs and Maintenance"]["provenance"][
+                    "extraction_method"
+                ],
+            )
+            self.assertTrue(
+                categories["Repairs and Maintenance"]["provenance"][
+                    "source_locator"
+                ].startswith("pdf:page:1:line:")
+            )
+
+            confirmed = confirm_extraction_result(
+                staged,
+                reviewer="fictional-pdf-expense-qa",
+                reviewed_at="2026-07-05T15:00:00+00:00",
+            )
+            db_path = root / "pdf-expense.db"
+            init_db(db_path, quiet=True)
+            connection = get_conn(db_path)
+            try:
+                with connection:
+                    counts = commit_extraction_result(confirmed, connection)
+                self.assertEqual(3, counts["operating_expenses"])
+            finally:
+                connection.close()
+
+            rows = search_operating_expenses(
+                db_path,
+                period_year=2024,
+                category_contains="insurance",
+            )
+            self.assertEqual(1, len(rows))
+            self.assertEqual(4_200, rows[0]["amount"])
             self.assertEqual("confirmed", rows[0]["review_status"])
 
     def test_header_detection_survives_missing_worksheet_dimensions(self):

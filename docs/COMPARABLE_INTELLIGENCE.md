@@ -111,8 +111,8 @@ The same batch/provenance/review pattern should next be extended to:
 1. **Completed:** assignment conclusions and compact income snapshots; see
    `docs/HISTORICAL_HARVESTING.md`.
 2. **Completed:** subject rent rolls, specialty Excel rent-roll layouts,
-   native PDF rent-roll tables, normalized operating-expense lines, and basic
-   wide multi-year operating statements;
+   native PDF rent-roll tables, native text-position PDF expenses, normalized
+   operating-expense lines, and basic wide multi-year operating statements;
 3. **Completed:** reusable narrative/market observations with effective dates
    and paragraph-level provenance;
 4. **Completed:** charts, maps, photos, sketches, and exhibits as separately
