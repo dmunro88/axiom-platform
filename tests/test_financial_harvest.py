@@ -6,6 +6,10 @@ from pathlib import Path
 
 import openpyxl
 from docx import Document
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import landscape, letter
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from comparable_contract import confirm_extraction_result
 from db import (
@@ -24,6 +28,7 @@ from financial_extractor import (
     _find_header,
     extract_financial_workbook,
 )
+from pdf_financial_extractor import extract_financial_pdf
 
 
 def _build_report(path):
@@ -268,6 +273,69 @@ def _build_specialty_rent_rolls(path):
     ])
     workbook.save(path)
     workbook.close()
+
+
+def _build_pdf_rent_roll(path):
+    document = SimpleDocTemplate(
+        str(path),
+        pagesize=landscape(letter),
+        title="Fictional Native PDF Rent Roll",
+    )
+    styles = getSampleStyleSheet()
+    rows = [
+        ["Fictional Commercial Rent Roll As of 06/30/2025"],
+        [
+            "Suite",
+            "Tenant",
+            "Use",
+            "Rentable SF",
+            "Lease Start",
+            "Expiration",
+            "Monthly Rent",
+            "Annual Rent",
+            "Rent/SF",
+            "Status",
+        ],
+        [
+            "201",
+            "Fictional PDF Tenant Alpha",
+            "Retail",
+            "1,200",
+            "01/01/2024",
+            "12/31/2028",
+            "$2,400",
+            "$28,800",
+            "$24.00",
+            "Occupied",
+        ],
+        [
+            "202",
+            "Fictional PDF Tenant Beta",
+            "Office",
+            "900",
+            "03/01/2025",
+            "02/28/2030",
+            "$1,950",
+            "$23,400",
+            "$26.00",
+            "Occupied",
+        ],
+        ["Total", "", "", "2,100", "", "", "$4,350", "$52,200", "", ""],
+    ]
+    table = Table(rows, repeatRows=2)
+    table.setStyle(TableStyle([
+        ("SPAN", (0, 0), (-1, 0)),
+        ("BACKGROUND", (0, 0), (-1, 1), colors.lightgrey),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("FONTNAME", (0, 0), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ALIGN", (3, 2), (-1, -1), "RIGHT"),
+    ]))
+    document.build([
+        Paragraph("Fictional Native PDF Rent Roll", styles["Title"]),
+        Spacer(1, 8),
+        table,
+    ])
 
 
 class NoDimensionSheet:
@@ -551,6 +619,70 @@ class FinancialHarvestTests(unittest.TestCase):
             )
             self.assertEqual(1, len(rows))
             self.assertEqual("L-12", rows[0]["unit_id"])
+            self.assertEqual("confirmed", rows[0]["review_status"])
+
+    def test_native_pdf_rent_roll_table_end_to_end(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment = (
+                root
+                / "historical"
+                / "25C904 - Retail - 222 Fictional PDF Road, Demo City"
+            )
+            assignment.mkdir(parents=True)
+            _build_report(assignment / "REPORT 25C904.docx")
+            pdf_path = assignment / "Fictional Rent Roll.pdf"
+            _build_pdf_rent_roll(pdf_path)
+
+            direct = extract_financial_pdf(pdf_path)
+            self.assertEqual(2, len(direct["rent_roll_entries"]))
+            self.assertEqual([], direct["warnings"])
+
+            staged_path = run_extraction(
+                root / "historical",
+                staged_dir=root / "staged",
+            )[0]
+            staged = json.loads(staged_path.read_text(encoding="utf-8"))
+            self.assertEqual(2, len(staged["rent_roll_entries"]))
+            first = staged["rent_roll_entries"][0]
+            self.assertEqual(RENT_ROLL_CONTRACT_ID, first["contract_id"])
+            self.assertEqual("201", first["data"]["suite"])
+            self.assertEqual("Fictional PDF Tenant Alpha", first["data"]["tenant_name"])
+            self.assertEqual(1_200, first["data"]["sf_leased"])
+            self.assertEqual(2_400, first["data"]["monthly_rent"])
+            self.assertEqual("2025-06-30", first["data"]["as_of_date"])
+            self.assertEqual(
+                "native_pdf_table_extractor",
+                first["provenance"]["extraction_method"],
+            )
+            self.assertTrue(
+                first["provenance"]["source_locator"].startswith(
+                    "pdf:page:1:table:"
+                )
+            )
+
+            confirmed = confirm_extraction_result(
+                staged,
+                reviewer="fictional-pdf-rent-qa",
+                reviewed_at="2026-07-04T15:00:00+00:00",
+            )
+            db_path = root / "pdf-rent.db"
+            init_db(db_path, quiet=True)
+            connection = get_conn(db_path)
+            try:
+                with connection:
+                    counts = commit_extraction_result(confirmed, connection)
+                self.assertEqual(2, counts["rent_roll_entries"])
+            finally:
+                connection.close()
+
+            rows = search_rent_roll_entries(
+                db_path,
+                tenant_contains="PDF Tenant Alpha",
+                as_of_date="2025-06-30",
+            )
+            self.assertEqual(1, len(rows))
+            self.assertEqual("25C904", rows[0]["file_no"])
             self.assertEqual("confirmed", rows[0]["review_status"])
 
     def test_header_detection_survives_missing_worksheet_dimensions(self):

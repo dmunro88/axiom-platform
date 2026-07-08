@@ -23,6 +23,7 @@ from datetime import datetime
 
 from comparable_contract import comparable_identity
 from financial_extractor import extract_financial_workbook
+from pdf_financial_extractor import extract_financial_pdf
 from observation_extractor import extract_market_observations
 from artifact_extractor import extract_assignment_artifacts
 
@@ -1159,6 +1160,32 @@ def _classify_xlsx(path):
     return "other"
 
 
+def _classify_pdf(path):
+    """
+    Return the role of a PDF based on its filename.
+    Returns one of: 'rent_roll' | 'expense' | 'other'
+    """
+    name = path.stem.lower()
+    if (
+        "rent roll" in name
+        or "tenant rent roll" in name
+        or "rr" in name.split()
+        or name.endswith(" rr")
+    ):
+        return "rent_roll"
+    if any(k in name for k in [
+        "expense",
+        "operating history",
+        "operating statement",
+        "income statement",
+        "profit and loss",
+        "p&l",
+        "finance statement",
+    ]):
+        return "expense"
+    return "other"
+
+
 def _parse_folder_name(folder_name):
     """
     Extract file_no, property_type, and city from a folder name like:
@@ -1211,6 +1238,9 @@ def scan_assignment_folder(folder_path):
         "expense_xls":      [],   # operating expense/history Excel files
         "market_xls":       [],   # general market Excel files
         "other_xls":        [],   # other Excel files
+        "rent_roll_pdfs":   [],   # native/scanned rent roll PDFs
+        "expense_pdfs":     [],   # native/scanned operating statement PDFs
+        "other_pdfs":       [],   # other PDF files
     }
 
     for item in folder.iterdir():
@@ -1247,6 +1277,14 @@ def scan_assignment_folder(folder_path):
                 "other":        "other_xls",
             }[role]].append(str(item))
 
+        elif ext == ".pdf":
+            role = _classify_pdf(item)
+            result[{
+                "rent_roll": "rent_roll_pdfs",
+                "expense":   "expense_pdfs",
+                "other":     "other_pdfs",
+            }[role]].append(str(item))
+
     return result
 
 
@@ -1265,7 +1303,8 @@ def scan_projects_root(root_path):
             scan["reports"], scan["exhibits"], scan["sale_comp_docs"],
             scan["income_docs"], scan["cap_rate_xls"],
             scan["rental_comp_xls"], scan["rent_roll_xls"],
-            scan["expense_xls"],
+            scan["expense_xls"], scan["rent_roll_pdfs"],
+            scan["expense_pdfs"],
         ])
         if has_data:
             assignments.append(scan)
@@ -1398,6 +1437,13 @@ def extract_assignment(scan):
         result["warnings"].extend(data["warnings"])
 
     # ── 8. External and Word-embedded source artifacts ───────────────────────
+    for pdf_path in scan["rent_roll_pdfs"]:
+        result["sources"].append(pdf_path)
+        data = extract_financial_pdf(Path(pdf_path))
+        result["rent_roll_entries"].extend(data["rent_roll_entries"])
+        result["expense_records"].extend(data["expense_records"])
+        result["warnings"].extend(data["warnings"])
+
     office_containers = (
         scan["reports"]
         + scan["exhibits"]
@@ -1410,6 +1456,9 @@ def extract_assignment(scan):
         + scan["expense_xls"]
         + scan["market_xls"]
         + scan["other_xls"]
+        + scan["rent_roll_pdfs"]
+        + scan["expense_pdfs"]
+        + scan["other_pdfs"]
     )
     artifact_data = extract_assignment_artifacts(
         scan["folder"],

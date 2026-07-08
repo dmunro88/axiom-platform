@@ -2,7 +2,7 @@
 
 - Last updated: 2026-07-08
 - Current agent: Codex
-- Last commit: Specialty Excel rent-roll adapter checkpoint (the commit containing
+- Last commit: Native PDF rent-roll table checkpoint (the commit containing
   this handoff; use `git log -1 --oneline` for its immutable hash).
 
 ## Current objective
@@ -216,19 +216,31 @@ blocks before connecting external services.
   review, commit, reviewed search, and no-dimension header detection.
 - Advanced the application to v0.10.2 and expanded the baseline to sixty-five
   passing tests.
+- Added native PDF rent-roll table extraction for PDFs with extractable table
+  structure.
+- Rent-roll PDFs are classified during assignment scanning, parsed into the
+  canonical `axiom.rent_roll.entry` contract, indexed as source artifacts, and
+  retain page/table/row provenance.
+- Scanned/image-only PDFs intentionally return warnings instead of OCR output;
+  OCR remains a separate later lane.
+- Verified fictional ReportLab/PDF rent-roll extraction, staging, review,
+  commit, reviewed search, and source-artifact coexistence.
+- Advanced the application to v0.10.3 and expanded the baseline to sixty-six
+  passing tests.
 
 ## In progress
 
-- Specialty Excel rent-roll adapter is ready for a source checkpoint.
+- Native PDF rent-roll table adapter is ready for a source checkpoint.
 
 ## Exact next step
 
-Add native PDF rent-roll/table parsing, then native text-position accounting
-PDF parsing. Keep OCR for scanned/image-only PDFs as a separate later lane.
+Add native text-position accounting PDF parsing for AccountEdge/iText/Drake-
+style statements. Keep OCR for scanned/image-only PDFs as a separate later
+lane.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 65 tests passed.
+- `python -m unittest discover -s tests -v`: 66 tests passed.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000
