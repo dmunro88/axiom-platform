@@ -2,16 +2,17 @@
 
 - Last updated: 2026-07-09
 - Current agent: Codex
-- Commits this session: Codex's 2026-07-09 work (Tesseract auto-detection,
-  OCR orientation fix, nested-financial-PDF routing, statement-expense
-  fallback, placeholder-date normalization) plus this session's review fixes
-  (see "Completed this session (Claude, review pass — 2026-07-08)" below)
-  are being committed together in one commit describing the combined
-  behavior, verified live immediately beforehand. The two commits under
-  "Completed this session (Claude, 2026-07-08)" below (`af29fb2`, built on
-  Codex's `f13ff45`, plus its same-day follow-up) were made in an *earlier*
-  session, not this one or the review pass — noted here because an earlier
-  draft of this header incorrectly implied otherwise.
+- Commits this session: `dde13b8` "Add OCR auto-detection, orientation fix,
+  nested-PDF routing, and doc/gitignore fixes from review pass" — covers both
+  Codex's 2026-07-09 work (Tesseract auto-detection, OCR orientation fix,
+  nested-financial-PDF routing, statement-expense fallback, placeholder-date
+  normalization) and this session's review fixes (see "Completed this
+  session (Claude, review pass — 2026-07-08)" below), verified live
+  immediately beforehand. The two commits under "Completed this session
+  (Claude, 2026-07-08)" below (`af29fb2`, built on Codex's `f13ff45`, plus
+  its same-day follow-up) were made in an *earlier* session, not this one or
+  the review pass — noted here because an earlier draft of this header
+  incorrectly implied otherwise.
 
 ## Current objective
 
@@ -660,5 +661,4 @@ touch:
   value cannot be proven stale from XLSX alone without an Excel-side
   calculation stamp or automation.
 - The existing parent-folder `PROJECT_STATE.md` is historical and contains
-  stale claims. This file and the project-root `PROJECT_STATE.md` are the
-  canonical handoff documents going forward.
+  stale claims. This file and the project-root `PROJECT_STATE.md
