@@ -1,14 +1,15 @@
 # Current Handoff
 
-- Last updated: 2026-07-08
+- Last updated: 2026-07-09
 - Current agent: Claude
-- Commits this session: not yet committed — see "Completed this session
+- Commits this session: `6ad25af` — see "Completed this session
   (Claude, hardening pass — 2026-07-08)" below. Prior commit `dde13b8`
   covered Codex's 2026-07-09 work plus the review-pass fixes described under
-  "Completed this session (Claude, review pass — 2026-07-08)". This session's
-  work closes out the lower-priority hardening backlog and the DB-migration
+  "Completed this session (Claude, review pass — 2026-07-08)". `6ad25af`
+  closes out the lower-priority hardening backlog and the DB-migration
   item that `dde13b8`'s "Exact next step" left open (items 2 and 3); item 1
   (reviewing Derek's own staged batches) is unchanged and still his to do.
+  Not pushed to any remote.
 
 ## Current objective
 
@@ -653,4 +654,4 @@ everything live here too — see "Baseline checks run" below.
 
 ## Do not touch
 
-- Use only `tests/fixtures/DEMO-001` fo
+- Use only `tests/fixtures/DE
