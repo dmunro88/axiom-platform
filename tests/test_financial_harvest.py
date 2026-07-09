@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from datetime import date
@@ -1045,6 +1046,51 @@ class FinancialHarvestTests(unittest.TestCase):
                 ],
             )
 
+    def test_nested_financial_pdf_duplicate_warns_before_review(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment = (
+                root
+                / "historical"
+                / "25C908 - Retail - 666 Fictional Duplicate PDF Road, Demo City"
+            )
+            source_folder = assignment / "Information Provided"
+            source_folder.mkdir(parents=True)
+            _build_report(assignment / "REPORT 25C908.docx")
+            _build_pdf_rent_roll(assignment / "Fictional Rent Roll.pdf")
+            _build_pdf_rent_roll(
+                source_folder / "Fictional Rent Roll Archive Copy.pdf"
+            )
+
+            staged_path = run_extraction(
+                root / "historical",
+                staged_dir=root / "staged",
+            )[0]
+            staged = json.loads(staged_path.read_text(encoding="utf-8"))
+            joined = " ".join(staged.get("warnings", [])).lower()
+            self.assertIn("rent-roll pdfs found across subfolders", joined)
+            self.assertIn("verify these aren't stale/duplicate copies", joined)
+
+    def test_single_financial_pdf_per_folder_has_no_duplicate_warning(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment = (
+                root
+                / "historical"
+                / "25C909 - Retail - 777 Fictional Single PDF Road, Demo City"
+            )
+            assignment.mkdir(parents=True)
+            _build_report(assignment / "REPORT 25C909.docx")
+            _build_pdf_rent_roll(assignment / "Fictional Rent Roll.pdf")
+
+            staged_path = run_extraction(
+                root / "historical",
+                staged_dir=root / "staged",
+            )[0]
+            staged = json.loads(staged_path.read_text(encoding="utf-8"))
+            joined = " ".join(staged.get("warnings", [])).lower()
+            self.assertNotIn("found across subfolders", joined)
+
     def test_statement_expense_fallback_handles_missing_expense_heading(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1072,6 +1118,60 @@ class FinancialHarvestTests(unittest.TestCase):
                 "statement_expense_fallback",
                 categories["Repairs and Maintenance"]["provenance"]["layout"],
             )
+
+    def test_ocr_pages_dir_honors_env_override(self):
+        original = os.environ.get("AXIOM_OCR_PAGES_DIR")
+        os.environ["AXIOM_OCR_PAGES_DIR"] = "/tmp/axiom-ocr-pages-test-override"
+        try:
+            self.assertEqual(
+                Path("/tmp/axiom-ocr-pages-test-override"),
+                pdf_financial_extractor_module._ocr_pages_dir(),
+            )
+        finally:
+            if original is None:
+                os.environ.pop("AXIOM_OCR_PAGES_DIR", None)
+            else:
+                os.environ["AXIOM_OCR_PAGES_DIR"] = original
+
+    def test_prune_ocr_pages_removes_only_unreferenced_images(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pages_dir = root / "ocr_pages"
+            pages_dir.mkdir()
+            staged_dir = root / "staged"
+            staged_dir.mkdir()
+            confirmed_dir = root / "confirmed"
+            confirmed_dir.mkdir()
+
+            referenced_image = pages_dir / "abc123_p1.png"
+            orphaned_image = pages_dir / "def456_p1.png"
+            referenced_image.write_bytes(b"fake-png")
+            orphaned_image.write_bytes(b"fake-png")
+
+            staged_batch = {
+                "rent_roll_entries": [
+                    {
+                        "provenance": {
+                            "rendered_page_image": (
+                                "ingest/staged/ocr_pages/abc123_p1.png"
+                            ),
+                        }
+                    }
+                ],
+                "expense_records": [],
+            }
+            (staged_dir / "batch.json").write_text(
+                json.dumps(staged_batch), encoding="utf-8"
+            )
+
+            deleted = pdf_financial_extractor_module.prune_ocr_pages(
+                staged_dir=staged_dir,
+                confirmed_dir=confirmed_dir,
+                pages_dir=pages_dir,
+            )
+            self.assertEqual(1, deleted)
+            self.assertTrue(referenced_image.exists())
+            self.assertFalse(orphaned_image.exists())
 
     def test_header_detection_survives_missing_worksheet_dimensions(self):
         header_row, mapping = _find_header(

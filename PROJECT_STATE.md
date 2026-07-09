@@ -1,6 +1,6 @@
 # Axiom Platform — Project State
 
-- Last verified: 2026-07-09
+- Last verified: 2026-07-08
 - Status: Functional prototype in active local use; production safeguards and
   repeatable tests are incomplete.
 
@@ -69,16 +69,18 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Seventy-seven automated validation, delivery-state, stress, golden-DOCX,
+- Eighty-two automated validation, delivery-state, stress, golden-DOCX,
   comparable, historical-harvest, media, comp-page,
   structured-block, model-routing, contract, presentation-derivation, and
   OCR-lane tests pass, confirmed live with `python -m unittest discover -s
-  tests -v` in this checkout. As of 2026-07-09, the seven OCR tests run
-  against a real local Tesseract install instead of being skipped (one of the
-  seven, the orientation-scoring test, doesn't require Tesseract at all). The
-  suite currently contains 77 tests after adding OCR orientation-scoring
-  coverage, placeholder lease-expiration normalization, nested financial PDF
-  routing, and statement expense fallback coverage.
+  tests -v` (run per-module in this checkout on 2026-07-08 due to sandbox
+  time limits; same net coverage). The seven core OCR tests run against a
+  real local Tesseract install instead of being skipped (one of the seven,
+  the orientation-scoring test, doesn't require Tesseract at all). The suite
+  grew from 77 to 82 tests on 2026-07-08 with coverage for the OCR
+  page-image-pruning helper, the `AXIOM_OCR_PAGES_DIR` override, the
+  nested-financial-PDF duplicate/staleness warning, and the legacy
+  comp-row identity backfill.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -244,6 +246,31 @@ Checks were performed without regenerating or modifying assignment outputs.
   nested P&L PDFs, while comp/rent-roll/market observation totals remain
   consistent with the prior conservative run. Simulated review/commit to a
   temporary database succeeded; the real local database was not touched.
+- OCR page-review images now honor an `AXIOM_OCR_PAGES_DIR` override and can
+  be pruned of anything no longer referenced by an active staged/confirmed
+  batch via `axiom.py ocr-cleanup` (manual, not automatic, so a page image is
+  never deleted while still needed for review).
+- Native-table and OCR rent-roll row extraction now share one code path
+  (`_finalize_rent_roll_row`) for everything downstream of raw cell/column
+  values, instead of duplicating anchor/total-row/as-of-date logic.
+- The "OCR fields are always confidence=low" policy is enforced by a single
+  `harvest_contract.enforce_ocr_low_confidence` helper rather than ad hoc
+  string-prefix checks scattered across extractors; fixed a real gap this
+  surfaced where OCR-derived statement-fallback expense rows could
+  previously keep a `period_type` confidence of `medium`.
+- Scanning an assignment folder now warns when more than one rent-roll or
+  operating-statement PDF is found across subfolders (including nested
+  "Information Provided"-style folders), naming each file's location and
+  modified date so stale/duplicate copies can be checked before review.
+- OCR orientation re-detection on later pages of a multi-page scan now also
+  triggers when no financial structure is recognized at all, not only on low
+  OCR confidence, closing a gap where a mixed-orientation scan bundle could
+  silently lose a page's rows.
+- Legacy `comps`/`lease_comps`/`assignments`/`income_snapshots` rows that
+  predate the identity-key column now get one backfilled automatically on
+  every `init_db()` call, so importing a real historical archive correctly
+  recognizes already-ingested rows as duplicates instead of re-inserting
+  them.
 
 ## Data-safety status
 
@@ -298,40 +325,4 @@ Checks were performed without regenerating or modifying assignment outputs.
    Word templates.
 2. **Completed for six deterministic variants:** derive presentation variants
    rather than entering duplicate facts. Semantically distinct short/full
-   labels remain explicit.
-3. **Completed for canonical Intake drift and missing/error caches:** detect
-   stale JSON and scope cache checks to active workbook-owned report fields.
-   Valid-but-stale cache proof still requires an Excel-side calculation stamp.
-4. **Completed for new assignments and delivery attempts:** record template,
-   schema, and application versions per assignment.
-
-### P1 — Comparable intelligence
-
-1. **Completed:** define canonical sale/lease record contract, provenance,
-   review status, identity, and database idempotency.
-2. **Completed:** verify fictional extract → stage → review → commit → search →
-   CSV/workbook export.
-3. **Completed:** extend provenance/review to assignment conclusions and
-   compact income snapshots.
-4. **Completed:** extend the model to row-level rent rolls, specialty Excel
-   rent-roll layouts, native PDF rent-roll tables, native text-position PDF
-   expenses, normalized operating expenses, and basic wide multi-year
-   operating statements.
-5. **Completed:** extend the model to bounded reusable market observations.
-6. **Completed:** extend the model to external and Office-embedded charts,
-   maps, photos, sketches, and archived exhibits.
-7. Add database migrations/backfills for any legacy local comp rows before
-   importing a real historical archive.
-
-### P2 — Integrations
-
-Live-test Adobe Sign and Xero only after the core workflow has delivery
-integrity. External actions must be idempotent and retain provider IDs,
-timestamps, and failure states.
-
-## Known external blockers
-
-- Adobe Sign requires a usable API application and local credentials.
-- Xero requires a configured custom connection and local credentials.
-- AI narrative generation requires the Anthropic package, network access, and
-  `ANTHROPIC_API_KEY`.
+   labels 

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pdfplumber
 
+from harvest_contract import enforce_ocr_low_confidence
 from financial_extractor import (
     RENT_ROLL_SYNONYMS,
     _coerce_expense,
@@ -46,6 +47,16 @@ OCR_MIN_AVG_CONFIDENCE = 40.0
 OCR_MAX_PAGES = 6
 OCR_MAX_RENDER_EDGE_PX = 3600
 OCR_PAGES_DIR = Path(__file__).parent / "ingest" / "staged" / "ocr_pages"
+
+
+def _ocr_pages_dir():
+    """Directory OCR page-review images are written to. Defaults to
+    OCR_PAGES_DIR, but honors AXIOM_OCR_PAGES_DIR (consistent with the
+    AXIOM_TESSERACT_CMD/AXIOM_TESSDATA_DIR override pattern) so tests and
+    alternate staging locations are not forced to litter the real
+    checkout's ingest/staged/ocr_pages/ folder."""
+    override = os.environ.get("AXIOM_OCR_PAGES_DIR")
+    return Path(override) if override else OCR_PAGES_DIR
 
 _RENT_ROLL_DEDUPE_FIELDS = (
     "as_of_date",
@@ -235,6 +246,58 @@ def _period_type_from_text(text):
     return "actual", "low"
 
 
+def _finalize_rent_roll_row(
+    data,
+    confidence,
+    path,
+    source_locator,
+    extraction_method,
+    as_of_date,
+    as_of_confidence="medium",
+    extra_provenance=None,
+):
+    """Shared post-cell-extraction logic for both native table rows
+    (`_extract_table_rows`) and OCR band-assigned rows (`_ocr_rent_roll_rows`)
+    -- the two extractors get to the raw field/value cells very differently
+    (structured table-cell indices vs. word-position band assignment), but
+    everything downstream of "here are the raw fields for one row" was
+    duplicated: deriving/normalizing fields, detecting total/subtotal rows,
+    attaching as_of_date, applying the OCR confidence policy, and building
+    the staged record dict. Centralizing it here means a fix (like the
+    confidence-policy centralization above) only has to be made once.
+
+    Returns (kind, payload):
+      kind == "empty" -> no usable anchor field; caller should skip the row
+      kind == "total" -> payload is the row's raw data dict, for callers
+                         that reconcile summed rows against a Total row
+      kind == "row"   -> payload is the finished staged record dict
+    """
+    data, confidence = _prepare_rent_data(data, confidence)
+    anchor = data.get("tenant_name") or data.get("unit_id") or data.get("suite")
+    if not anchor:
+        return "empty", None
+    label = _norm(anchor)
+    if label.startswith(("total", "subtotal", "average", "grand total")):
+        return "total", data
+    if as_of_date:
+        data["as_of_date"] = as_of_date
+        confidence["as_of_date"] = as_of_confidence
+    confidence = enforce_ocr_low_confidence(confidence, extraction_method)
+    provenance = {
+        "source_locator": source_locator,
+        "extraction_method": extraction_method,
+    }
+    if extra_provenance:
+        provenance.update(extra_provenance)
+    return "row", {
+        "data": data,
+        "confidence": confidence,
+        "source": str(path),
+        "source_locator": source_locator,
+        "provenance": provenance,
+    }
+
+
 def _extract_table_rows(table, header_index, mapping, path, page_number, table_number, as_of_date):
     records = []
     for row_index, row in enumerate(table[header_index + 1:], start=header_index + 2):
@@ -250,27 +313,18 @@ def _extract_table_rows(table, header_index, mapping, path, page_number, table_n
             if value is not None:
                 data[field] = value
                 confidence[field] = "high"
-        data, confidence = _prepare_rent_data(data, confidence)
-        anchor = data.get("tenant_name") or data.get("unit_id") or data.get("suite")
-        if not anchor:
-            continue
-        label = _norm(anchor)
-        if label.startswith(("total", "subtotal", "average", "grand total")):
-            continue
-        if as_of_date:
-            data["as_of_date"] = as_of_date
-            confidence["as_of_date"] = "medium"
         source_locator = f"pdf:page:{page_number}:table:{table_number}:row:{row_index}"
-        records.append({
-            "data": data,
-            "confidence": confidence,
-            "source": str(path),
-            "source_locator": source_locator,
-            "provenance": {
-                "source_locator": source_locator,
-                "extraction_method": "native_pdf_table_extractor",
-            },
-        })
+        kind, payload = _finalize_rent_roll_row(
+            data,
+            confidence,
+            path,
+            source_locator,
+            "native_pdf_table_extractor",
+            as_of_date,
+            as_of_confidence="medium",
+        )
+        if kind == "row":
+            records.append(payload)
     return records
 
 
@@ -414,7 +468,6 @@ def _statement_expense_rows_from_pages(
         return []
     records = []
     section = None
-    force_low = extraction_method.startswith("ocr")
     for page_number, lines in page_lines:
         for line_number, line in enumerate(lines, start=1):
             line_words = line["words"]
@@ -437,16 +490,18 @@ def _statement_expense_rows_from_pages(
                 "amount": amount,
                 "period_type": period_type,
             }
+            # Built as if this were native text-position extraction; OCR's
+            # blanket "everything is low confidence" policy is applied once,
+            # centrally, below rather than re-derived per field here.
             confidence = {
                 "category": "low",
-                "amount": "low",
+                "amount": "medium",
                 "period_type": period_confidence or "low",
             }
             if period_year is not None:
                 data["period_year"] = period_year
-                confidence["period_year"] = "low" if force_low else "medium"
-            if not force_low:
-                confidence["amount"] = "medium"
+                confidence["period_year"] = "medium"
+            confidence = enforce_ocr_low_confidence(confidence, extraction_method)
             source_locator = f"pdf:page:{page_number}:line:{line_number}"
             provenance = {
                 "source_locator": source_locator,
@@ -479,7 +534,6 @@ def _expense_rows_from_pages(
     (page_number, lines-from-_group_words_by_line)."""
     records = []
     section = None
-    force_low = extraction_method.startswith("ocr")
     for page_number, lines in page_lines:
         for line_number, line in enumerate(lines, start=1):
             line_words = line["words"]
@@ -507,8 +561,7 @@ def _expense_rows_from_pages(
             if period_year is not None:
                 data["period_year"] = period_year
                 confidence["period_year"] = "medium"
-            if force_low:
-                confidence = {key: "low" for key in confidence}
+            confidence = enforce_ocr_low_confidence(confidence, extraction_method)
             source_locator = f"pdf:page:{page_number}:line:{line_number}"
             provenance = {
                 "source_locator": source_locator,
@@ -649,14 +702,69 @@ def _save_review_image(image, source_sha256, page_number):
     cross-check OCR output against. Returns a path relative to the platform
     root, or None on failure."""
     try:
-        OCR_PAGES_DIR.mkdir(parents=True, exist_ok=True)
+        pages_dir = _ocr_pages_dir()
+        pages_dir.mkdir(parents=True, exist_ok=True)
         filename = f"{(source_sha256 or 'unknown')[:16]}_p{page_number}.png"
-        dest = OCR_PAGES_DIR / filename
+        dest = pages_dir / filename
         if not dest.exists():
             image.save(dest, format="PNG")
-        return str(dest.relative_to(Path(__file__).parent))
+        try:
+            return str(dest.relative_to(Path(__file__).parent))
+        except ValueError:
+            # dest is outside the platform root (e.g. AXIOM_OCR_PAGES_DIR
+            # points at a test tempdir) -- an absolute path is still a
+            # usable provenance pointer, just not a repo-relative one.
+            return str(dest)
     except Exception:
         return None
+
+
+def prune_ocr_pages(staged_dir=None, confirmed_dir=None, pages_dir=None):
+    """Delete OCR page-review images that are no longer referenced by any
+    *active* staged/confirmed batch (a ``.json`` file still awaiting review
+    or commit). Rendered page PNGs are content-addressed by source SHA-256
+    (see `_save_review_image`) and reused across runs on the same source, so
+    they accumulate indefinitely under ``ingest/staged/ocr_pages/`` with no
+    existing cleanup -- this is meant to be run periodically (e.g. after a
+    `comp-commit`) rather than automatically, so a page image is never
+    deleted while a human might still want to cross-check it.
+
+    Returns the number of image files deleted.
+    """
+    pages_dir = Path(pages_dir) if pages_dir else _ocr_pages_dir()
+    if not pages_dir.is_dir():
+        return 0
+    base = Path(__file__).parent
+    staged_dir = Path(staged_dir) if staged_dir else base / "ingest" / "staged"
+    confirmed_dir = (
+        Path(confirmed_dir) if confirmed_dir else base / "ingest" / "confirmed"
+    )
+
+    referenced = set()
+    for active_dir in (staged_dir, confirmed_dir):
+        if not active_dir.is_dir():
+            continue
+        for batch_path in active_dir.glob("*.json"):
+            try:
+                with open(batch_path, encoding="utf-8") as handle:
+                    batch = json.load(handle)
+            except Exception:
+                continue
+            for key in ("rent_roll_entries", "expense_records"):
+                for record in batch.get(key, []):
+                    image = record.get("provenance", {}).get("rendered_page_image")
+                    if image:
+                        referenced.add(Path(image).name)
+
+    deleted = 0
+    for image_path in pages_dir.glob("*.png"):
+        if image_path.name not in referenced:
+            try:
+                image_path.unlink()
+                deleted += 1
+            except OSError:
+                continue
+    return deleted
 
 
 # Gap threshold for treating adjacent OCR words as the same header cell vs.
@@ -848,43 +956,81 @@ def _ocr_rent_roll_rows(lines, path, page_number, as_of_date, extra_provenance=N
             if value is not None:
                 data[field] = value
                 confidence[field] = "low"
-        data, confidence = _prepare_rent_data(data, confidence)
-        confidence = {key: "low" for key in confidence}
-        anchor = data.get("tenant_name") or data.get("unit_id") or data.get("suite")
-        if not anchor:
+        source_locator = f"pdf:page:{page_number}:ocr_table:row:{row_number}"
+        kind, payload = _finalize_rent_roll_row(
+            data,
+            confidence,
+            path,
+            source_locator,
+            "ocr_pdf_table_extractor",
+            as_of_date,
+            as_of_confidence="low",
+            extra_provenance=extra_provenance,
+        )
+        if kind == "empty":
             continue
-        label = _norm(anchor)
-        if label.startswith(("total", "subtotal", "average", "grand total")):
-            total_row_data = data
+        if kind == "total":
+            total_row_data = payload
             continue
+        record = payload
         row_warning = _rent_roll_arithmetic_warning(
-            data, path.name, page_number, row_number
+            record["data"], path.name, page_number, row_number
         )
         if row_warning:
             warnings.append(row_warning)
-        if as_of_date:
-            data["as_of_date"] = as_of_date
-            confidence["as_of_date"] = "low"
-        source_locator = f"pdf:page:{page_number}:ocr_table:row:{row_number}"
-        provenance = {
-            "source_locator": source_locator,
-            "extraction_method": "ocr_pdf_table_extractor",
-        }
-        if extra_provenance:
-            provenance.update(extra_provenance)
-        records.append({
-            "data": data,
-            "confidence": confidence,
-            "source": str(path),
-            "source_locator": source_locator,
-            "provenance": provenance,
-        })
+        records.append(record)
     total_warning = _rent_roll_total_reconciliation_warning(
         records, total_row_data, path.name, page_number
     )
     if total_warning:
         warnings.append(total_warning)
     return records, True, warnings
+
+
+def _financial_structure_signals(lines, path, page_number):
+    """Shared per-page probe for recognizable financial structure -- used
+    both to score OCR orientation candidates (`_choose_financial_ocr_orientation`)
+    and, on later pages that already have a detected orientation, to decide
+    whether that orientation needs to be re-evaluated even when OCR
+    confidence looks fine (`_extract_via_ocr`): a rotated page can still read
+    as high-confidence text with no usable rent-roll or expense structure at
+    all. Returns (expense_records, rent_records, header_found)."""
+    text = " ".join(word["text"] for line in lines for word in line["words"])
+    period_year = _period_year_from_text(text, path.name)
+    period_type, period_confidence = _period_type_from_text(text)
+    expense_records = _expense_rows_from_pages(
+        [(page_number, lines)],
+        path,
+        period_year,
+        period_type,
+        period_confidence,
+        "ocr_orientation_probe",
+        {page_number: {}},
+    )
+    if not expense_records:
+        expense_records = _statement_expense_rows_from_pages(
+            [(page_number, lines)],
+            path,
+            period_year,
+            period_type,
+            period_confidence,
+            "ocr_orientation_probe",
+            text,
+            {page_number: {}},
+        )
+    rent_records, header_found, _warnings = _ocr_rent_roll_rows(
+        lines, path, page_number, None, {}
+    )
+    return expense_records, rent_records, header_found
+
+
+def _page_has_financial_structure(lines, path, page_number):
+    """True if this page's current OCR words yield any recognizable
+    rent-roll header/rows or expense-candidate lines at all."""
+    expense_records, rent_records, header_found = _financial_structure_signals(
+        lines, path, page_number
+    )
+    return bool(expense_records) or bool(rent_records) or header_found
 
 
 def _choose_financial_ocr_orientation(image, path, page_number):
@@ -900,31 +1046,8 @@ def _choose_financial_ocr_orientation(image, path, page_number):
         except Exception:
             continue
         lines = _group_words_by_line(words)
-        text = " ".join(word["text"] for word in words)
-        period_year = _period_year_from_text(text, path.name)
-        period_type, period_confidence = _period_type_from_text(text)
-        expense_records = _expense_rows_from_pages(
-            [(page_number, lines)],
-            path,
-            period_year,
-            period_type,
-            period_confidence,
-            "ocr_orientation_probe",
-            {page_number: {}},
-        )
-        if not expense_records:
-            expense_records = _statement_expense_rows_from_pages(
-                [(page_number, lines)],
-                path,
-                period_year,
-                period_type,
-                period_confidence,
-                "ocr_orientation_probe",
-                text,
-                {page_number: {}},
-            )
-        rent_records, header_found, _warnings = _ocr_rent_roll_rows(
-            lines, path, page_number, None, {}
+        expense_records, rent_records, header_found = _financial_structure_signals(
+            lines, path, page_number
         )
         word_counts = [len(line["words"]) for line in lines]
         dense_lines = sum(1 for count in word_counts if count >= 4)
@@ -1015,7 +1138,19 @@ def _extract_via_ocr(path):
                 degrees = preferred_degrees
                 oriented = image if degrees == 0 else image.rotate(-degrees, expand=True)
                 words, avg_confidence = _ocr_words(oriented)
-                if not words or avg_confidence < OCR_MIN_AVG_CONFIDENCE:
+                needs_redetect = not words or avg_confidence < OCR_MIN_AVG_CONFIDENCE
+                if not needs_redetect:
+                    # Confidence alone isn't enough: a page rotated relative
+                    # to the one that set preferred_degrees (a mixed-
+                    # orientation scan bundle, e.g. a portrait cover page
+                    # followed by a landscape rent roll) can still read as
+                    # high-confidence text with no usable rent-roll/expense
+                    # structure at all. Re-run full orientation detection in
+                    # that case too, not just on low confidence.
+                    needs_redetect = not _page_has_financial_structure(
+                        _group_words_by_line(words), path, page_number
+                    )
+                if needs_redetect:
                     oriented, degrees, words, avg_confidence = (
                         _choose_financial_ocr_orientation(
                             image, path, page_number

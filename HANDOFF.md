@@ -1,18 +1,14 @@
 # Current Handoff
 
-- Last updated: 2026-07-09
-- Current agent: Codex
-- Commits this session: `dde13b8` "Add OCR auto-detection, orientation fix,
-  nested-PDF routing, and doc/gitignore fixes from review pass" — covers both
-  Codex's 2026-07-09 work (Tesseract auto-detection, OCR orientation fix,
-  nested-financial-PDF routing, statement-expense fallback, placeholder-date
-  normalization) and this session's review fixes (see "Completed this
-  session (Claude, review pass — 2026-07-08)" below), verified live
-  immediately beforehand. The two commits under "Completed this session
-  (Claude, 2026-07-08)" below (`af29fb2`, built on Codex's `f13ff45`, plus
-  its same-day follow-up) were made in an *earlier* session, not this one or
-  the review pass — noted here because an earlier draft of this header
-  incorrectly implied otherwise.
+- Last updated: 2026-07-08
+- Current agent: Claude
+- Commits this session: not yet committed — see "Completed this session
+  (Claude, hardening pass — 2026-07-08)" below. Prior commit `dde13b8`
+  covered Codex's 2026-07-09 work plus the review-pass fixes described under
+  "Completed this session (Claude, review pass — 2026-07-08)". This session's
+  work closes out the lower-priority hardening backlog and the DB-migration
+  item that `dde13b8`'s "Exact next step" left open (items 2 and 3); item 1
+  (reviewing Derek's own staged batches) is unchanged and still his to do.
 
 ## Current objective
 
@@ -508,35 +504,122 @@ baseline before connecting external services.
 - This session's fixes are being committed together with Codex's verified
   2026-07-09 work as a single commit describing the combined behavior.
 
+## Completed this session (Claude, hardening pass — 2026-07-08)
+
+Closed out both remaining items from `dde13b8`'s "Exact next step" (the
+lower-priority OCR hardening backlog and the DB-migration item), per Derek's
+explicit "let's just knock the rest of it out" instruction. Verified in an
+isolated sandbox mirror first (with a real Tesseract 5.5.0 install and live
+OCR), then ported the same verified edits into this checkout and re-ran
+everything live here too — see "Baseline checks run" below.
+
+- **OCR page-image retention.** `OCR_PAGES_DIR` now respects an
+  `AXIOM_OCR_PAGES_DIR` override (`_ocr_pages_dir()`), matching the existing
+  `AXIOM_TESSERACT_CMD`/`AXIOM_TESSDATA_DIR` config pattern. Added
+  `prune_ocr_pages()` plus a new `axiom.py ocr-cleanup` command: it deletes
+  rendered page PNGs under `ingest/staged/ocr_pages/` that are no longer
+  referenced by any staged or confirmed `.json` batch still awaiting
+  review/commit. It's a manual command, not automatic, so an image is never
+  deleted while a human might still want to cross-check it.
+- **Unified OCR/native rent-roll row logic.** Added
+  `_finalize_rent_roll_row()` in `pdf_financial_extractor.py`: the shared
+  post-cell-extraction logic (deriving/normalizing fields, detecting
+  total/subtotal rows, attaching `as_of_date`, applying the OCR confidence
+  policy, building the staged record) that both `_extract_table_rows`
+  (native) and `_ocr_rent_roll_rows` (OCR) now call, instead of duplicating
+  it. Column/cell extraction itself stays separate (native has real table
+  cells; OCR only has word positions), which is the genuine difference
+  between the two paths.
+- **Centralized the OCR confidence="low" rule.** Added
+  `enforce_ocr_low_confidence(confidence, extraction_method)` to
+  `harvest_contract.py`. Replaced three separate ad hoc implementations in
+  `pdf_financial_extractor.py` (`_expense_rows_from_pages`,
+  `_statement_expense_rows_from_pages`, and the rent-roll path's hardcoded
+  force-low) with calls to the shared helper. This also fixed a real,
+  previously undetected bug: the statement-expense-fallback path never
+  actually forced `period_type` confidence down to `"low"` for OCR-derived
+  rows (it left whatever `_period_type_from_text` had assigned, often
+  `"medium"`) — silently violating the documented "no OCR field is ever
+  medium/high" invariant from `docs/OCR_LANE_DESIGN.md`. No test exercised
+  that specific combination before, so nothing was silently broken by the
+  fix; it just makes the invariant actually hold.
+- **Nested-PDF staleness/duplicate warning.** Added
+  `_nested_financial_pdf_warnings()` in `extractor.py`, called from
+  `scan_assignment_folder`: when more than one rent-roll or
+  operating-statement PDF is found for an assignment — including ones
+  discovered by the nested-subfolder scan (e.g. under "Information
+  Provided") — it warns naming each file's location and modified date so
+  Derek can check for stale/duplicate copies before review. It doesn't try
+  to auto-resolve which file wins; the extractor has no reliable way to know
+  that, and the existing human-review gate already catches bad data before
+  DB commit.
+- **OCR orientation re-detection trigger fix.** Added
+  `_financial_structure_signals()`/`_page_has_financial_structure()` in
+  `pdf_financial_extractor.py` (factored out of
+  `_choose_financial_ocr_orientation`'s existing per-rotation scoring).
+  Later pages in `_extract_via_ocr` now re-run full orientation detection
+  when the current orientation yields no recognizable rent-roll/expense
+  structure at all, not just when OCR confidence is low — closing the gap
+  where a mixed-orientation scan bundle (e.g. portrait cover page followed
+  by a landscape rent roll) could silently lose a page's rows because
+  garbled-but-still-legible sideways text can score confidence high enough
+  to skip re-detection. Verified this doesn't regress the existing
+  headerless-continuation-page case (a legitimately no-structure page still
+  correctly keeps its original orientation, just at the cost of one extra
+  OCR pass) — `test_ocr_continuation_page_without_header_warns_instead_of_silent_loss`
+  still passes.
+- **Legacy comp-row identity backfill (P1 comparable-intelligence item).**
+  Added `backfill_legacy_identities(conn)` to `db.py`, called automatically
+  from `init_db()` after `_apply_migrations()`. Computes and stores
+  `identity_key` for any `comps`/`lease_comps`/`assignments`/
+  `income_snapshots` rows that predate the identity-key column (still NULL).
+  Without this, a legacy row is invisible to `comparable_id_by_identity`/
+  `harvest_id_by_identity` — both match on `identity_key`, and NULL never
+  matches — so importing Derek's real historical archive would insert
+  duplicates for anything already in the database from before identity
+  keys existed, instead of being recognized and skipped. Defensively checks
+  column existence per table first (safe against unusual legacy schemas).
+  `rent_roll_entries`/`operating_expenses`/`market_observations`/
+  `source_artifacts` don't need this: those tables were introduced with
+  `identity_key` already part of their schema, so every row in them already
+  has one.
+- Added 5 new tests across `tests/test_financial_harvest.py` (4) and
+  `tests/test_comp_pipeline.py` (1) covering all of the above. Full suite is
+  now 82 tests (was 77).
+- Ran the full suite live in this checkout — `python -m unittest discover -s
+  tests -v` equivalent, run per-module due to sandbox time limits — 82/82
+  pass, zero skips (real Tesseract available). `python axiom.py contract`
+  passed at v1.2.0 (220 fields, 20 blocks).
+
 ## In progress
 
-- None — the OCR lane, local install support, and synthetic OCR regression
-  coverage are complete for the approved v1 scope.
+- None — the lower-priority OCR hardening backlog and the DB-migration item
+  from `dde13b8`'s next-step list are both closed for the approved scope.
 
 ## Exact next step
 
 1. Review the latest five staged copied-archive batches before any real
-   database commit. They now include OCR-derived operating expenses and OCR
-   page-limit warnings, so Derek should confirm whether the first 6 pages are
-   enough for each long statement or whether a deeper manual rerun is needed.
-2. Consider the lower-priority hardening backlog from the Fable reviews
-   (see "Completed this session" above) if the OCR lane sees real use:
-   page-image retention/cleanup for `ingest/staged/ocr_pages/`, unifying the
-   OCR rent-roll path with the native path the way the expense path already
-   is, and centralizing the OCR→confidence="low" rule in `harvest_contract`
-   instead of a string-prefix check duplicated in three files. Also add
-   staleness/duplicate handling for nested-subfolder financial PDFs, and make
-   OCR orientation re-detection on later pages trigger on missing financial
-   structure, not just low confidence (both flagged by this session's review).
-3. Longer-term, still open from before: add database migrations/backfills
-   for legacy local comp rows before importing Derek's real historical
-   archive (last remaining P1 comparable-intelligence item in
-   `PROJECT_STATE.md`).
+   database commit (unchanged from before this session — still Derek's own
+   task, not something delegated to an agent). They include OCR-derived
+   operating expenses and OCR page-limit warnings, so confirm whether the
+   first 6 pages are enough for each long statement or whether a deeper
+   manual rerun is needed.
+2. If Derek wants to keep hardening the OCR lane further: terminal
+   `review_staged` still lacks true per-record keep/skip for rent-roll/
+   expense rows (native or OCR) — a pre-existing gap noted since the OCR
+   lane first shipped, not newly introduced, and still not fixed. This is
+   the next natural candidate if the OCR lane sees more real use.
+3. Otherwise, the next real milestone is importing Derek's actual historical
+   comp archive now that the identity-backfill migration is in place —
+   `axiom.py comp-ingest` against the real archive root, review, then
+   `comp-commit` into the real `axiom.db` (not a temporary one).
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 77 tests pass, confirmed live
-  in this checkout with real OCR enabled and zero skips.
+- `python -m unittest discover -s tests -v`: 82 tests pass, confirmed live
+  in this checkout with real OCR enabled and zero skips (run per-module this
+  session due to sandbox time limits, not as one combined invocation; same
+  net coverage).
 - Six direct OCR tests pass against the installed local Tesseract engine.
 - One OCR orientation-scoring regression test passes without requiring
   Tesseract.
@@ -570,95 +653,4 @@ baseline before connecting external services.
 
 ## Do not touch
 
-- Use only `tests/fixtures/DEMO-001` for repeatable assignment testing.
-- Do not push the repository or source Office documents to a remote.
-- Do not live-test Adobe Sign, Xero, or Anthropic without explicit approval and
-  local credentials.
-
-## Changed files this session (Claude, 2026-07-08)
-
-Both commits described above (`af29fb2` and the same-day follow-up) together
-touch:
-
-- `pdf_financial_extractor.py` — OCR lane implementation, plus the
-  follow-up's arithmetic/total-reconciliation checks and missing-header
-  warning.
-- `ingest.py` — OCR-aware terminal review markers (`_is_ocr_record`,
-  `_ocr_flag`); no logic changes to extraction/commit.
-- `comp_review.py` — OCR warning banner + inline rendered-page-image display
-  in `_render_record`.
-- `tests/test_financial_harvest.py` — 6 OCR tests total (the original 4 plus
-  2 follow-up regression tests) + fixture-building helpers.
-- `docs/OCR_LANE_DESIGN.md` — new design doc (approved and implemented).
-- `PROJECT_STATE.md`, `HANDOFF.md` — updated both times.
-
-## Changed files this session (Codex, 2026-07-09)
-
-- `pdf_financial_extractor.py` — Tesseract executable and tessdata
-  auto-detection for local Windows installs, plus financial-structure-aware
-  OCR orientation scoring.
-- `extractor.py` — `scan_assignment_folder` now recursively routes strictly
-  named financial PDFs found in subfolders (e.g. "Information Provided") into
-  the financial parser instead of only indexing them as artifacts. This file
-  was omitted from this list in an earlier draft of this handoff; caught
-  during a same-day review pass.
-- `.gitignore` — ignores `.local/` for local OCR model data, plus `*.bak` and
-  a bare `node_modules` line added in this same review pass (see "Known
-  limitations").
-- `docs/OCR_LANE_DESIGN.md` — documents the auto-detection paths.
-- `PROJECT_STATE.md`, `HANDOFF.md` — updated verified OCR install/test state.
-- `tests/test_financial_harvest.py` — adds OCR orientation-scoring coverage,
-  nested-financial-PDF-routing coverage, and statement-expense-fallback
-  coverage.
-- `comparable_contract.py` — normalizes placeholder date values to blank.
-- `tests/test_comp_pipeline.py` — adds placeholder lease-expiration coverage.
-
-## Known limitations
-
-- Two stray files at the platform root — `zzz_discard_me.bak` (a stale
-  truncated copy of `pdf_financial_extractor.py`, harmless) and
-  `node_modules` (a broken/dangling symlink) — could not be deleted from
-  this sandbox: both `rm` and `mv` fail with "Operation not permitted" (the
-  same unlink restriction documented elsewhere for `.git` lock files, just
-  worse here since it blocks deletion entirely, not just lock cleanup).
-  Added `*.bak` and a bare `node_modules` line to `.gitignore` so neither can
-  be accidentally committed via `git add -A` in the meantime, but someone
-  with normal OS-level file access (not this sandbox) should delete both by
-  hand when convenient.
-
-- **This sandbox's bash tool mounts this OneDrive-synced folder in a way
-  that can lag behind edits made through the file-editing tool** — it can
-  take a snapshot-like view rather than a live sync within a session. This
-  was worked around successfully both times this session (once for the
-  original OCR-lane commit, once for the follow-up): after editing via the
-  file-editing tool and confirming correctness by re-reading, the same
-  content was pushed into bash's view via bash-native writes (`cp` from a
-  verified copy, or a heredoc write) before running tests — bash-native
-  writes to this mount are immediately self-consistent, unlike edits made
-  through the file-editing tool. Both times, the full suite was then run
-  live in this checkout and confirmed passing (71/71, then 73/73) before
-  committing — this is no longer an open verification gap, just a technique
-  worth knowing about for the next session's own edit/test cycles.
-- This same mount also does not let git commands unlink their own lock/temp
-  files after normal use (`.git/index.lock`, `.git/HEAD.lock`,
-  `.git/objects/**/tmp_obj_*` all warn "Operation not permitted" on cleanup,
-  even on a successful command). `mv` (not `rm`) clears a stale lock before
-  the next git command; the warnings themselves don't indicate corruption.
-- Plain `python` is not on PATH in the current Codex environment. The bundled
-  Python runtime was used for checks.
-- Tesseract is installed and synthetic OCR tests now run. Live archive
-  extraction has been tested against an image-only rendering of Derek's
-  supplied rent roll and proforma, but a naturally image-only scanned rent
-  roll or P&L has not yet produced staged financial rows through full
-  staging/review in this checkout. The naturally image-only JeffCo income
-  statement OCRed clearly enough but did not match current expense-section
-  parsing rules.
-- DOCX media layout has structural test coverage but still needs visual QA with
-  representative landscape and portrait photos.
-- Streamlit comparable review/browse behavior has service-level coverage but
-  still needs an interactive browser pass.
-- Missing/error Excel caches are detectable. A valid-looking but stale cached
-  value cannot be proven stale from XLSX alone without an Excel-side
-  calculation stamp or automation.
-- The existing parent-folder `PROJECT_STATE.md` is historical and contains
-  stale claims. This file and the project-root `PROJECT_STATE.md
+- Use only `tests/fixtures/DEMO-001` fo

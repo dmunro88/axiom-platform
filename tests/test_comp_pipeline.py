@@ -21,7 +21,13 @@ from comparable_contract import (
     comparable_identity,
     confirm_extraction_result,
 )
-from db import get_conn, init_db, search_lease_comps, search_sale_comps
+from db import (
+    backfill_legacy_identities,
+    get_conn,
+    init_db,
+    search_lease_comps,
+    search_sale_comps,
+)
 from ingest import commit_confirmed, commit_extraction_result, run_extraction
 
 
@@ -202,6 +208,65 @@ class ComparablePipelineTests(unittest.TestCase):
                         """
                     ).fetchone()[0],
                 )
+            finally:
+                connection.close()
+
+    def test_legacy_comp_rows_backfill_identity_key_matching_fresh_import(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "legacy-real-schema.db"
+            init_db(db_path, quiet=True)
+            connection = get_conn(db_path)
+            try:
+                cursor = connection.execute(
+                    "INSERT INTO properties (address_street, address_city) "
+                    "VALUES (?, ?)",
+                    ("100 Fictional Legacy Way", "Demo City"),
+                )
+                property_id = cursor.lastrowid
+                # Simulate a row committed before identity_key existed: an
+                # ordinary insert with identity_key left NULL, the same as a
+                # real pre-upgrade comps row would be.
+                connection.execute(
+                    "INSERT INTO comps "
+                    "(property_id, sale_price, sale_date, reviewed) "
+                    "VALUES (?, ?, ?, 1)",
+                    (property_id, 1_000_000, "2025-01-15"),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            connection = get_conn(db_path)
+            try:
+                before = connection.execute(
+                    "SELECT identity_key FROM comps"
+                ).fetchone()["identity_key"]
+                self.assertIsNone(before)
+
+                counts = backfill_legacy_identities(connection)
+                connection.commit()
+                self.assertEqual(1, counts["comps"])
+
+                backfilled = connection.execute(
+                    "SELECT identity_key FROM comps"
+                ).fetchone()["identity_key"]
+                self.assertIsNotNone(backfilled)
+
+                # A fresh import of the identical transaction must compute
+                # the exact same identity_key, so `comparable_id_by_identity`
+                # correctly recognizes it as already-ingested instead of
+                # inserting a duplicate.
+                fresh_identity = comparable_identity("sale", {
+                    "address_street": "100 Fictional Legacy Way",
+                    "address_city": "Demo City",
+                    "sale_date": "2025-01-15",
+                    "sale_price": 1_000_000,
+                })
+                self.assertEqual(fresh_identity, backfilled)
+
+                # Calling it again must not change an already-backfilled row.
+                second_counts = backfill_legacy_identities(connection)
+                self.assertEqual(0, second_counts["comps"])
             finally:
                 connection.close()
 

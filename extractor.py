@@ -1212,6 +1212,45 @@ def _parse_folder_name(folder_name):
     return result
 
 
+def _nested_financial_pdf_warnings(folder, result):
+    """Warn when more than one rent-roll or operating-statement PDF was
+    found for the same assignment, including PDFs discovered by the
+    nested-subfolder scan (e.g. under "Information Provided"). The extractor
+    has no reliable way to know which of two same-role PDFs supersedes the
+    other -- a prior year's rent roll left in an archive subfolder, or the
+    same P&L copied into two places -- so both still get parsed and staged;
+    this only surfaces the ambiguity so Derek can check dates/content before
+    review, rather than silently trusting whichever file the scan happened
+    to reach first."""
+    warnings = []
+    for bucket, label in (
+        ("rent_roll_pdfs", "rent-roll"),
+        ("expense_pdfs", "operating-statement"),
+    ):
+        paths = [Path(item) for item in result[bucket]]
+        if len(paths) < 2:
+            continue
+        if not any(path.parent != folder for path in paths):
+            continue
+        details = []
+        for path in sorted(paths, key=lambda item: item.name.lower()):
+            try:
+                modified = datetime.fromtimestamp(path.stat().st_mtime).date().isoformat()
+            except OSError:
+                modified = "unknown"
+            try:
+                location = str(path.relative_to(folder))
+            except ValueError:
+                location = path.name
+            details.append(f"{location} (modified {modified})")
+        warnings.append(
+            f"  [{folder.name}] {len(paths)} {label} PDFs found across "
+            "subfolders -- verify these aren't stale/duplicate copies "
+            "before review: " + "; ".join(details)
+        )
+    return warnings
+
+
 def scan_assignment_folder(folder_path):
     """
     Scan one assignment folder (root level only — skip archive subfolders).
@@ -1241,6 +1280,7 @@ def scan_assignment_folder(folder_path):
         "rent_roll_pdfs":   [],   # native/scanned rent roll PDFs
         "expense_pdfs":     [],   # native/scanned operating statement PDFs
         "other_pdfs":       [],   # other PDF files
+        "warnings":         [],   # e.g. multiple same-role PDFs across subfolders
     }
 
     seen = set()
@@ -1305,6 +1345,7 @@ def scan_assignment_folder(folder_path):
             "expense":   "expense_pdfs",
         }[role], item)
 
+    result["warnings"] = _nested_financial_pdf_warnings(folder, result)
     return result
 
 
@@ -1358,7 +1399,7 @@ def extract_assignment(scan):
         "rent_roll_entries": [],
         "expense_records": [],
         "market_observations": [],
-        "warnings":     [],
+        "warnings":     list(scan.get("warnings", [])),
         "sources":      [],
     }
 

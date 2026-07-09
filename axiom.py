@@ -789,6 +789,16 @@ def cmd_comp_ingest(args):
     return True
 
 
+def cmd_ocr_cleanup(args):
+    """Delete OCR page-review images no longer referenced by any staged or
+    confirmed batch awaiting review/commit."""
+    from pdf_financial_extractor import prune_ocr_pages
+
+    deleted = prune_ocr_pages()
+    print(f"\n  Deleted {deleted} orphaned OCR page image(s).\n")
+    return True
+
+
 def cmd_review_staged(args):
     """Review staged comparable records in the terminal."""
     from ingest import review_staged
@@ -1501,6 +1511,7 @@ COMMANDS = {
     'comp-ingest': cmd_comp_ingest,
     'review-staged': cmd_review_staged,
     'comp-commit': cmd_comp_commit,
+    'ocr-cleanup': cmd_ocr_cleanup,
     'comp-search': cmd_comp_search,
     'financial-search': cmd_financial_search,
     'observation-search': cmd_observation_search,

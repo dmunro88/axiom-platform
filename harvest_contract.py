@@ -49,6 +49,20 @@ RENT_ROLL_DATE_FIELDS = {"lease_start", "lease_end", "as_of_date"}
 EXPENSE_NUMBER_FIELDS = {"amount", "amount_per_sf"}
 
 
+def enforce_ocr_low_confidence(confidence, extraction_method):
+    """Every OCR-derived field is tagged confidence "low" regardless of what
+    an individual extractor step assigned or what the OCR engine's own score
+    reported (see docs/OCR_LANE_DESIGN.md). This used to be re-implemented ad
+    hoc as an `extraction_method.startswith("ocr")` string-prefix check
+    duplicated across several call sites in pdf_financial_extractor.py --
+    centralizing the rule here means any current or future OCR-aware
+    extractor gets the guarantee for free instead of having to remember to
+    repeat (and keep in sync) the check."""
+    if str(extraction_method or "").startswith("ocr"):
+        return {key: "low" for key in confidence}
+    return confidence
+
+
 def _text(value):
     if value is None:
         return None

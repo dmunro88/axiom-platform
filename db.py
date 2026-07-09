@@ -392,6 +392,175 @@ def _apply_migrations(conn):
     conn.executescript(IDENTITY_INDEXES)
 
 
+def backfill_legacy_identities(conn):
+    """Compute and store identity_key for legacy comps/lease_comps/
+    assignments/income_snapshots rows that predate the identity-key column
+    (still NULL after `_apply_migrations` merely added the column). Without
+    this, a legacy row is invisible to `comparable_id_by_identity`/
+    `harvest_id_by_identity` -- both match on identity_key, and NULL never
+    matches -- so re-importing a real historical archive that overlaps with
+    already-ingested legacy data would insert duplicates instead of being
+    recognized and skipped. Safe to call repeatedly: it only ever fills
+    identity_key where it is currently NULL and never overwrites an existing
+    value. Returns a dict of rows backfilled per table.
+
+    `rent_roll_entries`/`operating_expenses`/`market_observations`/
+    `source_artifacts` are not handled here: unlike comps/lease_comps/
+    assignments/income_snapshots, those tables were introduced with
+    identity_key already part of their schema, so every row in them was
+    already assigned one at insert time -- there is no legacy-without-
+    identity case for those tables to backfill.
+    """
+    from comparable_contract import comparable_identity
+    from harvest_contract import assignment_identity, income_identity
+
+    counts = {
+        "comps": 0,
+        "lease_comps": 0,
+        "assignments": 0,
+        "income_snapshots": 0,
+    }
+
+    def _table_has_columns(table, columns):
+        try:
+            existing = {
+                row[1]
+                for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+        except sqlite3.OperationalError:
+            return False
+        return set(columns).issubset(existing)
+
+    if not _table_has_columns(
+        "comps", {"identity_key", "sale_date", "sale_price"}
+    ) or not _table_has_columns("properties", {"address_street", "address_city"}):
+        return counts
+
+    for row in conn.execute(
+        """
+        SELECT c.comp_id, c.sale_date, c.sale_price,
+               p.address_street, p.address_city
+        FROM comps c
+        LEFT JOIN properties p ON p.property_id = c.property_id
+        WHERE c.identity_key IS NULL
+        """
+    ).fetchall():
+        identity_key = comparable_identity("sale", {
+            "address_street": row["address_street"],
+            "address_city": row["address_city"],
+            "sale_date": row["sale_date"],
+            "sale_price": row["sale_price"],
+        })
+        conn.execute(
+            "UPDATE comps SET identity_key = ? WHERE comp_id = ?",
+            (identity_key, row["comp_id"]),
+        )
+        counts["comps"] += 1
+
+    if _table_has_columns(
+        "lease_comps",
+        {"identity_key", "tenant_name", "lease_date", "sf_leased", "base_rent_psf"},
+    ) and _table_has_columns("properties", {"address_street", "address_city"}):
+        rows = conn.execute(
+            """
+            SELECT lc.lease_comp_id, lc.tenant_name, lc.lease_date,
+                   lc.sf_leased, lc.base_rent_psf,
+                   p.address_street, p.address_city
+            FROM lease_comps lc
+            LEFT JOIN properties p ON p.property_id = lc.property_id
+            WHERE lc.identity_key IS NULL
+            """
+        ).fetchall()
+    else:
+        rows = []
+    for row in rows:
+        identity_key = comparable_identity("lease", {
+            "address_street": row["address_street"],
+            "address_city": row["address_city"],
+            "tenant_name": row["tenant_name"],
+            "lease_date": row["lease_date"],
+            "sf_leased": row["sf_leased"],
+            "base_rent_psf": row["base_rent_psf"],
+        })
+        conn.execute(
+            "UPDATE lease_comps SET identity_key = ? WHERE lease_comp_id = ?",
+            (identity_key, row["lease_comp_id"]),
+        )
+        counts["lease_comps"] += 1
+
+    if _table_has_columns(
+        "assignments",
+        {"identity_key", "file_no", "effective_date", "reconciled_value"},
+    ) and _table_has_columns("properties", {"address_street"}) and _table_has_columns(
+        "source_documents", {"content_sha256"}
+    ):
+        rows = conn.execute(
+            """
+            SELECT a.assignment_id, a.file_no, a.effective_date,
+                   a.reconciled_value, p.address_street,
+                   sd.content_sha256 AS source_sha256
+            FROM assignments a
+            LEFT JOIN properties p ON p.property_id = a.property_id
+            LEFT JOIN source_documents sd ON sd.doc_id = a.source_doc_id
+            WHERE a.identity_key IS NULL
+            """
+        ).fetchall()
+    else:
+        rows = []
+    for row in rows:
+        identity_key = assignment_identity(
+            {
+                "file_no": row["file_no"],
+                "address_street": row["address_street"],
+                "effective_date": row["effective_date"],
+                "reconciled_value": row["reconciled_value"],
+            },
+            row["source_sha256"],
+        )
+        conn.execute(
+            "UPDATE assignments SET identity_key = ? WHERE assignment_id = ?",
+            (identity_key, row["assignment_id"]),
+        )
+        counts["assignments"] += 1
+
+    # income_snapshots has no assignment_id FK (see schema above), so legacy
+    # rows fall back to their source document's content hash for identity --
+    # the same fallback `_record()` uses at insert time when no assignment
+    # context is available.
+    if _table_has_columns(
+        "income_snapshots",
+        {"identity_key", "period_year", "period_type", "noi"},
+    ) and _table_has_columns("source_documents", {"content_sha256"}):
+        rows = conn.execute(
+            """
+            SELECT i.snapshot_id, i.period_year, i.period_type, i.noi,
+                   sd.content_sha256 AS source_sha256
+            FROM income_snapshots i
+            LEFT JOIN source_documents sd ON sd.doc_id = i.source_doc_id
+            WHERE i.identity_key IS NULL
+            """
+        ).fetchall()
+    else:
+        rows = []
+    for row in rows:
+        identity_key = income_identity(
+            {
+                "period_year": row["period_year"],
+                "period_type": row["period_type"],
+                "noi": row["noi"],
+            },
+            None,
+            row["source_sha256"],
+        )
+        conn.execute(
+            "UPDATE income_snapshots SET identity_key = ? WHERE snapshot_id = ?",
+            (identity_key, row["snapshot_id"]),
+        )
+        counts["income_snapshots"] += 1
+
+    return counts
+
+
 def init_db(db_path=None, quiet=False):
     """
     Create the database and all tables if they don't exist.
@@ -400,8 +569,10 @@ def init_db(db_path=None, quiet=False):
     """
     path = Path(db_path) if db_path else DB_PATH
     conn = sqlite3.connect(str(path))
+    conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     _apply_migrations(conn)
+    backfill_legacy_identities(conn)
     conn.commit()
     conn.close()
     if not quiet:
