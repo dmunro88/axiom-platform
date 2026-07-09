@@ -87,6 +87,37 @@ def load_variables(json_path=None, workbook_path=None):
 
 # -- Run-merge replacement -----------------------------------------------------
 
+# Control characters that XML 1.0 forbids in element text. python-docx/lxml
+# raise a bare ValueError deep inside doc.save() if any of these reach a run,
+# which hides which field carried the bad character. We detect them at
+# substitution time and raise a clear, field-named error instead.
+#
+# This set is deliberately limited to the C0/C1 control code points that
+# python-docx itself rejects (every code point below 0xA0 except tab, LF, and
+# CR, plus DEL and the C1 range). It is therefore a strict subset of what
+# python-docx refuses: it can never reject a value python-docx would have
+# accepted -- it only converts an already-guaranteed crash into an actionable,
+# fail-closed message that names the offending field.
+_XML_ILLEGAL_CHARS = re.compile(
+    "[" + "".join(
+        chr(c)
+        for c in range(0x00, 0xA0)
+        if c not in (0x09, 0x0A, 0x0D) and (c < 0x20 or c >= 0x7F)
+    ) + "]"
+)
+
+
+def _reject_illegal_xml_value(key, replacement):
+    match = _XML_ILLEGAL_CHARS.search(replacement)
+    if match is None:
+        return
+    raise ValueError(
+        f"Field [[{key}]] contains a character that is not valid in a Word "
+        f"document (code point U+{ord(match.group()):04X}). Remove control or "
+        "null characters from this value before delivery."
+    )
+
+
 def _replace_in_paragraph(
     paragraph,
     variables,
@@ -108,7 +139,10 @@ def _replace_in_paragraph(
         if blank_value and key not in optional_blank_keys:
             continue
         replacement = "" if blank_value else str(value)
-        new_text = new_text.replace('[[' + key + ']]', replacement)
+        placeholder = '[[' + key + ']]'
+        if placeholder in new_text:
+            _reject_illegal_xml_value(key, replacement)
+        new_text = new_text.replace(placeholder, replacement)
 
     remaining = re.findall(r'\[\[([A-Z0-9_]+)\]\]', new_text)
     for key in remaining:

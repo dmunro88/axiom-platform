@@ -1,6 +1,7 @@
 """Structured extraction for historical rent rolls and operating expenses."""
 
 import datetime
+import math
 import re
 from pathlib import Path
 
@@ -173,13 +174,20 @@ def _number(value):
     if value in (None, ""):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        result = float(value)
+        return result if math.isfinite(result) else None
     cleaned = re.sub(r"[$,%]", "", str(value)).replace(",", "").strip()
     cleaned = re.sub(r"\(([^)]+)\)", r"-\1", cleaned)
     try:
-        return float(cleaned)
+        result = float(cleaned)
     except ValueError:
         return None
+    # Reject non-finite values ("nan", "inf", "Infinity"): Python's float()
+    # accepts these strings, but a NaN/Inf rent or expense amount silently
+    # corrupts dedupe, arithmetic reconciliation, and staged-JSON output
+    # (json.dump emits bare NaN/Infinity, which is invalid JSON). Degrade
+    # such a cell to "missing" so review catches it instead.
+    return result if math.isfinite(result) else None
 
 
 def _worksheet_max_row(ws, fallback=40):

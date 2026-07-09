@@ -312,8 +312,18 @@ def review_staged(interactive=True):
     confirmed_paths = []
 
     for staged_path in staged_files:
-        with open(staged_path, encoding="utf-8") as f:
-            result = json.load(f)
+        try:
+            with open(staged_path, encoding="utf-8") as f:
+                result = json.load(f)
+        except (json.JSONDecodeError, RecursionError, OSError, ValueError) as exc:
+            print(f"\n  SKIPPED unreadable staged file {staged_path.name}: {exc}")
+            continue
+        if not isinstance(result, dict):
+            print(
+                f"\n  SKIPPED staged file {staged_path.name}: expected a JSON "
+                f"object, got {type(result).__name__}."
+            )
+            continue
 
         folder_name = result.get("folder_name", staged_path.stem)
         meta        = result.get("folder_meta", {})
@@ -546,6 +556,25 @@ def _source_doc_type(source_path):
 
 def commit_extraction_result(result, conn):
     """Commit one confirmed canonical batch inside the caller's transaction."""
+    # Validate list-shaped fields *before* canonicalize_extraction_result touches
+    # them: canonicalize iterates "for record in result['comps']" assuming each
+    # entry is a dict, so a wrong-typed value (e.g. a string) crashes inside
+    # canonicalize with an unhelpful 'str' object has no attribute 'get' before
+    # this function gets a chance to report anything clearer.
+    for list_key in (
+        "comps",
+        "lease_comps",
+        "rent_roll_entries",
+        "expense_records",
+        "market_observations",
+        "artifacts",
+    ):
+        value = result.get(list_key)
+        if value is not None and not isinstance(value, list):
+            raise ValueError(
+                f"'{list_key}' must be a list of records, got "
+                f"{type(value).__name__}."
+            )
     result = canonicalize_extraction_result(result)
     if result.get("review", {}).get("status") != "confirmed":
         raise ValueError("Extraction batch has not been confirmed for commit.")
@@ -857,8 +886,20 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
     print(f"\n  Committing {len(confirmed_files)} confirmed file(s) to axiom.db ...\n")
 
     for conf_path in confirmed_files:
-        with open(conf_path, encoding="utf-8") as f:
-            result = json.load(f)
+        try:
+            with open(conf_path, encoding="utf-8") as f:
+                result = json.load(f)
+        except (json.JSONDecodeError, RecursionError, OSError, ValueError) as exc:
+            print(f"  {conf_path.name}")
+            print(f"         ERROR: could not read confirmed file: {exc}")
+            continue
+        if not isinstance(result, dict):
+            print(f"  {conf_path.name}")
+            print(
+                "         ERROR: confirmed file is not a JSON object "
+                f"(got {type(result).__name__}); skipping."
+            )
+            continue
 
         folder_name = result.get("folder_name", conf_path.stem)
         print(f"  {folder_name}")

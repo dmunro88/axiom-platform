@@ -2,14 +2,13 @@
 
 - Last updated: 2026-07-09
 - Current agent: Claude
-- Commits this session: `6ad25af` — see "Completed this session
-  (Claude, hardening pass — 2026-07-08)" below. Prior commit `dde13b8`
-  covered Codex's 2026-07-09 work plus the review-pass fixes described under
-  "Completed this session (Claude, review pass — 2026-07-08)". `6ad25af`
-  closes out the lower-priority hardening backlog and the DB-migration
-  item that `dde13b8`'s "Exact next step" left open (items 2 and 3); item 1
-  (reviewing Derek's own staged batches) is unchanged and still his to do.
-  Not pushed to any remote.
+- Commits this session: pending — see "Completed this session (Claude,
+  stress-test hardening — 2026-07-09)" below for the adversarial stress-test
+  pass and its four auto-fixed, low-risk hardening changes. Prior commit
+  `6ad25af` — see "Completed this session (Claude, hardening pass —
+  2026-07-08)". Prior to that, `dde13b8` covered Codex's 2026-07-09 work plus
+  the review-pass fixes described under "Completed this session (Claude,
+  review pass — 2026-07-08)". Not pushed to any remote.
 
 ## Current objective
 
@@ -411,8 +410,8 @@ baseline before connecting external services.
 - Added `test_placeholder_lease_expiration_canonicalizes_to_blank`.
 - Added `scratch/` to `.gitignore` so copied live archive folders are not
   accidentally staged.
-- Deleted the generated OCR page snapshot for the live JeffCo income
-  statement after confirming no staged row referenced it.
+- Deleted the generated OCR page snapshot for the live income statement
+  after confirming no staged row referenced it.
 - Ran a second copied archive batch from `scratch/historical_ingest_test_2`
   containing five assignment folders. The five staged JSON batches contain,
   after canonical staging, 45 sale comps, 28 lease comps, 962 rent-roll rows,
@@ -592,66 +591,56 @@ everything live here too — see "Baseline checks run" below.
   pass, zero skips (real Tesseract available). `python axiom.py contract`
   passed at v1.2.0 (220 fields, 20 blocks).
 
-## In progress
+## Completed this session (Claude, stress-test hardening — 2026-07-09)
 
-- None — the lower-priority OCR hardening backlog and the DB-migration item
-  from `dde13b8`'s next-step list are both closed for the approved scope.
+Per Derek's request ("run a tough stress test from start to finish of the
+entire built project so far... should we have Fable model do this?"), ran an
+adversarial multi-agent stress test using the Fable model — an agent that
+didn't write this code and has no bias toward believing it already works.
+Derek's explicit governing instruction for this pass: **auto-fix low-risk
+issues (missing guards, unhandled exceptions, unclear errors) and report
+them; flag anything touching data safety, DB schema, or business logic for
+his own review instead of silently changing it.**
 
-## Exact next step
-
-1. Review the latest five staged copied-archive batches before any real
-   database commit (unchanged from before this session — still Derek's own
-   task, not something delegated to an agent). They include OCR-derived
-   operating expenses and OCR page-limit warnings, so confirm whether the
-   first 6 pages are enough for each long statement or whether a deeper
-   manual rerun is needed.
-2. If Derek wants to keep hardening the OCR lane further: terminal
-   `review_staged` still lacks true per-record keep/skip for rent-roll/
-   expense rows (native or OCR) — a pre-existing gap noted since the OCR
-   lane first shipped, not newly introduced, and still not fixed. This is
-   the next natural candidate if the OCR lane sees more real use.
-3. Otherwise, the next real milestone is importing Derek's actual historical
-   comp archive now that the identity-backfill migration is in place —
-   `axiom.py comp-ingest` against the real archive root, review, then
-   `comp-commit` into the real `axiom.db` (not a temporary one).
-
-## Baseline checks run
-
-- `python -m unittest discover -s tests -v`: 82 tests pass, confirmed live
-  in this checkout with real OCR enabled and zero skips (run per-module this
-  session due to sandbox time limits, not as one combined invocation; same
-  net coverage).
-- Six direct OCR tests pass against the installed local Tesseract engine.
-- One OCR orientation-scoring regression test passes without requiring
-  Tesseract.
-- `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
-- `python -m compileall`: passed for runtime modules and tests.
-- Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000
-  Unicode characters, malformed JSON/XLSX, corrupt/oversized media, split-run
-  placeholders, simulated generation failure, and a simulated locked output.
-- Complete generated-report golden: passed with 40 valid image relationships,
-  unique drawing IDs, 8 sections, and zero unresolved placeholders.
-- Document accessibility audit: 0 high, 65 medium table-header findings.
-- Document render attempt: blocked because LibreOffice/`soffice` is not
-  installed; no visual page-render claim is made.
-- Fictional historical-workbook vertical slice: 2 sale comps, 1 lease comp,
-  source-move idempotency, source-change rejection, rollback, reviewed search,
-  CSV export, and workbook export passed.
-- Registry-aware fixture freshness check: 0 stale Intake fields and 0 cache
-  warnings.
-- `axiom.py --help`: passed with the warning corrected.
-- `DEMO-001` fixture validation: 0 ordinary missing fields, 8 unresolved
-  blocks (all local AI narratives), and 10 expected sales-adjustment formula
-  cache errors because the separate adjustment grid remains unpopulated.
-- Fixture pipeline tests: 3 comp pages and 11 images across all 9 registered
-  media blocks injected without remaining comp/media placeholders.
-- Spreadsheet render review: Intake, market, lease-comps, rent-roll,
-  land-sales, and output sheets retained readable formatting.
-- DOCX render attempt: blocked because LibreOffice/`soffice` is unavailable;
-  structural package QA passed instead.
-- `axiom.py list`: passed; the active directory contains only the clearly
-  labeled fictional `DEMO-001` assignment.
-
-## Do not touch
-
-- Use only `tests/fixtures/DE
+- Built three isolated rsync'd sandbox mirrors (`stress_golden` baseline plus
+  `stress_A`/`stress_B`/`stress_C` working copies) excluding real client data
+  directories (`ingest/`, `scratch/`, `.sanitization_work/`, `.local/`), so
+  adversarial testing could freely mutate/break things with zero risk to real
+  data or the real database. Confirmed the golden baseline green (82 tests +
+  contract check) before any agent touched a copy.
+- Spawned three parallel Fable-model agents, one per subsystem: (A) report
+  generation/delivery pipeline, (B) comp/financial ingestion + OCR, (C)
+  DB/ingest/review/commit + CLI misuse. All three did substantial real work
+  (111/87/148 tool calls respectively) but hit a session limit before
+  returning final written summaries; their raw artifacts (report files,
+  attack scripts, partial logs) were read directly and any script whose
+  output wasn't captured to disk was re-run to recover the findings — no work
+  was lost, and one incomplete script (Agent B's `attack_e_routing.py`,
+  genuinely truncated mid-write, not a stale-mount artifact) was completed
+  before running it.
+- **Four low-risk fixes were verified in a sandbox mirror, then ported into
+  this checkout and re-verified live** (all four compile clean and the full
+  82-test suite plus `python axiom.py contract` pass with zero regressions):
+  1. **Illegal-XML-character guard in `fill_engine.py`.** A field value
+     containing a C0/C1 control character (e.g. a stray `\x07` in a
+     copy-pasted narrative) used to crash opaquely deep inside
+     `doc.save()`. Added `_reject_illegal_xml_value()`: raises a clear
+     field-named error (naming the field and the exact code point) before
+     substitution instead of a bare python-docx traceback.
+  2. **NaN/Infinity rejection in `financial_extractor.py` and
+     `harvest_contract.py`'s `_number()` helpers.** Python's `float()`
+     accepts the literal strings `"nan"`/`"inf"`/`"Infinity"`, and
+     `json.dump` then emits these as bare (invalid-JSON) tokens into staged
+     batches. A malformed or OCR-misread cell containing one of these
+     strings would previously produce a non-finite rent/expense amount that
+     corrupts arithmetic checks and dedupe. Both `_number()` helpers now
+     check `math.isfinite()` and degrade to `None` (missing) instead,  so
+     review catches it as an ordinary missing value.
+  3. **Malformed-staged/confirmed-JSON guards in `ingest.py`.** `review_staged()`
+     and `commit_confirmed()` used to crash the entire batch run on one
+     corrupt or non-object JSON file. Both now catch
+     `json.JSONDecodeError`/`RecursionError`/`OSError`/`ValueError`, print a
+     clear "SKIPPED unreadable file: ..." message, and continue to the next
+     file rather than aborting the whole run.
+  4. **Wrong-type list-field validation in `ingest.py`'s
+     `commit_extraction_resu

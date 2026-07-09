@@ -4,6 +4,7 @@ import copy
 import datetime
 import hashlib
 import json
+import math
 import re
 from pathlib import Path
 
@@ -74,12 +75,17 @@ def _number(value):
     if value in (None, ""):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        result = float(value)
+        return result if math.isfinite(result) else None
     cleaned = re.sub(r"[$,%]", "", str(value)).replace(",", "").strip()
     try:
-        return float(cleaned)
+        result = float(cleaned)
     except ValueError:
         return None
+    # Reject non-finite ("nan"/"inf"/"Infinity"): a NaN/Inf money field
+    # corrupts identity hashing and emits invalid bare NaN/Infinity into the
+    # staged JSON. Degrade to missing so review catches it.
+    return result if math.isfinite(result) else None
 
 
 def _date(value):

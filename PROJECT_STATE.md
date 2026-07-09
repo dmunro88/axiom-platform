@@ -1,6 +1,6 @@
 # Axiom Platform — Project State
 
-- Last verified: 2026-07-08
+- Last verified: 2026-07-09
 - Status: Functional prototype in active local use; production safeguards and
   repeatable tests are incomplete.
 
@@ -271,6 +271,22 @@ Checks were performed without regenerating or modifying assignment outputs.
   every `init_db()` call, so importing a real historical archive correctly
   recognizes already-ingested rows as duplicates instead of re-inserting
   them.
+- A 2026-07-09 adversarial Fable-model stress test across three isolated
+  sandbox mirrors (report generation/delivery, comp/financial ingestion +
+  OCR, DB/ingest/commit + CLI misuse) found and fixed four low-risk
+  hardening gaps: an opaque crash on illegal-XML field characters (now a
+  clear named error), NaN/Infinity values silently corrupting rent/expense
+  fields (now rejected to a clean "missing" value), and two ingest.py crashes
+  on malformed staged/confirmed JSON or wrong-typed record fields (now clear
+  skip/error messages instead of aborting the batch run). SQL-injection
+  resistance and transactional-atomicity-under-kill were independently
+  confirmed sound. A further set of design-level findings (rent-roll
+  identity excluding dollar amount from dedupe, a silent zero-row "committed"
+  batch, small-angle-skew and watermark OCR routing gaps, symlink
+  folder-boundary escapes, a legacy-schema migration crash risk) were
+  flagged for Derek's review rather than auto-fixed. See `HANDOFF.md`,
+  "Completed this session (Claude, stress-test hardening — 2026-07-09)" for
+  the full list.
 
 ## Data-safety status
 
@@ -302,27 +318,4 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 ### P0 — Safe repository baseline
 
-1. **Completed:** create a dedicated Git repository in this code root.
-2. **Completed:** privacy scan and fictionalization of source Office artifacts.
-3. **Completed:** create the initial source commit with Git LFS tracking Office
-   artifacts.
-
-### P1 — Repeatable testing
-
-1. **Completed:** build a genuinely fictional fixture under `tests/fixtures/`.
-2. **Completed for comp and media insertion:** add representative fictional
-   comp rows, reproducible synthetic media, and end-to-end block tests. Visual
-   formatting review remains.
-3. **Completed for adversarial structural behavior:** add temporary-assignment
-   torture tests covering malformed, extreme, interrupted, and path-safety
-   cases.
-4. **Completed:** add a metadata-normalized structural DOCX golden comparison.
-   Desktop Word visual comparison remains.
-
-### P1 — Data contract
-
-1. **Completed:** introduce a versioned field registry/schema independent of
-   Word templates.
-2. **Completed for six deterministic variants:** derive presentation variants
-   rather than entering duplicate facts. Semantically distinct short/full
-   labels 
+1.
