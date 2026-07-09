@@ -1082,7 +1082,7 @@ def _extract_axiom_reconciliation(doc):
 #
 #  [file_no] - [property_type] - [address], [city]/   ← assignment root
 #    REPORT [file_no].docx                             ← main report (narrative)
-#    EXHIBITS [file_no].docx                           ← comp pages (tables)
+#    EXHIBITS [file_no].docx                            ← comp pages (tables)
 #    Improved Sales.docx / Campground Sales Comps.docx ← standalone sale comps
 #    MARKET CHART.xlsx / Capitalization Rate Comps.xlsx← cap rate / market data
 #    MARKET CHART - RENTAL.xlsx / RentalChart_*.xlsx   ← lease comps
@@ -1243,6 +1243,15 @@ def scan_assignment_folder(folder_path):
         "other_pdfs":       [],   # other PDF files
     }
 
+    seen = set()
+
+    def add_result(bucket, item):
+        resolved = str(Path(item))
+        if resolved in seen:
+            return
+        seen.add(resolved)
+        result[bucket].append(resolved)
+
     for item in folder.iterdir():
         # Skip archive subfolders
         if item.is_dir():
@@ -1258,32 +1267,43 @@ def scan_assignment_folder(folder_path):
 
         if ext == ".docx":
             role = _classify_docx(item)
-            result[{
+            add_result({
                 "report":     "reports",
                 "exhibits":   "exhibits",
                 "sale_comps": "sale_comp_docs",
                 "income":     "income_docs",
                 "other":      "other_docs",
-            }[role]].append(str(item))
+            }[role], item)
 
         elif ext == ".xlsx":
             role = _classify_xlsx(item)
-            result[{
+            add_result({
                 "cap_rates":    "cap_rate_xls",
                 "rental_comps": "rental_comp_xls",
                 "rent_roll":    "rent_roll_xls",
                 "expense":      "expense_xls",
                 "market":       "market_xls",
                 "other":        "other_xls",
-            }[role]].append(str(item))
+            }[role], item)
 
         elif ext == ".pdf":
             role = _classify_pdf(item)
-            result[{
+            add_result({
                 "rent_roll": "rent_roll_pdfs",
                 "expense":   "expense_pdfs",
                 "other":     "other_pdfs",
-            }[role]].append(str(item))
+            }[role], item)
+
+    for item in folder.rglob("*.pdf"):
+        if item.parent == folder or _skip_file(item):
+            continue
+        role = _classify_pdf(item)
+        if role not in {"rent_roll", "expense"}:
+            continue
+        add_result({
+            "rent_roll": "rent_roll_pdfs",
+            "expense":   "expense_pdfs",
+        }[role], item)
 
     return result
 

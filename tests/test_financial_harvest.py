@@ -36,6 +36,7 @@ from financial_extractor import (
     _find_header,
     extract_financial_workbook,
 )
+import pdf_financial_extractor as pdf_financial_extractor_module
 from pdf_financial_extractor import _ocr_available, extract_financial_pdf
 
 # PyMuPDF/numpy/Pillow are only needed to *build* the synthetic scanned-PDF
@@ -491,6 +492,46 @@ def _build_pdf_profit_and_loss(path):
     pdf.setFont("Helvetica-Bold", 11)
     pdf.drawString(72, y, "Expenses")
     y -= 18
+    pdf.setFont("Helvetica", 10)
+    for label, amount in (
+        ("Repairs and Maintenance", "$12,500"),
+        ("Insurance", "$4,200"),
+        ("Utilities", "$7,800"),
+    ):
+        pdf.drawString(90, y, label)
+        pdf.drawRightString(width - 72, y, amount)
+        y -= 18
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(72, y, "Total Expenses")
+    pdf.drawRightString(width - 72, y, "$24,500")
+    y -= 18
+    pdf.drawString(72, y, "Net Income")
+    pdf.drawRightString(width - 72, y, "$95,500")
+    pdf.save()
+
+
+def _build_pdf_statement_without_expense_heading(path):
+    pdf = canvas.Canvas(str(path), pagesize=letter)
+    pdf.setTitle("Fictional Statement Missing Expense Heading")
+    width, height = letter
+    y = height - 72
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(72, y, "Fictional Profit and Loss Statement 2024 Actual")
+    y -= 30
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawString(72, y, "Income")
+    y -= 18
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(90, y, "Rental Income")
+    pdf.drawRightString(width - 72, y, "$120,000")
+    y -= 18
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(72, y, "Total Income")
+    pdf.drawRightString(width - 72, y, "$120,000")
+    y -= 18
+    pdf.drawString(72, y, "Gross Profit")
+    pdf.drawRightString(width - 72, y, "$120,000")
+    y -= 24
     pdf.setFont("Helvetica", 10)
     for label, amount in (
         ("Repairs and Maintenance", "$12,500"),
@@ -976,6 +1017,62 @@ class FinancialHarvestTests(unittest.TestCase):
             self.assertEqual(4_200, rows[0]["amount"])
             self.assertEqual("confirmed", rows[0]["review_status"])
 
+    def test_nested_financial_pdf_is_routed_from_source_subfolder(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment = (
+                root
+                / "historical"
+                / "25C907 - Retail - 555 Fictional Nested PDF Road, Demo City"
+            )
+            source_folder = assignment / "Information Provided"
+            source_folder.mkdir(parents=True)
+            _build_report(assignment / "REPORT 25C907.docx")
+            _build_pdf_profit_and_loss(
+                source_folder / "Fictional P&L 2024.pdf"
+            )
+
+            staged_path = run_extraction(
+                root / "historical",
+                staged_dir=root / "staged",
+            )[0]
+            staged = json.loads(staged_path.read_text(encoding="utf-8"))
+            self.assertEqual(3, len(staged["expense_records"]))
+            self.assertEqual(
+                "native_pdf_text_position_extractor",
+                staged["expense_records"][0]["provenance"][
+                    "extraction_method"
+                ],
+            )
+
+    def test_statement_expense_fallback_handles_missing_expense_heading(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pdf_path = root / "Fictional Profit and Loss 2024.pdf"
+            _build_pdf_statement_without_expense_heading(pdf_path)
+
+            direct = extract_financial_pdf(pdf_path)
+            self.assertEqual([], direct["warnings"])
+            self.assertEqual(3, len(direct["expense_records"]))
+            categories = {
+                record["data"]["category"]: record
+                for record in direct["expense_records"]
+            }
+            self.assertEqual(
+                12_500,
+                categories["Repairs and Maintenance"]["data"]["amount"],
+            )
+            self.assertEqual(
+                "native_pdf_statement_fallback",
+                categories["Repairs and Maintenance"]["provenance"][
+                    "extraction_method"
+                ],
+            )
+            self.assertEqual(
+                "statement_expense_fallback",
+                categories["Repairs and Maintenance"]["provenance"]["layout"],
+            )
+
     def test_header_detection_survives_missing_worksheet_dimensions(self):
         header_row, mapping = _find_header(
             NoDimensionSheet(),
@@ -1043,6 +1140,55 @@ class FinancialHarvestTests(unittest.TestCase):
                 self.assertIn("operating_expenses", tables)
             finally:
                 connection.close()
+
+
+    def test_ocr_orientation_prefers_financial_rows_over_word_count(self):
+        class FakeImage:
+            def __init__(self, rotation=0):
+                self.rotation = rotation
+
+            def rotate(self, degrees, expand=True):
+                return FakeImage((-degrees) % 360)
+
+        expense_words = [
+            {"text": "Expenses", "top": 0.0, "x0": 0.0, "x1": 60.0},
+            {"text": "Insurance", "top": 20.0, "x0": 0.0, "x1": 80.0},
+            {"text": "$4,200", "top": 20.0, "x0": 200.0, "x1": 250.0},
+        ]
+        high_confidence_noise = [
+            {
+                "text": f"Noise{i}",
+                "top": float(i * 10),
+                "x0": 0.0,
+                "x1": 40.0,
+            }
+            for i in range(20)
+        ]
+
+        def fake_ocr_words(image):
+            if image.rotation == 0:
+                return expense_words, 80.0
+            if image.rotation == 90:
+                return high_confidence_noise, 99.0
+            return [], 0.0
+
+        original = pdf_financial_extractor_module._ocr_words
+        try:
+            pdf_financial_extractor_module._ocr_words = fake_ocr_words
+            oriented, degrees, words, avg_confidence = (
+                pdf_financial_extractor_module._choose_financial_ocr_orientation(
+                    FakeImage(),
+                    Path("Fictional Landscape Proforma.pdf"),
+                    1,
+                )
+            )
+        finally:
+            pdf_financial_extractor_module._ocr_words = original
+
+        self.assertEqual(0, degrees)
+        self.assertEqual(0, oriented.rotation)
+        self.assertEqual(expense_words, words)
+        self.assertEqual(80.0, avg_confidence)
 
 
     @unittest.skipUnless(

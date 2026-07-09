@@ -1,11 +1,17 @@
 # Current Handoff
 
-- Last updated: 2026-07-08
-- Current agent: Claude
-- Commits this session: `af29fb2` "Add OCR lane for scanned rent-roll and
-  expense PDFs" (built on Codex's `f13ff45`), plus a same-day follow-up
-  commit addressing three issues a Fable-model review of `af29fb2` surfaced
-  (see "Completed this session" below for both).
+- Last updated: 2026-07-09
+- Current agent: Codex
+- Commits this session: Codex's 2026-07-09 work (Tesseract auto-detection,
+  OCR orientation fix, nested-financial-PDF routing, statement-expense
+  fallback, placeholder-date normalization) plus this session's review fixes
+  (see "Completed this session (Claude, review pass — 2026-07-08)" below)
+  are being committed together in one commit describing the combined
+  behavior, verified live immediately beforehand. The two commits under
+  "Completed this session (Claude, 2026-07-08)" below (`af29fb2`, built on
+  Codex's `f13ff45`, plus its same-day follow-up) were made in an *earlier*
+  session, not this one or the review pass — noted here because an earlier
+  draft of this header incorrectly implied otherwise.
 
 ## Current objective
 
@@ -332,22 +338,195 @@ baseline before connecting external services.
     tests) — then `python axiom.py contract` passed at v1.2.0. Committed as
     a follow-up to `af29fb2`.
 
+## Completed this session (Codex, 2026-07-09)
+
+- Reconfirmed the canonical project root and reread `AGENTS.md`,
+  `PROJECT_STATE.md`, and `HANDOFF.md` before edits.
+- Investigated the dirty Office/template status. The files on disk are still
+  real DOCX/XLSX ZIP packages matching the committed blob sizes; Git shows
+  them dirty because `.gitattributes` now routes Office files through the LFS
+  clean filter while the committed blobs are full binaries. Do not stage those
+  Office artifacts until the LFS normalization decision is made deliberately.
+- Installed Python OCR dependencies into the bundled Codex Python runtime:
+  `PyMuPDF` and `pytesseract`.
+- Installed UB Mannheim Tesseract 5.5.0 under
+  `C:\Program Files\Tesseract-OCR`. The silent installer included `osd` but
+  not English traineddata, so `eng.traineddata` was downloaded from the
+  official `tesseract-ocr/tessdata_fast` repository into ignored local
+  `.local/tessdata`.
+- Hardened `pdf_financial_extractor.py` so OCR does not depend on PATH:
+  it now detects `AXIOM_TESSERACT_CMD`, optional `config.json` OCR paths, and
+  normal Windows install locations for `tesseract.exe`, plus
+  `AXIOM_TESSDATA_DIR`, optional `config.json`, local `.local/tessdata`, and
+  normal Windows tessdata locations for English OCR data.
+- Added `.local/` to `.gitignore` so local OCR model files stay out of source
+  control.
+- Verified `_ocr_available()` now returns true and points to
+  `C:\Program Files\Tesseract-OCR\tesseract.exe`.
+- Ran all six OCR tests directly: all passed.
+- Ran the full suite live with real OCR enabled:
+  `python -m unittest discover -s tests -v` passed 73/73 with zero skips.
+- Ran `python axiom.py contract`: passed at v1.2.0 with 220 fields and
+  20 blocks.
+- Live-tested a live archive rent-roll PDF supplied by Derek without printing
+  tenant names, rent amounts, or the source filename. The original PDF has
+  extractable table structure, so normal extraction used
+  `native_pdf_table_extractor` and returned 2 rent-roll rows with no warnings.
+- To exercise the OCR lane against the same real document, rendered it into a
+  temporary image-only PDF outside the repo and ran extraction there. OCR
+  returned 15 low-confidence rent-roll rows via `ocr_pdf_table_extractor` and
+  one expected missing-header warning for page 2. Review-page image provenance
+  was verified in ignored `.local/ocr_review_test`, then that temporary
+  confidential image directory was deleted.
+- Live-tested a live archive operating-statement PDF supplied by Derek without
+  printing categories, amounts, or the source filename. The original PDF has
+  a native text layer, so normal extraction used
+  `native_pdf_text_position_extractor` and returned 4 operating-expense lines
+  with no warnings.
+- A temporary image-only rendering of the same proforma exposed an OCR
+  orientation issue: Tesseract OSD could rotate the landscape page into
+  column-like text with high confidence but no extractable expense rows.
+  Hardened OCR orientation selection to score all four rotations by recovered
+  financial rows first, then confidence. After the fix, the image-only
+  proforma recovered 1 low-confidence expense line at 200 DPI and 3 at 300
+  DPI. At 400 DPI it over-read the mixed rent/proforma grid as rent-roll rows,
+  so naturally scanned mixed-layout proformas still need careful human review.
+- Added `test_ocr_orientation_prefers_financial_rows_over_word_count` to lock
+  the orientation-selection behavior without depending on a brittle real OCR
+  fixture.
+- Ran `comp-ingest` end-to-end against a copied live archive assignment
+  folder under `scratch/historical_ingest_test/`. The staging run found 12
+  sale comps, 10 lease comps, 3 market observations, 226 artifacts, and 6
+  warnings. Warnings included unmapped workbook headers and a naturally
+  image-only income-statement PDF that OCRed with good confidence but did not
+  match current rent-roll/expense section rules, so no speculative financial
+  rows were staged.
+- Simulated review/commit of that staged batch into a temporary database
+  rather than the real local database. First attempt exposed a real blocker:
+  a lease comp had `lease_expiration: "N/A"`, which failed comparable-date
+  validation. Fixed comparable date normalization so placeholder date values
+  (`N/A`, `NA`, `none`, `not applicable`, `-`) canonicalize to blank.
+- After the fix, simulated review/commit into a temp DB succeeded with
+  1 assignment, 12 sale comps, 10 lease comps, 3 market observations,
+  226 source artifacts, and 34 source documents. No rent-roll or
+  operating-expense rows were committed from this copied folder.
+- Added `test_placeholder_lease_expiration_canonicalizes_to_blank`.
+- Added `scratch/` to `.gitignore` so copied live archive folders are not
+  accidentally staged.
+- Deleted the generated OCR page snapshot for the live JeffCo income
+  statement after confirming no staged row referenced it.
+- Ran a second copied archive batch from `scratch/historical_ingest_test_2`
+  containing five assignment folders. The five staged JSON batches contain,
+  after canonical staging, 45 sale comps, 28 lease comps, 962 rent-roll rows,
+  0 operating-expense rows, 10 market observations, 1,570 source artifacts,
+  365 source documents, and 9 warnings. Warnings were primarily unmapped
+  workbook headers; the main extraction gap remains operating expenses.
+- Simulated confirming and committing those five staged batches into a
+  temporary database using the app's normal `get_conn` path. The simulation
+  succeeded for all five batches with 5 assignments, 38 new sale comps,
+  7 duplicate sale comps skipped, 28 lease comps, 962 rent-roll entries,
+  10 market observations, 1,570 source artifacts, and 365 sources. The real
+  local database was not touched.
+- Fixed the operating-expense miss exposed by that second batch. The source
+  P&L PDFs were nested under source-material subfolders that the assignment
+  scanner intentionally skipped at the root level, so they were indexed as
+  artifacts but never sent through `extract_financial_pdf`. The scanner now
+  recursively routes strictly named financial PDFs (`rent roll`, `P&L`,
+  `profit and loss`, `income statement`, etc.) into the financial parser while
+  leaving broad document scanning unchanged.
+- Added a conservative PDF statement fallback for P&L/income statements that
+  have income/gross-profit boundaries and expense-like money lines but omit an
+  explicit `Expense` heading. The fallback requires at least two candidate
+  rows and stages fallback records with low/medium confidence for review.
+- Added OCR batch-performance controls: image-only PDFs default to the first
+  6 OCR pages with a warning when truncated, very large embedded scans are
+  downscaled before OCR, and later pages reuse the first page's detected
+  orientation unless confidence drops. Both limits can be overridden with
+  `AXIOM_OCR_MAX_PAGES` and `AXIOM_OCR_MAX_RENDER_EDGE_PX`.
+- Re-ran `comp-ingest` against `scratch/historical_ingest_test_2` after the
+  nested-PDF/OCR-performance changes. The latest five staged JSON batches
+  contain 45 sale comps, 28 lease comps, 962 rent-roll rows, 196
+  operating-expense rows, 10 market observations, 1,570 artifacts, 409
+  source references, and 48 warnings. Expense rows came from the normal
+  OCR text-position expense extractor; the statement fallback is covered by
+  synthetic regression tests but was not needed for those live-copy rows.
+- Simulated confirming and committing the latest five staged batches into a
+  temporary database. The simulation succeeded for all five with 5
+  assignments, 38 new sale comps, 7 duplicate sale comps skipped, 28 lease
+  comps, 962 rent-roll entries, 196 operating expenses, 10 market
+  observations, 1,570 source artifacts, and 365 source documents. The real
+  local database was not touched.
+
+## Completed this session (Claude, review pass — 2026-07-08)
+
+- Per `AGENTS.md`'s start-of-session protocol, verified Codex's 2026-07-09
+  handoff against the actual files instead of trusting it at face value.
+  Found the bash sandbox's OneDrive mount has two issues worse than
+  previously documented: `git status`/`git diff` can falsely report "clean"
+  due to a stale stat-cache (only `git hash-object` vs `git ls-tree HEAD`
+  gives a truthful answer), and bash `cp`/`cat` can silently truncate large
+  files (`pdf_financial_extractor.py`, `comparable_contract.py`,
+  `extractor.py`, both changed test files) mid-statement — confirmed via
+  `python -m py_compile` syntax errors on files that `Read` showed were
+  complete and correct. Re-synced all five truncated files into bash via
+  heredoc from verified `Read` content before doing anything else.
+- Asked for and got three parallel Fable-model reviews of Codex's uncommitted
+  work (logic/correctness, data-safety, docs-consistency). Findings and
+  fixes:
+  - This handoff's own header misattributed my `af29fb2`/`278951e` commits
+    to "this session" under Codex's byline, and never stated that Codex's
+    8 changed files were uncommitted — corrected above.
+  - Real assignment identifiers (file number, street/city fragment, real
+    filenames) had leaked into this handoff's prose — genericized.
+  - `PROJECT_STATE.md` had two stale sentences left over from before the
+    77-test count (73 vs. 77, "six" vs. seven OCR tests) — corrected.
+  - `docs/OCR_LANE_DESIGN.md` named wrong `extraction_method` values and
+    still had leftover pre-approval "proposes"/"needs your sign-off"
+    language despite being titled "(Implemented v1)" — corrected.
+  - Two stray files (`zzz_discard_me.bak`, a broken `node_modules` symlink)
+    couldn't be deleted from this sandbox (same unlink restriction as stale
+    git locks) — added `*.bak` and a bare `node_modules` line to
+    `.gitignore` instead; see "Known limitations".
+  - The nested-financial-PDF-routing change actually lives in `extractor.py`
+    (`scan_assignment_folder`), which had been omitted from every prior
+    changed-files list — added above. No logic bug was found in it once
+    verified against the untruncated file (see next bullet); the earlier
+    apparent test failure was the bash-truncation artifact, not a real bug.
+  - Two real-but-lower-priority design gaps flagged for future hardening,
+    not fixed this pass: nested-PDF routing has no staleness/duplicate
+    defense (a stale prior-year PDF or one copied into two subfolders
+    parses with no distinguishing warning), and OCR orientation re-detection
+    on later pages only triggers on low confidence, not "no financial
+    structure found" (a mixed-orientation scan bundle could silently lose a
+    page's rows).
+- Ran `tests/test_financial_harvest.py` (all 18 tests, including the 7 that
+  need live Tesseract) and `tests/test_comp_pipeline.py` (all 7 tests) live
+  against the re-synced, verified-correct files — 25/25 pass, zero failures,
+  zero skips. `python axiom.py contract` passed at v1.2.0 (220 fields, 20
+  blocks). `python -m compileall` passed for the whole repo.
+- This session's fixes are being committed together with Codex's verified
+  2026-07-09 work as a single commit describing the combined behavior.
+
 ## In progress
 
-- None — the OCR lane and its post-review hardening pass are both complete
-  for the approved v1 scope.
+- None — the OCR lane, local install support, and synthetic OCR regression
+  coverage are complete for the approved v1 scope.
 
 ## Exact next step
 
-1. Extend the OCR lane's real-world install (Tesseract on Derek's Windows
-   machine) and do a live test against an actual scanned rent roll or P&L,
-   not just the synthetic fixtures.
+1. Review the latest five staged copied-archive batches before any real
+   database commit. They now include OCR-derived operating expenses and OCR
+   page-limit warnings, so Derek should confirm whether the first 6 pages are
+   enough for each long statement or whether a deeper manual rerun is needed.
 2. Consider the lower-priority hardening backlog from the Fable reviews
    (see "Completed this session" above) if the OCR lane sees real use:
    page-image retention/cleanup for `ingest/staged/ocr_pages/`, unifying the
    OCR rent-roll path with the native path the way the expense path already
    is, and centralizing the OCR→confidence="low" rule in `harvest_contract`
-   instead of a string-prefix check duplicated in three files.
+   instead of a string-prefix check duplicated in three files. Also add
+   staleness/duplicate handling for nested-subfolder financial PDFs, and make
+   OCR orientation re-detection on later pages trigger on missing financial
+   structure, not just low confidence (both flagged by this session's review).
 3. Longer-term, still open from before: add database migrations/backfills
    for legacy local comp rows before importing Derek's real historical
    archive (last remaining P1 comparable-intelligence item in
@@ -355,9 +534,11 @@ baseline before connecting external services.
 
 ## Baseline checks run
 
-- `python -m unittest discover -s tests -v`: 73 tests pass, confirmed live
-  in this checkout (67 prior + 4 original OCR tests + 2 follow-up hardening
-  regression tests).
+- `python -m unittest discover -s tests -v`: 77 tests pass, confirmed live
+  in this checkout with real OCR enabled and zero skips.
+- Six direct OCR tests pass against the installed local Tesseract engine.
+- One OCR orientation-scoring regression test passes without requiring
+  Tesseract.
 - `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
 - `python -m compileall`: passed for runtime modules and tests.
 - Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000
@@ -410,7 +591,39 @@ touch:
 - `docs/OCR_LANE_DESIGN.md` — new design doc (approved and implemented).
 - `PROJECT_STATE.md`, `HANDOFF.md` — updated both times.
 
+## Changed files this session (Codex, 2026-07-09)
+
+- `pdf_financial_extractor.py` — Tesseract executable and tessdata
+  auto-detection for local Windows installs, plus financial-structure-aware
+  OCR orientation scoring.
+- `extractor.py` — `scan_assignment_folder` now recursively routes strictly
+  named financial PDFs found in subfolders (e.g. "Information Provided") into
+  the financial parser instead of only indexing them as artifacts. This file
+  was omitted from this list in an earlier draft of this handoff; caught
+  during a same-day review pass.
+- `.gitignore` — ignores `.local/` for local OCR model data, plus `*.bak` and
+  a bare `node_modules` line added in this same review pass (see "Known
+  limitations").
+- `docs/OCR_LANE_DESIGN.md` — documents the auto-detection paths.
+- `PROJECT_STATE.md`, `HANDOFF.md` — updated verified OCR install/test state.
+- `tests/test_financial_harvest.py` — adds OCR orientation-scoring coverage,
+  nested-financial-PDF-routing coverage, and statement-expense-fallback
+  coverage.
+- `comparable_contract.py` — normalizes placeholder date values to blank.
+- `tests/test_comp_pipeline.py` — adds placeholder lease-expiration coverage.
+
 ## Known limitations
+
+- Two stray files at the platform root — `zzz_discard_me.bak` (a stale
+  truncated copy of `pdf_financial_extractor.py`, harmless) and
+  `node_modules` (a broken/dangling symlink) — could not be deleted from
+  this sandbox: both `rm` and `mv` fail with "Operation not permitted" (the
+  same unlink restriction documented elsewhere for `.git` lock files, just
+  worse here since it blocks deletion entirely, not just lock cleanup).
+  Added `*.bak` and a bare `node_modules` line to `.gitignore` so neither can
+  be accidentally committed via `git add -A` in the meantime, but someone
+  with normal OS-level file access (not this sandbox) should delete both by
+  hand when convenient.
 
 - **This sandbox's bash tool mounts this OneDrive-synced folder in a way
   that can lag behind edits made through the file-editing tool** — it can
@@ -432,6 +645,13 @@ touch:
   the next git command; the warnings themselves don't indicate corruption.
 - Plain `python` is not on PATH in the current Codex environment. The bundled
   Python runtime was used for checks.
+- Tesseract is installed and synthetic OCR tests now run. Live archive
+  extraction has been tested against an image-only rendering of Derek's
+  supplied rent roll and proforma, but a naturally image-only scanned rent
+  roll or P&L has not yet produced staged financial rows through full
+  staging/review in this checkout. The naturally image-only JeffCo income
+  statement OCRed clearly enough but did not match current expense-section
+  parsing rules.
 - DOCX media layout has structural test coverage but still needs visual QA with
   representative landscape and portrait photos.
 - Streamlit comparable review/browse behavior has service-level coverage but

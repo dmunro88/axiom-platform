@@ -14,7 +14,7 @@ layer, `extract_financial_pdf` returns early with:
 
   "PDF has no extractable text or tables; OCR is required."
 
-This document proposes the OCR lane that resolves that warning for scanned or
+This document describes the OCR lane that resolves that warning for scanned or
 photographed rent rolls and operating statements. It reuses the existing
 extract → stage → review → commit pipeline (`ingest.py`, `db.py`,
 `harvest_contract.py`) rather than introducing a parallel one. No schema
@@ -57,28 +57,41 @@ misaligned columns, not just under-specified text):
 - **OCR: `pytesseract`** (pip, thin wrapper) **+ the Tesseract OCR engine**
   (system binary — this is the one new *operational* dependency, not just a
   pip install). On Windows this means installing the UB-Mannheim Tesseract
-  build once and either adding it to `PATH` or pointing
-  `pytesseract.pytesseract.tesseract_cmd` at it via `config.json`.
+  build once. The extractor auto-detects `AXIOM_TESSERACT_CMD`, optional
+  `config.json` OCR paths, and the normal Windows install locations. English
+  traineddata can come from `AXIOM_TESSDATA_DIR`, optional `config.json`, the
+  normal Tesseract `tessdata` folder, or ignored local `.local/tessdata`.
 - If Tesseract isn't found at runtime, fail soft: emit the same kind of
   warning already used for missing extraction ("OCR engine not installed;
   install Tesseract to enable scanned-PDF extraction") rather than crashing
   the whole `comp-ingest` run.
 
-This is the one item that needs your sign-off before I write code: it's the
-first Axiom dependency that isn't a pure Python package. Everything else
-below assumes local/offline Tesseract, consistent with keeping financial
-document processing off third-party services.
+This was the one item that needed Derek's sign-off before writing code: it's
+the first Axiom dependency that isn't a pure Python package (see "Open
+questions" resolution below). Everything else assumes local/offline
+Tesseract, consistent with keeping financial document processing off
+third-party services.
 
 ## Pipeline
 
 1. **Detect.** Reuse the existing `has_extractable_text` check in
    `extract_financial_pdf`. When false, hand the PDF to the OCR lane instead
    of returning immediately.
-2. **Rasterize.** Render each page via PyMuPDF at ~300 DPI to a Pillow image.
-3. **Orientation.** Try `pytesseract.image_to_osd` first; if it fails (common
-   on noisy scans), fall back to brute-force 0/90/180/270 rendering and pick
-   the rotation with the most recognized words / highest average confidence.
-   Record `rotation_degrees_applied` in provenance.
+2. **Rasterize.** Render pages via PyMuPDF at ~300 DPI to Pillow images, with
+   two batch-safety caps: OCR defaults to the first 6 pages
+   (`AXIOM_OCR_MAX_PAGES` can override), and very large embedded scans are
+   downscaled to a maximum render edge before Tesseract sees them
+   (`AXIOM_OCR_MAX_RENDER_EDGE_PX` can override). When a PDF is page-limited,
+   the staged batch gets a warning telling Derek to review later pages
+   manually if the statement continues.
+3. **Orientation.** Evaluate 0/90/180/270 renderings on the first usable page
+   and prefer the rotation that yields recognizable financial rows, then OCR
+   confidence as a fallback. Later pages reuse that detected rotation and only
+   fall back to full orientation scoring if confidence collapses. This avoids a
+   real-world failure where Tesseract OSD rotated a landscape proforma into
+   high-confidence but column-like text with no extractable expense rows, while
+   keeping multi-page scanned statements fast enough for batch ingest. Record
+   `rotation_degrees_applied` in provenance.
 4. **OCR.** Run `pytesseract.image_to_data(..., output_type=Output.DICT)` per
    page to get word text, bounding box, and a 0–100 confidence score per word
    — the same shape of information `pdfplumber.extract_words()` already gives
@@ -87,11 +100,15 @@ document processing off third-party services.
    `pdf_financial_extractor.py`) to accept either pdfplumber words or
    Tesseract words (both reduce to `{text, top, x0}`), then run the *same*
    `RENT_ROLL_SYNONYMS` header matching and expense-section state machine
-   already built for native PDFs against the OCR'd words. This is most of the
-   value of the design: no new parsing/mapping logic, just a new word source.
+   already built for native PDFs against the OCR'd words. If a P&L/income
+   statement has no explicit expense heading, a conservative statement
+   fallback can stage expense-looking lines after income/gross-profit
+   boundaries, provided it finds at least two candidate rows.
 6. **Tag and stage.** Every produced field gets `confidence: "low"`. Provenance
-   gains: `extraction_method: "ocr_pdf_rent_roll_extractor"` or
-   `"ocr_pdf_expense_extractor"`, `ocr_engine: "tesseract"`,
+   gains: `extraction_method: "ocr_pdf_table_extractor"` (rent roll),
+   `"ocr_pdf_text_position_extractor"` (expense lines matched by the shared
+   section-state logic), or `"ocr_pdf_statement_fallback"` (the no-heading
+   statement fallback), plus `ocr_engine: "tesseract"`,
    `ocr_avg_word_confidence`, `rotation_degrees_applied`, and
    `rendered_page_image` (relative path to the saved page PNG under
    `ingest/staged/ocr_pages/`).
@@ -130,13 +147,10 @@ already builds synthetic native PDFs with ReportLab):
 - a deliberately illegible/garbage variant → verify the bail-out warning path
   fires and nothing is staged.
 
-## Open questions for you
+## Open questions — resolved
 
-1. OK to add Tesseract OCR as a one-time local install on the Windows
-   machine? (Not a pip package — a system binary, like Excel/Word are for the
-   rest of the platform.)
-2. Confirm v1 scope stays limited to scanned rent rolls and operating
-   statements (matching the two existing native PDF lanes), not scanned
-   narrative reports.
-3. Any objection to the 40/100 average-word-confidence bail-out threshold, or
-   would you rather always stage what it finds and let review sort it out?
+All three were approved as originally proposed (see the note at the top of
+this document): local Tesseract install is approved, v1 scope stays limited
+to scanned rent rolls and operating statements (not scanned narrative
+reports), and the 40/100 average-word-confidence bail-out threshold stands
+as-is.

@@ -9,6 +9,8 @@ of the OCR engine's own score, and never auto-commits — it flows through the
 existing stage -> review -> commit gate like every other harvest record.
 """
 
+import json
+import os
 import re
 from pathlib import Path
 
@@ -41,6 +43,8 @@ except ImportError:
 
 OCR_DPI = 300
 OCR_MIN_AVG_CONFIDENCE = 40.0
+OCR_MAX_PAGES = 6
+OCR_MAX_RENDER_EDGE_PX = 3600
 OCR_PAGES_DIR = Path(__file__).parent / "ingest" / "staged" / "ocr_pages"
 
 _RENT_ROLL_DEDUPE_FIELDS = (
@@ -64,6 +68,67 @@ _EXPENSE_DEDUPE_FIELDS = (
 )
 
 _tesseract_binary_ok = None
+_tesseract_configured = False
+
+
+def _candidate_tesseract_commands():
+    env_cmd = os.environ.get("AXIOM_TESSERACT_CMD")
+    if env_cmd:
+        yield Path(env_cmd)
+
+    config_path = Path(__file__).parent / "config.json"
+    try:
+        with open(config_path, encoding="utf-8") as handle:
+            config = json.load(handle)
+    except Exception:
+        config = {}
+    ocr_config = config.get("ocr", {}) if isinstance(config, dict) else {}
+    for key in ("tesseract_cmd", "tesseract_path"):
+        configured = ocr_config.get(key)
+        if configured:
+            yield Path(configured)
+
+    yield Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+    yield Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe")
+
+
+def _candidate_tessdata_dirs(config):
+    env_dir = os.environ.get("AXIOM_TESSDATA_DIR")
+    if env_dir:
+        yield Path(env_dir)
+
+    ocr_config = config.get("ocr", {}) if isinstance(config, dict) else {}
+    configured = ocr_config.get("tessdata_dir")
+    if configured:
+        yield Path(configured)
+
+    root = Path(__file__).parent
+    yield root / ".local" / "tessdata"
+    yield Path(r"C:\Program Files\Tesseract-OCR\tessdata")
+    yield Path(r"C:\Program Files (x86)\Tesseract-OCR\tessdata")
+
+
+def _configure_tesseract_command():
+    global _tesseract_configured
+    if _tesseract_configured or not _TESSERACT_IMPORT_OK:
+        return
+    _tesseract_configured = True
+    config = {}
+    config_path = Path(__file__).parent / "config.json"
+    try:
+        with open(config_path, encoding="utf-8") as handle:
+            config = json.load(handle)
+    except Exception:
+        pass
+
+    for candidate in _candidate_tesseract_commands():
+        if candidate.is_file():
+            pytesseract.pytesseract.tesseract_cmd = str(candidate)
+            break
+    for candidate in _candidate_tessdata_dirs(config):
+        if (candidate / "eng.traineddata").is_file():
+            os.environ["TESSDATA_PREFIX"] = str(candidate)
+            break
 
 
 def _ocr_available():
@@ -72,6 +137,7 @@ def _ocr_available():
     global _tesseract_binary_ok
     if not (_FITZ_OK and _TESSERACT_IMPORT_OK):
         return False
+    _configure_tesseract_command()
     if _tesseract_binary_ok is None:
         try:
             pytesseract.get_tesseract_version()
@@ -79,6 +145,26 @@ def _ocr_available():
         except Exception:
             _tesseract_binary_ok = False
     return _tesseract_binary_ok
+
+
+def _ocr_max_pages():
+    try:
+        return max(1, int(os.environ.get("AXIOM_OCR_MAX_PAGES", OCR_MAX_PAGES)))
+    except ValueError:
+        return OCR_MAX_PAGES
+
+
+def _ocr_max_render_edge_px():
+    try:
+        return max(
+            1200,
+            int(os.environ.get(
+                "AXIOM_OCR_MAX_RENDER_EDGE_PX",
+                OCR_MAX_RENDER_EDGE_PX,
+            )),
+        )
+    except ValueError:
+        return OCR_MAX_RENDER_EDGE_PX
 
 
 def _cell_text(value):
@@ -267,6 +353,118 @@ def _valid_expense_category(category):
     return bool(re.search(r"[a-zA-Z]", category))
 
 
+def _statement_expense_fallback_allowed(text, path):
+    label = _norm(" ".join([text or "", Path(path).stem]))
+    return any(marker in label for marker in (
+        "profit and loss",
+        "p&l",
+        "income statement",
+        "operating statement",
+    ))
+
+
+def _statement_expense_state(text, current):
+    label = re.sub(r"[^a-z0-9&]+", " ", _norm(text)).strip()
+    if not label:
+        return current
+    if any(marker in label for marker in (
+        "net income",
+        "net operating income",
+        "net ordinary income",
+        "net profit",
+        "cash flow",
+    )):
+        return "done"
+    if label.startswith(("total expense", "total expenses")):
+        return "done"
+    if any(marker in label for marker in (
+        "gross profit",
+        "total income",
+        "total revenue",
+        "total receipts",
+    )):
+        return "expense_candidate"
+    if any(marker in label for marker in ("revenue", "income", "sales")):
+        return "income"
+    return current
+
+
+def _income_like_statement_category(category):
+    label = re.sub(r"[^a-z0-9&]+", " ", _norm(category)).strip()
+    return any(marker in label for marker in (
+        "income",
+        "revenue",
+        "sales",
+        "gross profit",
+        "receipts",
+    ))
+
+
+def _statement_expense_rows_from_pages(
+    page_lines,
+    path,
+    period_year,
+    period_type,
+    period_confidence,
+    extraction_method,
+    statement_text,
+    provenance_by_page=None,
+):
+    if not _statement_expense_fallback_allowed(statement_text, path):
+        return []
+    records = []
+    section = None
+    force_low = extraction_method.startswith("ocr")
+    for page_number, lines in page_lines:
+        for line_number, line in enumerate(lines, start=1):
+            line_words = line["words"]
+            text = " ".join(word["text"] for word in line_words)
+            section = _statement_expense_state(text, section)
+            if section != "expense_candidate":
+                continue
+            amount_index, amount = _amount_from_line(line_words)
+            if amount_index is None:
+                continue
+            category = " ".join(word["text"] for word in line_words[:amount_index])
+            category = re.sub(r"^\W+", "", category).strip()
+            if (
+                not _valid_expense_category(category)
+                or _income_like_statement_category(category)
+            ):
+                continue
+            data = {
+                "category": category,
+                "amount": amount,
+                "period_type": period_type,
+            }
+            confidence = {
+                "category": "low",
+                "amount": "low",
+                "period_type": period_confidence or "low",
+            }
+            if period_year is not None:
+                data["period_year"] = period_year
+                confidence["period_year"] = "low" if force_low else "medium"
+            if not force_low:
+                confidence["amount"] = "medium"
+            source_locator = f"pdf:page:{page_number}:line:{line_number}"
+            provenance = {
+                "source_locator": source_locator,
+                "extraction_method": extraction_method,
+                "layout": "statement_expense_fallback",
+            }
+            if provenance_by_page:
+                provenance.update(provenance_by_page.get(page_number, {}))
+            records.append({
+                "data": data,
+                "confidence": confidence,
+                "source": str(path),
+                "source_locator": source_locator,
+                "provenance": provenance,
+            })
+    return records if len(records) >= 2 else []
+
+
 def _expense_rows_from_pages(
     page_lines,
     path,
@@ -335,13 +533,24 @@ def _extract_text_expense_rows(pdf, path, all_text):
     for page_number, page in enumerate(pdf.pages, start=1):
         words = page.extract_words(x_tolerance=2, y_tolerance=3) or []
         page_lines.append((page_number, _group_words_by_line(words)))
-    return _expense_rows_from_pages(
+    records = _expense_rows_from_pages(
         page_lines,
         path,
         period_year,
         period_type,
         period_confidence,
         "native_pdf_text_position_extractor",
+    )
+    if records:
+        return records
+    return _statement_expense_rows_from_pages(
+        page_lines,
+        path,
+        period_year,
+        period_type,
+        period_confidence,
+        "native_pdf_statement_fallback",
+        all_text,
     )
 
 
@@ -352,14 +561,30 @@ def _rasterize_pdf(path):
     """Render every page of a PDF to a PIL image at OCR_DPI.
     Returns a list of (page_number, PIL.Image)."""
     pages = []
-    zoom = OCR_DPI / 72.0
-    matrix = fitz.Matrix(zoom, zoom)
+    base_zoom = OCR_DPI / 72.0
+    max_edge = _ocr_max_render_edge_px()
+    max_pages = _ocr_max_pages()
     with fitz.open(str(path)) as doc:
         for index, page in enumerate(doc, start=1):
+            if index > max_pages:
+                break
+            zoom = min(
+                base_zoom,
+                max_edge / max(page.rect.width, page.rect.height),
+            )
+            matrix = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=matrix)
             image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
             pages.append((index, image))
     return pages
+
+
+def _pdf_page_count(path):
+    try:
+        with fitz.open(str(path)) as doc:
+            return len(doc)
+    except Exception:
+        return None
 
 
 def _ocr_words(image):
@@ -662,6 +887,79 @@ def _ocr_rent_roll_rows(lines, path, page_number, as_of_date, extra_provenance=N
     return records, True, warnings
 
 
+def _choose_financial_ocr_orientation(image, path, page_number):
+    """Choose the OCR orientation that produces the most usable financial
+    structure, not merely the highest word count. Tesseract OSD can rotate
+    landscape statements into column-like text with high confidence but no
+    extractable rows."""
+    best = None
+    for degrees in (0, 90, 180, 270):
+        candidate = image if degrees == 0 else image.rotate(-degrees, expand=True)
+        try:
+            words, avg_confidence = _ocr_words(candidate)
+        except Exception:
+            continue
+        lines = _group_words_by_line(words)
+        text = " ".join(word["text"] for word in words)
+        period_year = _period_year_from_text(text, path.name)
+        period_type, period_confidence = _period_type_from_text(text)
+        expense_records = _expense_rows_from_pages(
+            [(page_number, lines)],
+            path,
+            period_year,
+            period_type,
+            period_confidence,
+            "ocr_orientation_probe",
+            {page_number: {}},
+        )
+        if not expense_records:
+            expense_records = _statement_expense_rows_from_pages(
+                [(page_number, lines)],
+                path,
+                period_year,
+                period_type,
+                period_confidence,
+                "ocr_orientation_probe",
+                text,
+                {page_number: {}},
+            )
+        rent_records, header_found, _warnings = _ocr_rent_roll_rows(
+            lines, path, page_number, None, {}
+        )
+        word_counts = [len(line["words"]) for line in lines]
+        dense_lines = sum(1 for count in word_counts if count >= 4)
+        amount_lines = sum(
+            1
+            for line in lines
+            if any(_money_candidate(word["text"]) is not None for word in line["words"])
+        )
+        structure_score = (
+            (len(expense_records) + len(rent_records)) * 1000
+            + (200 if header_found else 0)
+            + dense_lines * 5
+            + amount_lines * 3
+        )
+        score = structure_score + avg_confidence + min(len(words), 100) / 10
+        if best is None or score > best["score"]:
+            best = {
+                "image": candidate,
+                "degrees": degrees,
+                "words": words,
+                "avg_confidence": avg_confidence,
+                "score": score,
+            }
+    if best:
+        return (
+            best["image"],
+            best["degrees"],
+            best["words"],
+            best["avg_confidence"],
+        )
+    oriented, degrees = _correct_orientation(image)
+    words, avg_confidence = _ocr_words(oriented)
+    return oriented, degrees, words, avg_confidence
+
+
 def _extract_via_ocr(path):
     """OCR lane entry point: rasterize -> orient -> OCR -> reuse the native
     table/expense matchers on the OCR'd words. Returns the same
@@ -675,6 +973,15 @@ def _extract_via_ocr(path):
             "See docs/OCR_LANE_DESIGN.md."
         )
         return result
+
+    total_pages = _pdf_page_count(path)
+    max_pages = _ocr_max_pages()
+    if total_pages and total_pages > max_pages:
+        result["warnings"].append(
+            f"  [{path.name}] OCR limited to first {max_pages} of "
+            f"{total_pages} pages for batch performance; review later pages "
+            "manually if the statement continues."
+        )
 
     try:
         raw_pages = _rasterize_pdf(path)
@@ -696,10 +1003,24 @@ def _extract_via_ocr(path):
     page_lines = []
     provenance_by_page = {}
     all_text_parts = []
+    preferred_degrees = None
     for page_number, image in raw_pages:
-        oriented, degrees = _correct_orientation(image)
         try:
-            words, avg_confidence = _ocr_words(oriented)
+            if preferred_degrees is None:
+                oriented, degrees, words, avg_confidence = (
+                    _choose_financial_ocr_orientation(image, path, page_number)
+                )
+                preferred_degrees = degrees
+            else:
+                degrees = preferred_degrees
+                oriented = image if degrees == 0 else image.rotate(-degrees, expand=True)
+                words, avg_confidence = _ocr_words(oriented)
+                if not words or avg_confidence < OCR_MIN_AVG_CONFIDENCE:
+                    oriented, degrees, words, avg_confidence = (
+                        _choose_financial_ocr_orientation(
+                            image, path, page_number
+                        )
+                    )
         except Exception as exc:
             result["warnings"].append(
                 f"  [{path.name}] page {page_number}: OCR failed ({exc})."
@@ -752,17 +1073,27 @@ def _extract_via_ocr(path):
                 "source scan manually."
             )
 
-    result["expense_records"].extend(
-        _expense_rows_from_pages(
+    expense_records = _expense_rows_from_pages(
+        page_lines,
+        path,
+        period_year,
+        period_type,
+        period_confidence,
+        "ocr_pdf_text_position_extractor",
+        provenance_by_page,
+    )
+    if not expense_records:
+        expense_records = _statement_expense_rows_from_pages(
             page_lines,
             path,
             period_year,
             period_type,
             period_confidence,
-            "ocr_pdf_text_position_extractor",
+            "ocr_pdf_statement_fallback",
+            all_text,
             provenance_by_page,
         )
-    )
+    result["expense_records"].extend(expense_records)
 
     if not result["rent_roll_entries"] and not result["expense_records"]:
         result["warnings"].append(

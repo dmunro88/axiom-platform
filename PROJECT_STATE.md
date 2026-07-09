@@ -1,6 +1,6 @@
 # Axiom Platform — Project State
 
-- Last verified: 2026-07-08
+- Last verified: 2026-07-09
 - Status: Functional prototype in active local use; production safeguards and
   repeatable tests are incomplete.
 
@@ -69,12 +69,16 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Seventy-three automated validation, delivery-state, stress, golden-DOCX,
+- Seventy-seven automated validation, delivery-state, stress, golden-DOCX,
   comparable, historical-harvest, media, comp-page,
   structured-block, model-routing, contract, presentation-derivation, and
   OCR-lane tests pass, confirmed live with `python -m unittest discover -s
-  tests -v` in this checkout (67 prior + 4 original OCR tests + 2 follow-up
-  hardening regression tests — see `HANDOFF.md`).
+  tests -v` in this checkout. As of 2026-07-09, the seven OCR tests run
+  against a real local Tesseract install instead of being skipped (one of the
+  seven, the orientation-scoring test, doesn't require Tesseract at all). The
+  suite currently contains 77 tests after adding OCR orientation-scoring
+  coverage, placeholder lease-expiration normalization, nested financial PDF
+  routing, and statement expense fallback coverage.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -189,7 +193,11 @@ Checks were performed without regenerating or modifying assignment outputs.
   can visually cross-check before confirming.
 - Requires Tesseract OCR (a system binary, not a pip package) installed
   locally for the OCR lane to activate; if it's missing, extraction degrades
-  to a clear warning instead of failing.
+  to a clear warning instead of failing. This checkout now auto-detects
+  `AXIOM_TESSERACT_CMD`, optional `config.json` OCR paths, and the normal
+  Windows install path. English OCR data may be supplied by
+  `AXIOM_TESSDATA_DIR`, optional `config.json`, or the ignored local
+  `.local/tessdata` folder.
 - A same-day follow-up hardening pass, prompted by a Fable-model review, added
   two more safeguards to the OCR rent-roll lane: an arithmetic cross-check per
   row (annual rent vs. monthly rent x12, rent/SF vs. annual rent / leased SF)
@@ -197,10 +205,45 @@ Checks were performed without regenerating or modifying assignment outputs.
   warning whenever a page's OCR'd text has no recognizable rent-roll header
   at all (previously silent — the common case on continuation pages of
   multi-page rent rolls that don't repeat the header row).
-- Six tests cover the OCR lane: end-to-end scanned rent-roll extraction
+- Seven tests cover the OCR lane: end-to-end scanned rent-roll extraction
   through commit, rotated-scan orientation recovery, illegible-scan bail-out,
   graceful degradation when Tesseract isn't installed, an arithmetic-mismatch
-  warning case, and a headerless-continuation-page warning case.
+  warning case, a headerless-continuation-page warning case, and an
+  orientation-scoring regression test that locks in preferring recovered
+  financial rows over raw word count/confidence (the only one of the seven
+  that doesn't require a real Tesseract install).
+- A live archive rent-roll PDF supplied by Derek was tested at extraction
+  level on 2026-07-09. Its original file had native table structure and used
+  native extraction; a temporary image-only rendering of the same file
+  exercised the OCR lane and produced low-confidence OCR rows plus a
+  missing-header warning for a continuation page. Full staging/review against
+  a naturally image-only scanned archive file remains pending.
+- A live archive proforma PDF supplied by Derek was also tested at extraction
+  level. Its original file used native text-position extraction and returned
+  operating-expense lines. A temporary image-only rendering exposed an OCR
+  orientation issue on landscape mixed rent/proforma layouts; OCR orientation
+  selection now scores rotations by recovered financial rows before raw OCR
+  confidence. The image-only proforma still shows resolution/layout
+  sensitivity and remains a human-review case.
+- A copied live archive folder was run through `comp-ingest` on 2026-07-09.
+  The staged batch contained sale comps, lease comps, market observations,
+  source artifacts, and a naturally image-only income statement that OCRed
+  with good confidence but did not match current expense-section parsing
+  rules. A simulated review/commit to a temporary database succeeded after
+  normalizing placeholder lease-expiration values such as `N/A` to blank.
+- A second copied archive batch with five assignment folders was run through
+  `comp-ingest` on 2026-07-09. The staged JSON batches contain sale comps,
+  lease comps, rent-roll rows, market observations, and source artifacts, and
+  simulated review/commit into a temporary database succeeded for all five.
+  This batch again produced no reviewable operating-expense rows, making
+  non-standard/scanned income-statement expense extraction the next adapter
+  target.
+- The second copied archive batch was re-run after nested financial PDF
+  routing and OCR batch-performance controls were added. The latest staged
+  batches now include reviewable OCR-derived operating-expense rows from
+  nested P&L PDFs, while comp/rent-roll/market observation totals remain
+  consistent with the prior conservative run. Simulated review/commit to a
+  temporary database succeeded; the real local database was not touched.
 
 ## Data-safety status
 

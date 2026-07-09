@@ -17,6 +17,7 @@ from comparable_contract import (
     REVIEW_STATUSES,
     SCHEMA_VERSION,
     canonicalize_extraction_result,
+    canonicalize_record,
     comparable_identity,
     confirm_extraction_result,
 )
@@ -221,6 +222,31 @@ class ComparablePipelineTests(unittest.TestCase):
             comparable_identity("sale", first),
             comparable_identity("sale", duplicate),
         )
+
+    def test_placeholder_lease_expiration_canonicalizes_to_blank(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "lease-source.xlsx"
+            source.write_text("fictional source", encoding="utf-8")
+            record = canonicalize_record(
+                {
+                    "data": {
+                        "address_street": "300 Fictional Lease Lane",
+                        "base_rent_psf": "$21.50",
+                        "lease_expiration": "N/A",
+                    },
+                    "confidence": {
+                        "address_street": "high",
+                        "base_rent_psf": "high",
+                        "lease_expiration": "high",
+                    },
+                    "source": str(source),
+                },
+                "lease",
+                source_path=source,
+            )
+
+        self.assertIsNone(record["data"]["lease_expiration"])
+        self.assertEqual([], record["validation"]["errors"])
 
     def test_fictional_extract_review_commit_search_and_export(self):
         with tempfile.TemporaryDirectory() as temp_dir:

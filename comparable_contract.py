@@ -87,6 +87,8 @@ def _date(value):
     if isinstance(value, datetime.date):
         return value.isoformat()
     text = _normalized_text(value)
+    if text and text.casefold() in {"n/a", "na", "none", "not applicable", "-"}:
+        return None
     for date_format in (
         "%Y-%m-%d",
         "%m/%d/%Y",

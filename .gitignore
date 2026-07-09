@@ -22,10 +22,11 @@ dashboard.html
 __pycache__/
 *.py[cod]
 *.log
+*.bak
 .sanitization_work/
 node_modules/
+node_modules
+.local/
+scratch/
 
-# Office and operating-system temporary files
-~$*
-Thumbs.db
-.DS_Store
+# Office and operating-system temp
