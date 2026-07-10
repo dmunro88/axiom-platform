@@ -2484,8 +2484,20 @@
         "deliver"
       ]
     },
+    "LAND_ADJUSTMENT_GRID_BLOCK": {
+      "handler": "comparables",
+      "used_in": [
+        "deliver"
+      ]
+    },
     "LAND_ADJUSTMENT_NARRATIVE": {
       "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "LAND_QUALITATIVE_GRID_BLOCK": {
+      "handler": "comparables",
       "used_in": [
         "deliver"
       ]
@@ -2538,6 +2550,12 @@
         "deliver"
       ]
     },
+    "SCA_ADJUSTMENT_GRID_BLOCK": {
+      "handler": "comparables",
+      "used_in": [
+        "deliver"
+      ]
+    },
     "SCA_ADJUSTMENT_NARRATIVE": {
       "handler": "narrative",
       "used_in": [
@@ -2552,6 +2570,12 @@
     },
     "SCA_CONCLUSION_NARRATIVE": {
       "handler": "narrative",
+      "used_in": [
+        "deliver"
+      ]
+    },
+    "SCA_QUALITATIVE_GRID_BLOCK": {
+      "handler": "comparables",
       "used_in": [
         "deliver"
       ]

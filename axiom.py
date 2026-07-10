@@ -39,6 +39,7 @@ from field_registry import (
 )
 from fill_engine import fill_document, load_variables
 from comp_builder import inject_comp_section
+from adjustment_grid import inject_all_adjustment_grids
 from dilmore import dilmore_factor, dilmore_adj_pct, dilmore_summary
 from media_blocks import create_media_directories, inject_media_blocks
 from structured_blocks import inject_ownership_history
@@ -523,6 +524,14 @@ def cmd_deliver(args):
             if doc_cfg.get("inject_comps") and working_path.exists():
                 if inject_ownership_history(working_path, variables):
                     print("    OK: OWNERSHIP_HISTORY_TABLE")
+
+            if doc_cfg.get("inject_comps") and working_path.exists():
+                grid_results = inject_all_adjustment_grids(
+                    working_path, workbook_path
+                )
+                for block, row_count in sorted(grid_results.items()):
+                    if row_count:
+                        print(f"    OK: {block}: {row_count} row(s)")
 
             if doc_cfg.get("inject_comps") and working_path.exists():
                 _inject_all_narratives(

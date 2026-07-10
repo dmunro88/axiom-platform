@@ -185,12 +185,20 @@ def _infer_value_kind(key):
     return "text"
 
 
+ADJUSTMENT_GRID_BLOCKS = frozenset({
+    "SCA_ADJUSTMENT_GRID_BLOCK",
+    "SCA_QUALITATIVE_GRID_BLOCK",
+    "LAND_ADJUSTMENT_GRID_BLOCK",
+    "LAND_QUALITATIVE_GRID_BLOCK",
+})
+
+
 def _block_handler(key):
     if key in MEDIA_BLOCKS:
         return "media"
     if key == "OWNERSHIP_HISTORY_TABLE":
         return "structured"
-    if key == "COMP_SHEETS_BLOCK":
+    if key == "COMP_SHEETS_BLOCK" or key in ADJUSTMENT_GRID_BLOCKS:
         return "comparables"
     if key.endswith(("_NARRATIVE", "_OVERVIEW")):
         return "narrative"
@@ -355,6 +363,24 @@ def audit_assignment_contract(
         result["errors"].append(
             "Template placeholders are absent from field registry: "
             + ", ".join(unknown_template)
+            + "."
+        )
+
+    # Reverse direction: a registered block that claims to be used somewhere
+    # (used_in is non-empty) must actually have its marker present in one of
+    # the audited templates. Without this check, a registered block whose
+    # marker is missing or typo'd in the template passes contract clean while
+    # silently never appearing in the delivered report -- the exact failure
+    # mode the historical outputs-tab key mismatch already hit once.
+    missing_from_template = sorted(
+        key
+        for key, definition in registry["blocks"].items()
+        if definition.get("used_in") and key not in template_keys
+    )
+    if missing_from_template:
+        result["errors"].append(
+            "Registry blocks are missing their marker in the template: "
+            + ", ".join(missing_from_template)
             + "."
         )
 

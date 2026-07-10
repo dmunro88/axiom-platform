@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from comp_builder import inject_comp_section
+from adjustment_grid import inject_all_adjustment_grids
 from field_registry import load_registry
 from fill_engine import fill_document, load_variables
 from media_blocks import inject_media_blocks
@@ -73,6 +74,32 @@ def build_complete_demo_report(output_path):
     inject_media_blocks(output_path, ASSIGNMENT)
     if not inject_ownership_history(output_path, variables):
         raise AssertionError("Ownership history was not injected")
+
+    # DEMO-001 has CA_DEVELOPED = "No" (this fixture models an assignment
+    # where the Cost Approach wasn't developed due to age/depreciation
+    # reliability concerns -- see CA_DEVELOPED_FULL above). fill_document's
+    # _remove_conditional_sections strips the whole "Cost Approach" section
+    # for that reason, and the land value sub-section -- including the
+    # LAND_ADJUSTMENT_GRID_BLOCK / LAND_QUALITATIVE_GRID_BLOCK markers --
+    # lives inside that section in the template. So those two blocks are
+    # correctly gone by the time grid injection runs, and 0 rows for them
+    # is the right outcome here, not a bug. Only the SCA-side grids (which
+    # live in the Sales Comparison Approach section, developed for this
+    # assignment) are expected to inject for this particular fixture.
+    # Land-side grid injection itself is covered independently by
+    # test_adjustment_grid.py, which builds a document/workbook pair where
+    # a land value section is actually present.
+    grid_results = inject_all_adjustment_grids(
+        output_path, ASSIGNMENT / "workbook.xlsx"
+    )
+    expected_injected = {"SCA_ADJUSTMENT_GRID_BLOCK", "SCA_QUALITATIVE_GRID_BLOCK"}
+    missing_grids = [
+        block
+        for block in expected_injected
+        if not grid_results.get(block)
+    ]
+    if missing_grids:
+        raise AssertionError(f"Adjustment grid(s) not injected: {missing_grids}")
 
     placeholders = find_docx_placeholders(output_path)
     if placeholders:

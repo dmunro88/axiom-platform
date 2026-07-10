@@ -52,7 +52,7 @@
     "word/webSettings.xml"
   ],
   "xml_hashes": {
-    "word/document.xml": "3ecde654f608c73d5238e9873f4d9286dca393cf7ac96741268bc64f986c749f",
+    "word/document.xml": "9a18ac839d0197860cdc649f602b4ef87a7bdfab1e5190dce59b6308ed2e9ec7",
     "word/endnotes.xml": "1fc6ea1da63fe72d26ea5d6799a524d2dd375dcc5b43e2ca2b49eafe0f4be75f",
     "word/fontTable.xml": "e9db5af99936474506ac9cc3bbf86ee42b6f2dbe56e4d6de52241234522d5c38",
     "word/footer1.xml": "e93f4f09f8f420a008611d4dc3afb91edcad3b5b9e55115c4c0ed5f800a7463a",
@@ -400,9 +400,9 @@
       "target_mode": ""
     }
   ],
-  "paragraph_count": 1695,
+  "paragraph_count": 1827,
   "paragraph_styles": {
-    "(none)": 22,
+    "(none)": 154,
     "AddendaHeading": 6,
     "Body": 246,
     "ComparableHeader": 3,
@@ -420,8 +420,8 @@
     "TableSubHead": 72,
     "TableValue": 713
   },
-  "paragraph_text_hash": "0578de651320be13c082f55f9a39b160e543e959efd403545542f7b74d08aadd",
-  "table_count": 65,
+  "paragraph_text_hash": "20381d9fe0efa00ebbcf1b349109a3270cb0556d94416b44f03223c2bac447c8",
+  "table_count": 67,
   "tables": [
     {
       "rows": 1,
@@ -888,6 +888,15 @@
       ]
     },
     {
+      "rows": 4,
+      "cells_per_row": [
+        19,
+        19,
+        19,
+        19
+      ]
+    },
+    {
       "rows": 8,
       "cells_per_row": [
         4,
@@ -898,6 +907,15 @@
         4,
         4,
         4
+      ]
+    },
+    {
+      "rows": 4,
+      "cells_per_row": [
+        14,
+        14,
+        14,
+        14
       ]
     },
     {
