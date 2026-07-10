@@ -76,4 +76,11 @@
       "qualitative_factors": [
         "Topography",
         "Surrounding Land Uses",
-     
+        "Access",
+        "Visibility",
+        "Flood Zone",
+        "Utility"
+      ]
+    }
+  }
+}
