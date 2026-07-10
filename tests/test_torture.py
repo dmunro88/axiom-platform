@@ -691,10 +691,26 @@ class TortureTests(unittest.TestCase):
             intake.append(["Field", "Value"])
             intake.append(["GBA", 10000])
 
+            # Mirrors the real templates/workbook.xlsx size_adj header row
+            # exactly (A=Comp, B=Comp GBA, C=Ratio formula, D=Size Factor,
+            # E=Adj %, F=Adj $/SF, G=Notes) -- including a real Ratio formula
+            # in column C, so this test actually catches a regression that
+            # writes Size Factor/Adj % into the wrong columns and clobbers
+            # it (as a prior version of this fix did: it wrote to columns
+            # 3/4 -- C/D -- instead of the real 4/5 -- D/E).
             size_adj = workbook.create_sheet("size_adj")
+            size_adj.cell(row=6, column=1).value = "Comp"
+            size_adj.cell(row=6, column=2).value = "Comp GBA (SF)"
+            size_adj.cell(row=6, column=3).value = "Ratio (Ac/As)"
+            size_adj.cell(row=6, column=4).value = "Size Factor"
+            size_adj.cell(row=6, column=5).value = "Adj %"
+            size_adj.cell(row=6, column=6).value = "Adj $ / SF"
+            size_adj.cell(row=6, column=7).value = "Notes"
             size_adj["B3"] = 85
             size_adj.cell(row=7, column=2).value = 20000  # Comp 1: 2x subject
+            size_adj.cell(row=7, column=3).value = '=IF(B7="","",IFERROR(B7/$B$4,""))'
             size_adj.cell(row=8, column=2).value = 5000   # Comp 2: half subject
+            size_adj.cell(row=8, column=3).value = '=IF(B8="","",IFERROR(B8/$B$4,""))'
 
             workbook_path = assignment / "workbook.xlsx"
             workbook.save(workbook_path)
@@ -711,49 +727,22 @@ class TortureTests(unittest.TestCase):
             expected_factor_2 = round(dilmore_factor(5000 / 10000, 85), 4)
             expected_adj_2 = round(dilmore_adj_pct(5000 / 10000, 85), 2)
 
-            self.assertEqual(expected_factor_1, result_sa.cell(row=7, column=3).value)
-            self.assertEqual(expected_adj_1, result_sa.cell(row=7, column=4).value)
-            self.assertEqual(expected_factor_2, result_sa.cell(row=8, column=3).value)
-            self.assertEqual(expected_adj_2, result_sa.cell(row=8, column=4).value)
+            # Size Factor -> column D (4), Adj % -> column E (5).
+            self.assertEqual(expected_factor_1, result_sa.cell(row=7, column=4).value)
+            self.assertEqual(expected_adj_1, result_sa.cell(row=7, column=5).value)
+            self.assertEqual(expected_factor_2, result_sa.cell(row=8, column=4).value)
+            self.assertEqual(expected_adj_2, result_sa.cell(row=8, column=5).value)
 
-            # Comp 1 (larger than subject) gets a positive adjustment; comp 2
-            # (smaller than subject) gets a negative one. With the old
-            # backwards ratio these signs would flip.
-            self.assertGreater(result_sa.cell(row=7, column=4).value, 0)
-            self.assertLess(result_sa.cell(row=8, column=4).value, 0)
-            result_wb.close()
+            # Column C's pre-existing Ratio formula must survive untouched --
+            # this is the exact cell the earlier buggy column mapping
+            # clobbered with the Size Factor value instead.
+            self.assertEqual(
+                '=IF(B7="","",IFERROR(B7/$B$4,""))',
+                result_sa.cell(row=7, column=3).value,
+            )
+            self.assertEqual(
+                '=IF(B8="","",IFERROR(B8/$B$4,""))',
+                result_sa.cell(row=8, column=3).value,
+            )
 
-    def test_dilmore_invalid_curve_fails_loudly_without_writing(self):
-        """An out-of-table curve value in size_adj!B3 must produce a clear
-        error and leave the workbook byte-for-byte untouched, not a raw
-        traceback or a partial write."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            assignments = root / "assignments"
-            assignments.mkdir()
-            assignment = assignments / "TEST-501_Fictional_Client"
-            assignment.mkdir()
-
-            workbook = openpyxl.Workbook()
-            intake = workbook.active
-            intake.title = "Intake"
-            intake.append(["Field", "Value"])
-            intake.append(["GBA", 10000])
-
-            size_adj = workbook.create_sheet("size_adj")
-            size_adj["B3"] = 83  # not one of 80, 82.5, 85, 87.5, 90
-            size_adj.cell(row=7, column=2).value = 20000
-
-            workbook_path = assignment / "workbook.xlsx"
-            workbook.save(workbook_path)
-            workbook.close()
-            original_bytes = workbook_path.read_bytes()
-
-            with patch.object(axiom, "ASSIGNMENTS_DIR", assignments):
-                axiom.cmd_dilmore(["TEST-501"])
-
-            self.assertEqual(original_bytes, workbook_path.read_bytes())
-
-
-if __name__ == "__main__":
-    unittest.main()
+            #

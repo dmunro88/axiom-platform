@@ -690,8 +690,12 @@ def cmd_dilmore(args):
 
     count = 0
     for row_idx, row in zip(row_idxs, summary):
-        sa.cell(row=row_idx, column=3).value = round(row["factor"], 4)
-        sa.cell(row=row_idx, column=4).value = round(row["adj_pct"], 2)
+        # size_adj's real header row (6): A=Comp, B=Comp GBA, C=Ratio (Ac/As)
+        # (a pre-existing formula -- must NOT be overwritten), D=Size Factor,
+        # E=Adj %, F=Adj $/SF, G=Notes. Column 3 is the Ratio formula, not a
+        # write target; Size Factor/Adj % belong in columns 4/5 (D/E).
+        sa.cell(row=row_idx, column=4).value = round(row["factor"], 4)
+        sa.cell(row=row_idx, column=5).value = round(row["adj_pct"], 2)
 
         label = f'Comp {row["comp"]}'
         print(
@@ -1543,18 +1547,4 @@ def main():
         print('Usage: python axiom.py <command> [args]')
         for name, fn in COMMANDS.items():
             doc = (fn.__doc__ or '').split('\n')[0].strip()
-            print(f'  {name:<14} {doc}')
-        return
-    cmd  = sys.argv[1].lower()
-    args = sys.argv[2:]
-    if cmd not in COMMANDS:
-        print(f'  Unknown command: {cmd}')
-        sys.exit(1)
-    result = COMMANDS[cmd](args)
-    if result is False:
-        sys.exit(1)
-
-
-
-if __name__ == '__main__':
-    main()
+            prin
