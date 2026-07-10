@@ -55,6 +55,102 @@ def _get_model(config_path=None, command="draft"):
         return DEFAULT_MODEL
 
 
+# ── Pre-flight data sanity checks ─────────────────────────────────────────────
+# Live-testing Phase 7 against DEMO-001 (2026-07-10) showed that when the
+# underlying workbook data is broken (unresolved Excel formula errors, or a
+# concluded value of $0 / negative), the model correctly refuses to fabricate
+# numbers -- but its refusal/meta-commentary text ("I must flag a data issue
+# before providing the narrative...") was getting injected into the document
+# verbatim, which reads like a chatbot transcript rather than a draft
+# placeholder. These checks catch the same bad inputs *before* calling the
+# API, skipping the (wasted) API call and injecting a clean, obviously-a-
+# placeholder note instead.
+
+_ERROR_TOKENS = ("#DIV/0!", "#NUM!", "#VALUE!", "#REF!", "#NAME?", "#NULL!", "#N/A")
+
+
+def _has_error_token(value):
+    return any(tok in str(value) for tok in _ERROR_TOKENS)
+
+
+def _parse_money(value):
+    """Best-effort parse of a currency-like string to a float, or None if it
+    doesn't look like a number at all (blank, prose, etc.)."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    negative = s.startswith("-") or (s.startswith("(") and s.endswith(")"))
+    s = s.strip("-()").replace("$", "").replace(",", "").strip()
+    try:
+        parsed = float(s)
+    except (ValueError, TypeError):
+        return None
+    return -parsed if negative else parsed
+
+
+def _fields_data_issue(v, keys):
+    """Return a short reason string if any of *keys* in *v* contains an
+    unresolved Excel formula error, or a currency-like value that parses to
+    zero or negative (never a legitimate appraisal figure). Returns None if
+    all fields look sane."""
+    for key in keys:
+        raw = v.get(key, "")
+        if _has_error_token(raw):
+            return f"{key} contains an unresolved formula error ({raw})"
+        money = _parse_money(raw)
+        if money is not None and money <= 0:
+            return f"{key} is {raw} — zero or negative is not a valid figure"
+    return None
+
+
+_CRITICAL_FIELDS = {
+    "SCA_ADJUSTMENT_NARRATIVE": [
+        "SCA_COMP_UNIT_LOW", "SCA_COMP_UNIT_HIGH",
+        "SCA_ADJ_UNIT_LOW", "SCA_ADJ_UNIT_HIGH",
+        "SCA_ADJ_UNIT_MEAN", "SCA_ADJ_UNIT_MEDIAN",
+        "SCA_ADJ_NARROW_LOW", "SCA_ADJ_NARROW_HIGH",
+        "SCA_ADJ_NARROW_MEAN", "SCA_ADJ_NARROW_MEDIAN",
+    ],
+    "SCA_CONCLUSION_NARRATIVE": [
+        "SCA_ADJ_NARROW_LOW", "SCA_ADJ_NARROW_HIGH",
+        "SCA_ADJ_UNIT_MEAN", "SCA_ADJ_UNIT_MEDIAN",
+        "SCA_VALUE",
+    ],
+}
+
+
+def _reconciliation_data_issue(v):
+    """Mirrors _prompt_reconciliation's own developed/not-developed logic:
+    only check the value of an approach that's actually marked developed,
+    plus the final value conclusion, which must always be sane."""
+    sca_dev = v.get("SCA_DEVELOPED", "No").strip().lower() == "yes"
+    ia_dev  = v.get("IA_DEVELOPED",  "No").strip().lower() == "yes"
+    ca_dev  = v.get("CA_DEVELOPED",  "No").strip().lower() == "yes"
+
+    checks = ["VALUE_CONCLUSION"]
+    if sca_dev:
+        checks.append("SCA_VALUE")
+    if ia_dev:
+        checks.append("IA_VALUE")
+    if ca_dev:
+        checks.append("COST_APPROACH_VALUE_ROUNDED")
+
+    return _fields_data_issue(v, checks)
+
+
+def _data_issue_for(key, v):
+    """Dispatch to the right pre-flight check for *key*, or None if there's
+    no dedicated check (in which case the API call proceeds normally)."""
+    if key == "RECONCILIATION_NARRATIVE":
+        return _reconciliation_data_issue(v)
+    fields = _CRITICAL_FIELDS.get(key)
+    if fields:
+        return _fields_data_issue(v, fields)
+    return None
+
+
 # ── Claude API caller ─────────────────────────────────────────────────────────
 
 def _call_claude(prompt, model, max_tokens=900):
@@ -508,6 +604,21 @@ def inject_all_narratives(doc_path, workbook_path, variables, config_path=None):
     for key in present:
         command = _MODEL_COMMANDS.get(key, "draft")
         model = _get_model(config_path, command=command)
+
+        if key != "LAND_ADJUSTMENT_NARRATIVE":
+            issue = _data_issue_for(key, variables)
+            if issue:
+                placeholder_text = (
+                    f"[Pending — {issue}. This section requires the underlying "
+                    f"figures to be corrected before it can be drafted; it will "
+                    f"regenerate automatically on the next delivery once the "
+                    f"data is fixed.]"
+                )
+                injected = _inject_narrative_into_doc(doc, key, placeholder_text)
+                print(f"    ⚠  {key} — skipped (data issue: {issue})")
+                results[key] = f"skipped (data issue: {issue})"
+                continue
+
         print(f"  Generating {key} via {model} ...")
         try:
             if key == "LAND_ADJUSTMENT_NARRATIVE":

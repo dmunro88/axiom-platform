@@ -20,6 +20,40 @@
   gaps — the existing `land` tab's dependency in `narrative_generator.py`,
   and the then-broken `cmd_dilmore` command). Awaiting Derek's
   implementation sign-off; the grid itself is not yet built.
+- **Phase 7 (AI narrative drafting) live-tested end to end (2026-07-10), per
+  Derek's explicit go-ahead — confirmed working.** This sandbox has no
+  `ANTHROPIC_API_KEY` and its own network intercepts calls to
+  `api.anthropic.com` through a MITM proxy (`O=GoProxy untrusted MITM proxy
+  Inc`) that returns a generic "Unauthorized" regardless of key validity —
+  wasted real time chasing that as a bad-key problem before the TLS
+  certificate subject line gave it away. The real test had to run on
+  Derek's own machine instead, where `python axiom.py deliver DEMO-001
+  --draft` generated real prose for all 6 narrative blocks.
+  `MARKET_AREA_OVERVIEW` and `CAP_RATE_NARRATIVE` came back polished and
+  submarket-specific. The other three (`SCA_ADJUSTMENT_NARRATIVE`,
+  `SCA_CONCLUSION_NARRATIVE`, `RECONCILIATION_NARRATIVE`) correctly refused
+  to fabricate numbers, because DEMO-001's pre-Phase-6 adjustment/valuation
+  data has real unresolved Excel errors (`#DIV/0!`, `#VALUE!`) and a $0
+  concluded value — the same already-documented gap this fixture shows
+  elsewhere (see Phase 3.5/Phase 6 roadmap notes), not a new bug. That
+  refusal is the *correct* behavior for a signed deliverable, but the raw
+  refusal text ("I must flag a data issue before providing the
+  narrative...") was getting injected into the document verbatim, reading
+  like a chatbot transcript rather than a draft placeholder. Fixed:
+  `narrative_generator.py` now pre-checks each data-dependent narrative's
+  key inputs for Excel error tokens or a zero/negative currency value
+  *before* calling the API (`_has_error_token`, `_parse_money`,
+  `_fields_data_issue`, `_reconciliation_data_issue` — the last one mirrors
+  `_prompt_reconciliation`'s own developed/not-developed logic so it only
+  checks values for approaches actually marked developed). When bad data is
+  detected, the API call is skipped entirely (saves cost too) and a clean
+  `[Pending — <reason>. ...]` placeholder is injected instead. 16 new tests
+  in `tests/test_narrative_data_guard.py`, including an end-to-end case that
+  mocks `_call_claude` and asserts it's never invoked when the guard fires.
+  Re-verified live against the real DEMO-001 assignment in this sandbox
+  (without a key, which only proves the *guard* path — the other 3 blocks
+  still correctly error on the missing key as before): all three broken-data
+  blocks now show the clean placeholder text instead of a raw refusal.
 - **`cmd_dilmore` fixed (2026-07-10), per Derek's explicit go-ahead.** It
   used to call `dilmore_factor`/`dilmore_adj_pct` with 3 positional args
   (`subject_gba, comp_gba, curve`) against their real 2-arg `(ratio,
