@@ -407,6 +407,19 @@ def cmd_deliver(args):
         print(f"  workbook.xlsx not found in {adir.name}")
         return False
 
+    # Auto-run the Dilmore size-adjustment calc before generating anything,
+    # so Derek never has to remember a separate `dilmore` step after editing
+    # a comp's GBA. Per Derek's explicit choice (2026-07-10): keep this as
+    # a tested Python calculation rather than a live Excel formula -- see
+    # docs/ADJUSTMENT_GRID_DESIGN.md. This intentionally never blocks
+    # delivery: a missing adjustment-grid tab (older in-flight assignment)
+    # or no comp GBAs yet entered are both routine, not errors.
+    dilmore_result = _run_dilmore_calc(workbook_path)
+    if dilmore_result["ok"] and dilmore_result.get("count"):
+        print(f"  [Dilmore] {dilmore_result['message']}")
+    elif not dilmore_result["ok"]:
+        print(f"  [Dilmore] skipped -- {dilmore_result['message']}")
+
     print(f"\n  Loading variables ...")
     try:
         variables = load_variables(
@@ -585,33 +598,51 @@ def cmd_deliver(args):
     return True
 
 
-def cmd_dilmore(args):
-    """Compute Dilmore size adjustments and write them to the size_adj tab."""
-    if not args:
-        print("Usage: python axiom.py dilmore <file_no>")
-        return
+# Adjustment-grid tab layouts cmd_dilmore/deliver's auto-run understand,
+# newest first. sca_adjustment_grid is the current (Phase 6) tab; size_adj
+# is the older tab an assignment engaged before Phase 6 shipped may still
+# have (see docs/ADJUSTMENT_GRID_DESIGN.md, Open Question e -- graceful
+# skip/detection rather than a forced migration). Both use the same
+# 10-comp-row layout starting at row 7; only the column positions differ.
+_DILMORE_TAB_LAYOUTS = {
+    "sca_adjustment_grid": {"comp_gba_col": 3, "factor_col": 11, "adj_pct_col": 12},
+    "size_adj":            {"comp_gba_col": 2, "factor_col": 4,  "adj_pct_col": 5},
+}
 
-    file_no = args[0]
-    adir    = _find_assignment(file_no)
 
-    if not adir:
-        print(f"  Assignment {file_no} not found.")
-        return
+def _run_dilmore_calc(workbook_path):
+    """Core Dilmore size-adjustment calculation, shared by the standalone
+    `dilmore` command and deliver's automatic pre-flight step.
 
-    workbook_path = adir / "workbook.xlsx"
-    if not workbook_path.exists():
-        print(f"  workbook.xlsx not found in {adir.name}")
-        return
+    Detects whichever adjustment-grid tab the given workbook actually has
+    and writes Size Factor / Adj % into the right columns for that layout.
+    Adj % is written as a fraction (factor - 1), matching the true
+    percentage cell format on both tabs -- not dilmore_adj_pct()'s
+    percentage-point number, which would display 100x too large.
 
+    Returns a dict, always with "ok" and "message" keys:
+      {"ok": False, "message": "..."}                         -- hard error
+      {"ok": True, "count": 0, "message": "..."}               -- nothing to do
+      {"ok": True, "count": N, "tab": ..., "message": "...",
+       "subject_gba": ..., "curve": ..., "summary": [...]}     -- wrote N rows
+    """
     import openpyxl
     wb = openpyxl.load_workbook(str(workbook_path))
 
-    # Read curve selection from size_adj tab B3
-    if "size_adj" not in wb.sheetnames:
-        print("  size_adj tab not found — is this workbook from the latest template?")
-        return
+    tab_name = next(
+        (name for name in _DILMORE_TAB_LAYOUTS if name in wb.sheetnames), None
+    )
+    if tab_name is None:
+        return {
+            "ok": False,
+            "message": (
+                "No sca_adjustment_grid or size_adj tab found -- is this "
+                "workbook from a compatible template?"
+            ),
+        }
 
-    sa = wb["size_adj"]
+    layout = _DILMORE_TAB_LAYOUTS[tab_name]
+    sa = wb[tab_name]
     curve_val = sa["B3"].value
     try:
         curve = float(curve_val) if curve_val else 85.0
@@ -632,8 +663,7 @@ def cmd_dilmore(args):
                 break
 
     if not subject_gba:
-        # Try JSON
-        json_path = _find_json(adir)
+        json_path = _find_json(workbook_path.parent)
         if json_path:
             import json
             with open(json_path) as f:
@@ -645,20 +675,20 @@ def cmd_dilmore(args):
                 pass
 
     if not subject_gba:
-        print("  Could not find Subject GBA in Intake tab or variables.json.")
-        print("  Enter GBA in the Intake tab (key: GBA) and re-export JSON.")
-        return
+        return {
+            "ok": False,
+            "message": (
+                "Could not find Subject GBA in Intake tab or variables.json. "
+                "Enter GBA in the Intake tab (key: GBA) and re-export JSON."
+            ),
+        }
 
-    print(f"\n  Subject GBA: {subject_gba:,.0f} SF")
-    print(f"  Curve: {curve}%")
-    print()
-
-    # Read comp GBAs from size_adj B7:B16
+    # Read comp GBAs from the detected tab's rows 7-16
     row_idxs = []
     comp_gbas = []
     for i in range(1, 11):
-        row_idx = 6 + i   # rows 7–16
-        comp_gba_val = sa.cell(row=row_idx, column=2).value
+        row_idx = 6 + i   # rows 7-16
+        comp_gba_val = sa.cell(row=row_idx, column=layout["comp_gba_col"]).value
         if not comp_gba_val:
             continue
         try:
@@ -669,8 +699,12 @@ def cmd_dilmore(args):
         comp_gbas.append(comp_gba)
 
     if not comp_gbas:
-        print('  No comp GBAs found in size_adj B7:B16.')
-        return
+        return {
+            "ok": True,
+            "count": 0,
+            "tab": tab_name,
+            "message": f"No comp GBAs found in {tab_name}.",
+        }
 
     # dilmore_summary computes ratio = comp_gba / subject_gba (A_c/A_s) and
     # applies it against the requested curve for every comp in one call --
@@ -681,35 +715,66 @@ def cmd_dilmore(args):
     try:
         summary = dilmore_summary(subject_gba, comp_gbas, curve)
     except ValueError as exc:
-        print(f"  {exc}")
-        print(f"  Fix the curve in size_adj!B3 to one of 80, 82.5, 85, 87.5, 90.")
+        return {
+            "ok": False,
+            "message": (
+                f"{exc} Fix the curve in {tab_name}!B3 to one of "
+                f"80, 82.5, 85, 87.5, 90."
+            ),
+        }
+
+    for row_idx, row in zip(row_idxs, summary):
+        sa.cell(row=row_idx, column=layout["factor_col"]).value = round(row["factor"], 4)
+        sa.cell(row=row_idx, column=layout["adj_pct_col"]).value = round(row["factor"] - 1, 4)
+
+    wb.save(str(workbook_path))
+    return {
+        "ok": True,
+        "count": len(row_idxs),
+        "tab": tab_name,
+        "message": f"Wrote {len(row_idxs)} size adjustments to {tab_name}.",
+        "subject_gba": subject_gba,
+        "curve": curve,
+        "summary": summary,
+    }
+
+
+def cmd_dilmore(args):
+    """Compute Dilmore size adjustments and write them to the adjustment grid tab."""
+    if not args:
+        print("Usage: python axiom.py dilmore <file_no>")
         return
 
+    file_no = args[0]
+    adir    = _find_assignment(file_no)
+
+    if not adir:
+        print(f"  Assignment {file_no} not found.")
+        return
+
+    workbook_path = adir / "workbook.xlsx"
+    if not workbook_path.exists():
+        print(f"  workbook.xlsx not found in {adir.name}")
+        return
+
+    result = _run_dilmore_calc(workbook_path)
+
+    if not result["ok"] or result["count"] == 0:
+        print(f"  {result['message']}")
+        return
+
+    print(f"\n  Subject GBA: {result['subject_gba']:,.0f} SF")
+    print(f"  Curve: {result['curve']}%")
+    print()
     print(f"  {'Comp':<12} {'Comp GBA':>10}  {'Ratio':>8}  {'Factor':>8}  {'Adj %':>8}")
     print("  " + "─" * 52)
-
-    count = 0
-    for row_idx, row in zip(row_idxs, summary):
-        # size_adj's real header row (6): A=Comp, B=Comp GBA, C=Ratio (Ac/As)
-        # (a pre-existing formula -- must NOT be overwritten), D=Size Factor,
-        # E=Adj %, F=Adj $/SF, G=Notes. Column 3 is the Ratio formula, not a
-        # write target; Size Factor/Adj % belong in columns 4/5 (D/E).
-        sa.cell(row=row_idx, column=4).value = round(row["factor"], 4)
-        # size_adj!E6's cell format is a true Excel percentage
-        # ("+0.0%;-0.0%;0.0%"), which expects a fraction (0.18 -> "+18.0%"),
-        # not dilmore_adj_pct()'s percentage-point number (18.0, which would
-        # display as "1800.0%"). Write factor-1 (already a fraction) instead.
-        sa.cell(row=row_idx, column=5).value = round(row["factor"] - 1, 4)
-
+    for row in result["summary"]:
         label = f'Comp {row["comp"]}'
         print(
             f'  {label:<12} {row["comp_gba"]:>10,.0f}  {row["ratio"]:>8.3f}  '
             f'{row["factor"]:>8.4f}  {row["adj_pct"]:>+8.1f}%'
         )
-        count += 1
-
-    wb.save(str(workbook_path))
-    print(f'  Wrote {count} size adjustments to workbook.xlsx')
+    print(f"  {result['message']}")
 
 
 # --- Extract command ---
@@ -1117,6 +1182,44 @@ def check_delivery_readiness(adir):
     )
 
 
+def _dilmore_staleness_warnings(workbook_path):
+    """Read-only check: does the adjustment-grid tab have a comp GBA
+    entered with no corresponding Size Factor yet? That just means Dilmore
+    hasn't run since that GBA was typed in -- routine, not an error, and it
+    runs automatically on delivery. `validate` must stay non-mutating
+    (see its docstring), so this only reads and never writes, unlike
+    `_run_dilmore_calc`."""
+    import openpyxl
+    try:
+        wb = openpyxl.load_workbook(str(workbook_path), data_only=True)
+    except Exception:
+        return []
+
+    tab_name = next(
+        (name for name in _DILMORE_TAB_LAYOUTS if name in wb.sheetnames), None
+    )
+    if tab_name is None:
+        return []
+
+    layout = _DILMORE_TAB_LAYOUTS[tab_name]
+    sa = wb[tab_name]
+    stale_comps = []
+    for i in range(1, 11):
+        row_idx = 6 + i
+        comp_gba = sa.cell(row=row_idx, column=layout["comp_gba_col"]).value
+        factor = sa.cell(row=row_idx, column=layout["factor_col"]).value
+        if comp_gba and not factor:
+            stale_comps.append(str(i))
+
+    if not stale_comps:
+        return []
+    return [
+        f"{tab_name}: Comp {', '.join(stale_comps)} has a GBA entered but "
+        f"no Size Factor yet -- runs automatically on delivery, or preview "
+        f"it now with `python axiom.py dilmore <file_no>`."
+    ]
+
+
 def cmd_validate(args):
     """Check delivery readiness without writing assignment files or state."""
     if not args:
@@ -1130,6 +1233,10 @@ def cmd_validate(args):
         return False
 
     result = check_delivery_readiness(adir)
+    workbook_path = adir / "workbook.xlsx"
+    if workbook_path.exists():
+        result['warnings'] = list(result.get('warnings', [])) + \
+            _dilmore_staleness_warnings(workbook_path)
     print(f'\n  Delivery validation: {adir.name}')
     print('  ' + '-' * 60)
     if result.get("schema_version"):

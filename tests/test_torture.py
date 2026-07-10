@@ -740,4 +740,196 @@ class TortureTests(unittest.TestCase):
 
             # Column C's pre-existing Ratio formula must survive untouched --
             # this is the exact cell the earlier buggy column mapping
-            # clobbered with the Size Factor valu
+            # clobbered with the Size Factor value instead.
+            self.assertEqual(
+                '=IF(B7="","",IFERROR(B7/$B$4,""))',
+                result_sa.cell(row=7, column=3).value,
+            )
+            self.assertEqual(
+                '=IF(B8="","",IFERROR(B8/$B$4,""))',
+                result_sa.cell(row=8, column=3).value,
+            )
+
+            # Comp 1 (larger than subject) gets a positive adjustment; comp 2
+            # (smaller than subject) gets a negative one. With the old
+            # backwards ratio these signs would flip.
+            self.assertGreater(result_sa.cell(row=7, column=5).value, 0)
+            self.assertLess(result_sa.cell(row=8, column=5).value, 0)
+            result_wb.close()
+
+    def test_dilmore_invalid_curve_fails_loudly_without_writing(self):
+        """An out-of-table curve value in size_adj!B3 must produce a clear
+        error and leave the workbook byte-for-byte untouched, not a raw
+        traceback or a partial write."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignments = root / "assignments"
+            assignments.mkdir()
+            assignment = assignments / "TEST-501_Fictional_Client"
+            assignment.mkdir()
+
+            workbook = openpyxl.Workbook()
+            intake = workbook.active
+            intake.title = "Intake"
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+
+            size_adj = workbook.create_sheet("size_adj")
+            size_adj["B3"] = 83  # not one of 80, 82.5, 85, 87.5, 90
+            size_adj.cell(row=7, column=2).value = 20000
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook.save(workbook_path)
+            workbook.close()
+            original_bytes = workbook_path.read_bytes()
+
+            with patch.object(axiom, "ASSIGNMENTS_DIR", assignments):
+                axiom.cmd_dilmore(["TEST-501"])
+
+            self.assertEqual(original_bytes, workbook_path.read_bytes())
+
+    def test_dilmore_prefers_sca_adjustment_grid_over_size_adj(self):
+        """Phase 6's sca_adjustment_grid tab uses different column
+        positions than the older size_adj tab (Comp GBA in C not B,
+        Size Factor/Adj % in K/L not D/E). _run_dilmore_calc must detect
+        which tab a given workbook actually has and use the matching
+        layout -- not assume the old size_adj positions unconditionally."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignments = root / "assignments"
+            assignments.mkdir()
+            assignment = assignments / "TEST-502_Fictional_Client"
+            assignment.mkdir()
+
+            workbook = openpyxl.Workbook()
+            intake = workbook.active
+            intake.title = "Intake"
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+
+            grid = workbook.create_sheet("sca_adjustment_grid")
+            grid["B3"] = 85
+            # New layout: Comp GBA in column C (3), not B (2).
+            grid.cell(row=7, column=3).value = 20000  # 2x subject -> positive
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook.save(workbook_path)
+            workbook.close()
+
+            with patch.object(axiom, "ASSIGNMENTS_DIR", assignments):
+                axiom.cmd_dilmore(["TEST-502"])
+
+            result_wb = openpyxl.load_workbook(workbook_path)
+            grid_result = result_wb["sca_adjustment_grid"]
+
+            expected_factor = round(dilmore_factor(20000 / 10000, 85), 4)
+            expected_adj = round(expected_factor - 1, 4)
+            # New layout: Size Factor in column K (11), Adj % in L (12).
+            self.assertEqual(expected_factor, grid_result.cell(row=7, column=11).value)
+            self.assertEqual(expected_adj, grid_result.cell(row=7, column=12).value)
+            # Old size_adj columns D/E must be untouched (there is no
+            # size_adj tab at all in this fixture -- if the old column
+            # positions were used against this new layout by mistake, this
+            # would have written into what's actually the Sale Date/Months
+            # columns instead).
+            self.assertIsNone(grid_result.cell(row=7, column=4).value)
+            self.assertIsNone(grid_result.cell(row=7, column=5).value)
+            result_wb.close()
+
+    def test_dilmore_staleness_warning_is_read_only(self):
+        """validate's staleness check must never write to the workbook --
+        only cmd_dilmore/deliver's auto-run may write. A comp GBA with no
+        Size Factor yet should produce exactly one warning naming the tab
+        and comp number, and the workbook must be byte-for-byte unchanged
+        afterward."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment = Path(temp_dir)
+            workbook = openpyxl.Workbook()
+            intake = workbook.active
+            intake.title = "Intake"
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+
+            grid = workbook.create_sheet("sca_adjustment_grid")
+            grid.cell(row=7, column=3).value = 20000   # GBA entered
+            # Size Factor (column 11) intentionally left blank -- stale.
+            grid.cell(row=8, column=3).value = 5000    # GBA entered
+            grid.cell(row=8, column=11).value = 0.85   # already computed
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook.save(workbook_path)
+            workbook.close()
+            original_bytes = workbook_path.read_bytes()
+
+            warnings = axiom._dilmore_staleness_warnings(workbook_path)
+
+            self.assertEqual(original_bytes, workbook_path.read_bytes())
+            self.assertEqual(1, len(warnings))
+            self.assertIn("sca_adjustment_grid", warnings[0])
+            self.assertIn("Comp 1", warnings[0])
+            self.assertNotIn("Comp 2", warnings[0])
+
+    def test_deliver_auto_runs_dilmore_without_separate_command(self):
+        """Per Derek's explicit choice (2026-07-10), Dilmore stays a tested
+        Python calculation rather than a live Excel formula, but it must
+        run automatically as part of deliver so Derek never has to
+        remember a separate `dilmore` step after editing a comp's GBA."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment, templates, _ = build_assignment(
+                root,
+                "[[VALUE]]",
+                {"VALUE": "safe"},
+            )
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook = openpyxl.load_workbook(workbook_path)
+            intake = workbook.create_sheet("Intake")
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+            grid = workbook.create_sheet("sca_adjustment_grid")
+            grid["B3"] = 85
+            grid.cell(row=7, column=3).value = 20000
+            workbook.save(workbook_path)
+            workbook.close()
+
+            stage = {
+                "deliver": {
+                    "documents": [
+                        {"template": "report.docx", "output": "Appraisal.docx"}
+                    ]
+                }
+            }
+
+            def fake_fill_document(_template, output, _variables, **_kwargs):
+                Document().save(output)
+                return {"missing": [], "blocks": [], "removed_sections": []}
+
+            with (
+                patch.object(axiom, "_find_assignment", return_value=assignment),
+                patch.object(
+                    axiom,
+                    "check_delivery_readiness",
+                    return_value={
+                        "ready": True,
+                        "errors": [],
+                        "missing": [],
+                        "unresolved_blocks": {},
+                    },
+                ),
+                patch.object(axiom, "STAGES", stage),
+                patch.object(axiom, "TEMPLATES_DIR", templates),
+                patch.object(axiom, "fill_document", side_effect=fake_fill_document),
+            ):
+                result = axiom.cmd_deliver(["TEST-999", "--draft"])
+
+            self.assertTrue(result)
+            result_wb = openpyxl.load_workbook(workbook_path)
+            grid_result = result_wb["sca_adjustment_grid"]
+            expected_factor = round(dilmore_factor(20000 / 10000, 85), 4)
+            self.assertEqual(expected_factor, grid_result.cell(row=7, column=11).value)
+            result_wb.close()
+
+
+if __name__ == "__main__":
+    unittest.main()
