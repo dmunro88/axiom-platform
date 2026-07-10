@@ -67,7 +67,7 @@
       ]
     },
     "land": {
-      "_notes": "Per-acre basis; swaps in Topography/Surrounding Land Uses, drops Quality/Condition/LTB entirely.",
+      "_notes": "Price/SF basis (matches the real template's land grid, not per-acre as originally assumed here on 2026-07-10); swaps in Topography/Surrounding Land Uses, drops Quality/Condition/LTB entirely.",
       "quantitative_categories": [
         "Location",
         "Topography",
@@ -76,11 +76,4 @@
       "qualitative_factors": [
         "Topography",
         "Surrounding Land Uses",
-        "Access",
-        "Visibility",
-        "Flood Zone",
-        "Utility"
-      ]
-    }
-  }
-}
+     

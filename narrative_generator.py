@@ -445,7 +445,21 @@ Write exactly THREE paragraphs:
 Output only the three paragraphs, no headers, no commentary.""", 800)
 
 
-# ── Land adjustment narrative (workbook-driven, legacy) ───────────────────────
+# ── Land adjustment narrative (workbook-driven) ───────────────────────────────
+#
+# Reads land_adjustment_grid (rows 7-16, one row per comp). This tab replaced
+# the old 3-section 'land' tab (2026-07-10) -- that tab's ADJUSTMENT INPUTS
+# section lived at rows 31-40, not 5-14, so the previous version of this
+# function was reading the wrong section entirely (it read into the SUMMARY
+# section's own header row, which crashed on realistic data). The old tab's
+# "Dilmore Size Adj %" column is also gone -- it referenced size_adj!D6:D15,
+# the *improved-property* GBA-based Size Factor, which was never actually
+# relevant to land comps. Categories are now Location / Topography /
+# Surrounding Land Uses, per adjustment_factors.json's land preset.
+
+_LAND_GRID_FIRST_ROW = 7
+_LAND_GRID_LAST_ROW = 16
+
 
 def _read_land_adj(workbook_path):
     try:
@@ -454,46 +468,41 @@ def _read_land_adj(workbook_path):
         raise RuntimeError("pip install openpyxl")
 
     wb = openpyxl.load_workbook(str(workbook_path), data_only=True)
-    if "land" not in wb.sheetnames:
+    if "land_adjustment_grid" not in wb.sheetnames:
         return []
-    ws = wb["land"]
+    ws = wb["land_adjustment_grid"]
     comps = []
 
-    for r in range(5, 15):
-        comp_no  = ws.cell(r, 2).value
-        location = ws.cell(r, 3).value
-        if not comp_no:
-            continue
+    def _pct(r, col):
+        v = ws.cell(r, col).value
+        if v is None:
+            return 0.0
+        try:
+            f = float(v)
+            return f if abs(f) <= 1.0 else f / 100.0
+        except (ValueError, TypeError):
+            return 0.0
 
-        def _pct(col):
-            v = ws.cell(r, col).value
-            if v is None: return 0.0
-            try:
-                f = float(v)
-                return f if abs(f) <= 1.0 else f / 100.0
-            except (ValueError, TypeError):
-                return 0.0
+    for i, r in enumerate(range(_LAND_GRID_FIRST_ROW, _LAND_GRID_LAST_ROW + 1)):
+        comp_no  = i + 1
+        location = ws.cell(r, 2).value  # B: Location
 
-        def _note(col):
-            v = ws.cell(r, col).value
-            return str(v).strip() if v and str(v).strip() not in ("", "None") else ""
+        time_pct       = _pct(r, 9)   # I: Time Adj %
+        location_pct   = _pct(r, 11)  # K: Location Adj %
+        topo_pct       = _pct(r, 12)  # L: Topography Adj %
+        surrounding_pct = _pct(r, 13) # M: Surrounding Land Uses Adj %
 
-        mkt_cond_pct  = _pct(4);  mkt_cond_note = _note(5)
-        location_pct  = _pct(6);  location_note = _note(7)
-        other_pct     = _pct(8);  other_note    = _note(9)
-        dilmore_pct   = _pct(10)
-
-        is_placeholder = not location or "address" in str(location).lower()
-        all_zero = all(p == 0.0 for p in [mkt_cond_pct, location_pct, other_pct, dilmore_pct])
-        if is_placeholder and all_zero:
+        all_zero = all(p == 0.0 for p in [time_pct, location_pct, topo_pct, surrounding_pct])
+        if not location and all_zero:
             continue
 
         comps.append({
-            "comp_no": int(comp_no), "location": str(location) if location else f"Comp {comp_no}",
-            "mkt_cond_pct": mkt_cond_pct, "mkt_cond_note": mkt_cond_note,
-            "location_pct": location_pct, "location_note": location_note,
-            "other_pct": other_pct, "other_note": other_note,
-            "dilmore_pct": dilmore_pct,
+            "comp_no": comp_no,
+            "location": str(location) if location else f"Comp {comp_no}",
+            "time_pct": time_pct,
+            "location_pct": location_pct,
+            "topo_pct": topo_pct,
+            "surrounding_pct": surrounding_pct,
         })
 
     wb.close()
@@ -505,25 +514,22 @@ def _prompt_land_adjustment(comps, variables):
     lines = []
     for c in comps:
         parts = [f"  Comp {c['comp_no']} ({c['location']})"]
-        if c["mkt_cond_pct"] != 0:
-            d = "upward" if c["mkt_cond_pct"] > 0 else "downward"
-            n = f" — {c['mkt_cond_note']}" if c["mkt_cond_note"] else ""
-            parts.append(f"    Market Conditions: {d} {abs(c['mkt_cond_pct'])*100:.0f}%{n}")
+        if c["time_pct"] != 0:
+            d = "upward" if c["time_pct"] > 0 else "downward"
+            parts.append(f"    Market Conditions: {d} {abs(c['time_pct'])*100:.1f}%")
         else:
             parts.append("    Market Conditions: no adjustment")
         if c["location_pct"] != 0:
             d = "upward" if c["location_pct"] > 0 else "downward"
-            n = f" — {c['location_note']}" if c["location_note"] else ""
-            parts.append(f"    Location: {d} {abs(c['location_pct'])*100:.0f}%{n}")
+            parts.append(f"    Location: {d} {abs(c['location_pct'])*100:.0f}%")
         else:
             parts.append("    Location: no adjustment")
-        if c["dilmore_pct"] != 0:
-            d = "upward" if c["dilmore_pct"] > 0 else "downward"
-            parts.append(f"    Size (Dilmore): {d} {abs(c['dilmore_pct'])*100:.1f}%")
-        if c["other_pct"] != 0:
-            d = "upward" if c["other_pct"] > 0 else "downward"
-            n = f" — {c['other_note']}" if c["other_note"] else ""
-            parts.append(f"    Other: {d} {abs(c['other_pct'])*100:.0f}%{n}")
+        if c["topo_pct"] != 0:
+            d = "upward" if c["topo_pct"] > 0 else "downward"
+            parts.append(f"    Topography: {d} {abs(c['topo_pct'])*100:.0f}%")
+        if c["surrounding_pct"] != 0:
+            d = "upward" if c["surrounding_pct"] > 0 else "downward"
+            parts.append(f"    Surrounding Land Uses: {d} {abs(c['surrounding_pct'])*100:.0f}%")
         lines.append("\n".join(parts))
 
     return (f"""You are writing the Adjustment Summary narrative for the Cost Approach — Land Valuation section of a commercial real estate appraisal report. Write in formal, USPAP-compliant appraisal language.
@@ -535,9 +541,9 @@ Per-comp adjustment data:
 
 Write exactly THREE paragraphs:
 
-1. MARKET CONDITIONS paragraph: Describe which sales received market condition adjustments, in which direction, and the general reason. Sales with no market condition adjustment should be noted as requiring no adjustment. Do not list percentages — describe directionally only.
+1. MARKET CONDITIONS paragraph: Describe which sales received market condition (time) adjustments, in which direction, and the general reason (time elapsed between sale and the effective date). Sales with no market condition adjustment should be noted as requiring no adjustment. Do not list percentages — describe directionally only.
 
-2. SIZE AND LOCATION paragraph: First sentence: size adjustments using the Dilmore Size Adjustment Scale along the 85% curve. Then describe location adjustments by direction. Do not list percentages.
+2. LOCATION AND PHYSICAL CHARACTERISTICS paragraph: Describe location adjustments by direction, followed by Topography and Surrounding Land Uses adjustments where present. Do not list percentages.
 
 3. ADDITIONAL FACTORS paragraph: One sentence noting that additional elements of comparison were considered but no further quantitative adjustments were applied, as these factors are addressed qualitatively in the reconciliation.
 
@@ -680,13 +686,4 @@ if __name__ == "__main__":
         print("Usage: python narrative_generator.py <path/to/workbook.xlsx> [variables.json]")
         sys.exit(1)
 
-    vars_path = sys.argv[2] if len(sys.argv) > 2 else None
-    v = {}
-    if vars_path and Path(vars_path).exists():
-        with open(vars_path) as f:
-            v = json.load(f)
-
-    result = generate_adjustment_narrative(sys.argv[1], v)
-    if result:
-        print("\n── Generated Narrative ──")
-        print(result)
+    vars_path
