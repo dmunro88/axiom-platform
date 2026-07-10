@@ -76,6 +76,36 @@
   partially re-run (they're slow with a real Tesseract install and hit this
   environment's command time cap) — no failures observed in the portion
   that did run.
+- **Follow-up self-correction to the `cmd_dilmore` fix above, same day
+  (2026-07-10), found while grounding Phase 6 work in the real template.**
+  Direct openpyxl inspection of the real `templates/workbook.xlsx` `size_adj`
+  tab's header row (A=Comp, B=Comp GBA, C=Ratio (Ac/As) — a pre-existing
+  per-row formula, D=Size Factor, E=Adj %, F=Adj $/SF, G=Notes) showed the
+  fix above wrote Size Factor/Adj % to columns 3/4 (C/D) instead of the real
+  4/5 (D/E) — silently overwriting column C's live Ratio formula on any real
+  run. It passed the original tests only because those tests' fixture
+  invented its own (wrong) column layout instead of mirroring the real
+  template. Fixed in `axiom.py` (now writes columns 4/5) and
+  `tests/test_torture.py` (fixture now mirrors the real header row and a
+  real Ratio formula, and asserts column C survives untouched — the actual
+  regression-catching mechanism for this bug class). Committed as `746a172`.
+  Also found and worked around a real sandbox gotcha along the way: pytest
+  keeps its own separate assertion-rewrite bytecode cache
+  (`__pycache__/*-pytest-*.pyc`), distinct from the plain `.pyc` cache —
+  neither `-B`, `PYTHONDONTWRITEBYTECODE=1`, nor `-p no:cacheprovider`
+  touch it, so a stale one can make pytest silently keep testing an old
+  version of a file's assertions even though the source on disk is current
+  and `py_compile` is clean. `rm -rf __pycache__` fails on this OneDrive
+  mount ("Operation not permitted", same unlink restriction as git
+  internals) but `mv __pycache__ __pycache__.stale.<ts>` succeeds and fixes
+  it — same workaround pattern documented for git's own lock/temp files.
+  Separately, `git diff`/`git status` initially reported zero difference
+  for `axiom.py`/`test_torture.py` despite the working tree genuinely
+  differing from HEAD (confirmed via `git hash-object` vs `git rev-parse
+  HEAD:<path>`) — a poisoned stat-cache on this same mount (see
+  `feedback_onedrive_bash_sync_lag` in Claude's memory); `touch <file> &&
+  git update-index --refresh` forced git to recheck actual content and
+  fixed it.
 
 ## Current objective
 
@@ -990,35 +1020,4 @@ touch:
   **This got worse, not just noisier, while committing `6ad25af`:** the same
   restriction let a stale `.git/index.lock` get renamed over the real
   `.git/index` on write, corrupting it (`bad signature 0x00000000`), and
-  separately left `HEAD` unmoved after a real commit object was already
-  created. Both were recoverable without touching any working-tree file —
-  `git read-tree HEAD` rebuilds a valid index from the last good commit
-  (safe: it only touches the index, never the working tree), and a commit
-  that exists as an object but didn't move `HEAD` can be recovered with
-  `git update-ref refs/heads/main <hash>` after confirming via `git cat-file
-  -p <hash>` that its tree/parent/message are the intended ones. This
-  produced one confirmed-harmless duplicate dangling commit (identical tree
-  to `dde13b8`, an earlier failed attempt at the same commit, 17 seconds
-  older) sitting in the object database; `git gc` will eventually reap it.
-  Moral for next time: do every index-modifying git command in its own bash
-  call (not chained with others) and verify `git cat-file -p HEAD` names the
-  right commit before trusting a "success" exit code on this mount.
-- Plain `python` is not on PATH in the current Codex environment. The bundled
-  Python runtime was used for checks.
-- Tesseract is installed and synthetic OCR tests now run. Live archive
-  extraction has been tested against an image-only rendering of Derek's
-  supplied rent roll and proforma, but a naturally image-only scanned rent
-  roll or P&L has not yet produced staged financial rows through full
-  staging/review in this checkout. The naturally image-only JeffCo income
-  statement OCRed clearly enough but did not match current expense-section
-  parsing rules.
-- DOCX media layout has structural test coverage but still needs visual QA with
-  representative landscape and portrait photos.
-- Streamlit comparable review/browse behavior has service-level coverage but
-  still needs an interactive browser pass.
-- Missing/error Excel caches are detectable. A valid-looking but stale cached
-  value cannot be proven stale from XLSX alone without an Excel-side
-  calculation stamp or automation.
-- The existing parent-folder `PROJECT_STATE.md` is historical and contains
-  stale claims. This file and the project-root `PROJECT_STATE.md` are the
-  canonical handoff documents going forward.
+  separately left `HEAD` unmoved afte

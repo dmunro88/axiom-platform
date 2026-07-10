@@ -1,6 +1,6 @@
 # Axiom Platform — Project State
 
-- Last verified: 2026-07-09
+- Last verified: 2026-07-10
 - Status: Functional prototype in active local use; production safeguards and
   repeatable tests are incomplete.
 
@@ -49,7 +49,7 @@ the signed deliverable.
 | `deliver` | Generates a final report only after validation passes; `--draft` generates a distinctly named draft without changing delivery stage |
 | `validate` | Checks fields, block handlers, workbook formula caches, and possible JSON staleness without changing assignment files or state |
 | `contract` | Audits workbook and configured template keys against field registry v1 |
-| `dilmore` | Fixed (2026-07-10): now calls the shared `dilmore_summary(subject_gba, comp_gbas, curve)` helper (correct ratio = comp/subject, correct 2-arg calls) instead of the old inline 3-arg call that raised `TypeError` on every real run. Invalid curve values in `size_adj!B3` now fail loudly with no partial write, instead of a raw traceback. Two regression tests added (`test_dilmore_uses_correct_ratio_direction_and_signature`, `test_dilmore_invalid_curve_fails_loudly_without_writing` in `tests/test_torture.py`) — this command had zero test coverage before. |
+| `dilmore` | Fixed (2026-07-10): now calls the shared `dilmore_summary(subject_gba, comp_gbas, curve)` helper (correct ratio = comp/subject, correct 2-arg calls) instead of the old inline 3-arg call that raised `TypeError` on every real run. Invalid curve values in `size_adj!B3` now fail loudly with no partial write, instead of a raw traceback. A same-day follow-up correction (also 2026-07-10, before Phase 6 work began) fixed a second bug in that same fix: it wrote Size Factor/Adj % to columns 3/4 (C/D) instead of the real `size_adj` layout's columns 4/5 (D/E) — column C holds a pre-existing per-row Ratio formula that the wrong mapping would have silently overwritten on any real run. Found by inspecting the real `templates/workbook.xlsx` header row directly rather than trusting the original (self-consistent but wrong) test fixture. Two regression tests (`test_dilmore_uses_correct_ratio_direction_and_signature`, `test_dilmore_invalid_curve_fails_loudly_without_writing` in `tests/test_torture.py`) now build a fixture matching the real header row/formula and assert column C survives untouched — this command had zero test coverage before 2026-07-10. |
 | `extract` | Extracts comparable and narrative data from supported source documents |
 | `comp-ingest` | Scans historical assignment folders and stages versioned comparable, assignment, financial, and observation records |
 | `review-staged` / `comp-commit` | Confirms staged records and transactionally commits reviewed evidence |
@@ -69,19 +69,24 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Eighty-four automated validation, delivery-state, stress, golden-DOCX,
+- 101 automated validation, delivery-state, stress, golden-DOCX,
   comparable, historical-harvest, media, comp-page,
-  structured-block, model-routing, contract, presentation-derivation, and
-  OCR-lane tests pass, confirmed live (run per-file/per-batch in this
-  checkout due to sandbox time limits; same net coverage). The seven core
-  OCR tests run against a real local Tesseract install instead of being
-  skipped (one of the seven, the orientation-scoring test, doesn't require
-  Tesseract at all). The suite grew from 77 to 82 tests on 2026-07-08 with
-  coverage for the OCR page-image-pruning helper, the `AXIOM_OCR_PAGES_DIR`
-  override, the nested-financial-PDF duplicate/staleness warning, and the
-  legacy comp-row identity backfill; then to 84 on 2026-07-09 with coverage
-  for the rent-roll identity amount fix and the unconfirmed-comp-raises fix
-  from the stress-test follow-up.
+  structured-block, model-routing, contract, presentation-derivation,
+  narrative-data-guard, and OCR-lane tests pass, confirmed live (run
+  per-file/per-batch in this checkout due to sandbox time limits; same net
+  coverage). The seven core OCR tests run against a real local Tesseract
+  install instead of being skipped (one of the seven, the
+  orientation-scoring test, doesn't require Tesseract at all) — these seven
+  are individually too slow for this sandbox's per-command time limit and
+  were last fully re-verified 2026-07-09; they are unaffected by the
+  2026-07-10 `dilmore` and narrative-guard changes. The suite grew from 77
+  to 82 tests on 2026-07-08 with coverage for the OCR page-image-pruning
+  helper, the `AXIOM_OCR_PAGES_DIR` override, the nested-financial-PDF
+  duplicate/staleness warning, and the legacy comp-row identity backfill;
+  to 84 on 2026-07-09 with coverage for the rent-roll identity amount fix
+  and the unconfirmed-comp-raises fix from the stress-test follow-up; and
+  to 101 on 2026-07-10 with 16 new narrative-data-guard tests plus the
+  `dilmore` column-mapping regression test correction.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -395,24 +400,4 @@ Checks were performed without regenerating or modifying assignment outputs.
 5. **Completed:** extend the model to bounded reusable market observations.
 6. **Completed:** extend the model to external and Office-embedded charts,
    maps, photos, sketches, and archived exhibits.
-7. **Completed:** add database migrations/backfills for any legacy local
-   comp rows before importing a real historical archive
-   (`backfill_legacy_identities` in `db.py`, run automatically by
-   `init_db()`).
-
-### P2 — Integrations
-
-Live-test Adobe Sign and Xero only after the core workflow has delivery
-integrity. External actions must be idempotent and retain provider IDs,
-timestamps, and failure states.
-
-## Known external blockers
-
-- Adobe Sign requires a usable API application and local credentials.
-- Xero requires a configured custom connection and local credentials.
-- AI narrative generation requires the Anthropic package, network access, and
-  `ANTHROPIC_API_KEY` — confirmed working end to end on 2026-07-10 (see
-  "Verified baseline" above). Note: this cloud sandbox's own network routes
-  through an intercepting proxy that blocks/misrepresents calls to
-  `api.anthropic.com`, so live AI narrative testing must happen on Derek's
-  own machine, not in this sandbox.
+7. **Completed:** add database migration
