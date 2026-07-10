@@ -1,0 +1,86 @@
+{
+  "_notes": [
+    "Phase 6 Adjustment Grid config -- see docs/ADJUSTMENT_GRID_DESIGN.md.",
+    "Per-property-type presets of which quantitative category columns and",
+    "qualitative factors apply by default. Every category column stays",
+    "addable/overridable by hand in the workbook regardless of preset --",
+    "these lists only control what's pre-built, never what's allowed.",
+    "qualitative.threshold is Derek's explicit 'needs to be adjustable if",
+    "things need tuning' requirement (2026-07-10) -- change the number below",
+    "to retune Superior/Similar/Inferior sensitivity without touching code."
+  ],
+  "qualitative": {
+    "_notes": [
+      "scoring: 'average' or 'sum' of a comp's factor scores (each factor is",
+      "0/1/-1). Derek confirmed 'average' with a +/-0.3 cutoff on 2026-07-10.",
+      "threshold: |score| below this maps to 'similar'; above maps to",
+      "superior (positive) or inferior (negative)."
+    ],
+    "scoring": "average",
+    "threshold": 0.3,
+    "labels": {
+      "superior": "Superior",
+      "similar": "Similar",
+      "inferior": "Inferior"
+    }
+  },
+  "property_types": {
+    "office_retail_industrial": {
+      "_notes": "Majority preset -- 7 of 10 real market-chart files inspected.",
+      "quantitative_categories": [
+        "Location",
+        "Quality/Condition",
+        "Utility"
+      ],
+      "qualitative_factors": [
+        "Traffic",
+        "MHI",
+        "Population",
+        "Access",
+        "Visibility",
+        "Quality",
+        "Condition",
+        "Flood Zone",
+        "LTB",
+        "Utility"
+      ]
+    },
+    "apartment": {
+      "_notes": "Same shape as office/retail/industrial; adds Amenities and Price Per Unit, drops Traffic.",
+      "quantitative_categories": [
+        "Location",
+        "Quality/Condition",
+        "Amenities",
+        "Utility"
+      ],
+      "qualitative_factors": [
+        "MHI",
+        "Population",
+        "Access",
+        "Visibility",
+        "Amenities",
+        "Quality",
+        "Condition",
+        "Flood Zone",
+        "LTB",
+        "Utility"
+      ]
+    },
+    "land": {
+      "_notes": "Per-acre basis; swaps in Topography/Surrounding Land Uses, drops Quality/Condition/LTB entirely.",
+      "quantitative_categories": [
+        "Location",
+        "Topography",
+        "Surrounding Land Uses"
+      ],
+      "qualitative_factors": [
+        "Topography",
+        "Surrounding Land Uses",
+        "Access",
+        "Visibility",
+        "Flood Zone",
+        "Utility"
+      ]
+    }
+  }
+}
