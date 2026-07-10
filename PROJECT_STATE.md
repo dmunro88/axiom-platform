@@ -86,7 +86,23 @@ Checks were performed without regenerating or modifying assignment outputs.
   to 84 on 2026-07-09 with coverage for the rent-roll identity amount fix
   and the unconfirmed-comp-raises fix from the stress-test follow-up; and
   to 101 on 2026-07-10 with 16 new narrative-data-guard tests plus the
-  `dilmore` column-mapping regression test correction.
+  `dilmore` column-mapping regression test correction; to 103 (non-OCR)
+  same day with 7 new land_adjustment_grid tests (Phase 6 Adjustment Grid
+  step 2 — see below).
+- **Phase 6 Adjustment Grid, steps 1-2 (2026-07-10):** `size_adj` was
+  replaced by `sca_adjustment_grid` (full sales-comparison net-adjustment
+  grid, one time-adjustment checkpoint then summed category adjustments —
+  see `docs/ADJUSTMENT_GRID_DESIGN.md`), and the old 3-section `land` tab
+  was replaced by `land_adjustment_grid` (same pattern, Location/
+  Topography/Surrounding Land Uses categories per `adjustment_factors.json`'s
+  land preset, no Dilmore/Size column — land comps never had a real
+  building-GBA-elasticity basis for one). Fixed two real pre-existing bugs
+  found along the way: `size_adj!B4`'s Subject GBA reference pointed at the
+  wrong Intake row, and `narrative_generator._read_land_adj` read the wrong
+  row range from the old `land` tab (crashed on realistic data — see git
+  log for `9b832a7`). Remaining Phase 6 steps (qualitative 0/1/-1 grids,
+  field_registry wiring, `adjustment_grid.py` injector module) are not yet
+  built.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -380,24 +396,4 @@ Checks were performed without regenerating or modifying assignment outputs.
    rather than entering duplicate facts. Semantically distinct short/full
    labels remain explicit.
 3. **Completed for canonical Intake drift and missing/error caches:** detect
-   stale JSON and scope cache checks to active workbook-owned report fields.
-   Valid-but-stale cache proof still requires an Excel-side calculation stamp.
-4. **Completed for new assignments and delivery attempts:** record template,
-   schema, and application versions per assignment.
-
-### P1 — Comparable intelligence
-
-1. **Completed:** define canonical sale/lease record contract, provenance,
-   review status, identity, and database idempotency.
-2. **Completed:** verify fictional extract → stage → review → commit → search →
-   CSV/workbook export.
-3. **Completed:** extend provenance/review to assignment conclusions and
-   compact income snapshots.
-4. **Completed:** extend the model to row-level rent rolls, specialty Excel
-   rent-roll layouts, native PDF rent-roll tables, native text-position PDF
-   expenses, normalized operating expenses, and basic wide multi-year
-   operating statements.
-5. **Completed:** extend the model to bounded reusable market observations.
-6. **Completed:** extend the model to external and Office-embedded charts,
-   maps, photos, sketches, and archived exhibits.
-7. **Completed:** add database migration
+   stale JSON and scope cache checks to active workbook-owned report fie
