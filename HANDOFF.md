@@ -5,7 +5,7 @@
 - Commits this session: `e05721b` — see "Completed this session (Claude,
   stress-test hardening — 2026-07-09)" below for the adversarial stress-test
   pass and its four auto-fixed, low-risk hardening changes. A same-day
-  follow-up commit (pending) resolves two of that pass's flagged
+  follow-up commit `8400e01` resolves two of that pass's flagged
   judgment-call items per Derek's explicit direction: rent-roll identity now
   includes the rent amount (matching expense identity), and an unconfirmed
   comp/lease_comp inside a confirmed batch now raises instead of silently
@@ -15,6 +15,11 @@
   2026-07-08)". Prior to that, `dde13b8` covered Codex's 2026-07-09 work plus
   the review-pass fixes described under "Completed this session (Claude,
   review pass — 2026-07-08)". Not pushed to any remote.
+- `docs/ADJUSTMENT_GRID_DESIGN.md` added (2026-07-09/10): scoped Phase 6
+  design, adversarially reviewed via Fable (found and fixed two blocking
+  gaps — the existing `land` tab's dependency in `narrative_generator.py`,
+  and the already-broken `cmd_dilmore` command noted above). Awaiting
+  Derek's implementation sign-off; not yet built.
 
 ## Current objective
 
@@ -637,9 +642,4 @@ his own review instead of silently changing it.**
      `harvest_contract.py`'s `_number()` helpers.** Python's `float()`
      accepts the literal strings `"nan"`/`"inf"`/`"Infinity"`, and
      `json.dump` then emits these as bare (invalid-JSON) tokens into staged
-     batches. A malformed or OCR-misread cell containing one of these
-     strings would previously produce a non-finite rent/expense amount that
-     corrupts arithmetic checks and dedupe. Both `_number()` helpers now
-     check `math.isfinite()` and degrade to `None` (missing) instead,  so
-     review catches it as an ordinary missing value.
-  3. **Malformed-staged/confirmed-JSON guard
+     batches. A malformed or OCR-misread cell c

@@ -49,7 +49,7 @@ the signed deliverable.
 | `deliver` | Generates a final report only after validation passes; `--draft` generates a distinctly named draft without changing delivery stage |
 | `validate` | Checks fields, block handlers, workbook formula caches, and possible JSON staleness without changing assignment files or state |
 | `contract` | Audits workbook and configured template keys against field registry v1 |
-| `dilmore` | Writes size-adjustment calculations into the assignment workbook |
+| `dilmore` | **Currently broken.** Calls `dilmore_factor(subject_gba, comp_gba, curve)` (3 args, ratio inverted) against the real 2-arg `dilmore_factor(ratio, curve)` signature in `dilmore.py`; raises `TypeError` on any real run. No test covers this path. `dilmore.py`'s own table/interpolation logic is correct — only this CLI command is broken. Fixing or retiring it is Pipeline step 0 in `docs/ADJUSTMENT_GRID_DESIGN.md`. |
 | `extract` | Extracts comparable and narrative data from supported source documents |
 | `comp-ingest` | Scans historical assignment folders and stages versioned comparable, assignment, financial, and observation records |
 | `review-staged` / `comp-commit` | Confirms staged records and transactionally commits reviewed evidence |
@@ -304,10 +304,4 @@ Checks were performed without regenerating or modifying assignment outputs.
 - Client, contact, owner, subject, comparable, tenant, utility, legal, FEMA,
   and file-number examples now use the `DEMO-001` identity.
 - Word author/revision metadata was scrubbed from project DOCX files.
-- Axiom branding, business contact information, and appraiser credentials were
-  intentionally retained because they belong to the product owner, not the
-  demo assignment.
-- `.gitignore` now excludes assignments, credentials, local databases, ingest
-  work areas, generated dashboards, caches, and Office lock files.
-- Source Office artifacts passed structural package checks after
-  fictionalization. LibreOffice was unava
+- Axiom branding, business contact information, and appraiser credentials w
