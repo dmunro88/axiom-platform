@@ -30,6 +30,7 @@ from db import (
 from harvest_contract import (
     EXPENSE_CONTRACT_ID,
     RENT_ROLL_CONTRACT_ID,
+    rent_roll_identity,
 )
 from ingest import commit_extraction_result, run_extraction
 from financial_extractor import (
@@ -713,6 +714,32 @@ class FinancialHarvestTests(unittest.TestCase):
             self.assertEqual(1, len(expense_rows))
             self.assertEqual(25_000, expense_rows[0]["amount"])
             self.assertEqual("confirmed", expense_rows[0]["review_status"])
+
+    def test_rent_roll_identity_distinguishes_same_unit_different_rent(self):
+        """Two rent-roll rows for the same unit/tenant/dates but a different
+        rent amount used to collapse into one record during dedupe, because
+        rent_roll_identity() (unlike expense_identity()) left the dollar
+        amount out of its identity key -- a real data-loss risk for a real
+        rent roll that legitimately shows a mid-lease rent change. Identity
+        now includes monthly_rent/annual_rent, matching expense_identity's
+        inclusion of amount."""
+        base = {
+            "unit_id": "101",
+            "tenant_name": "Fictional Tenant LLC",
+            "lease_start": "2024-01-01",
+            "lease_end": "2025-12-31",
+            "as_of_date": "2025-06-30",
+            "sf_leased": 1_200,
+            "monthly_rent": 2_000,
+        }
+        raised = dict(base, monthly_rent=2_200)
+
+        same_amount_key = rent_roll_identity(dict(base), "assignment-key")
+        same_amount_key_repeat = rent_roll_identity(dict(base), "assignment-key")
+        raised_amount_key = rent_roll_identity(raised, "assignment-key")
+
+        self.assertEqual(same_amount_key, same_amount_key_repeat)
+        self.assertNotEqual(same_amount_key, raised_amount_key)
 
     def test_wide_operating_statement_explodes_to_expense_lines(self):
         with tempfile.TemporaryDirectory() as temp_dir:

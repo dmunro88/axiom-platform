@@ -825,7 +825,21 @@ def commit_extraction_result(result, conn):
     ):
         for record in result.get(key, []):
             if record.get("review", {}).get("status") != "confirmed":
-                continue
+                # Match every other harvest record type (rent_roll, expense,
+                # observation, artifact): an unconfirmed record raises and
+                # rolls back the whole batch instead of being silently
+                # skipped. The prior silent-skip behavior let a batch where
+                # every comp/lease_comp was individually unconfirmed still
+                # get marked ".committed" in commit_confirmed() even though
+                # it contributed zero database rows, with no warning -- a
+                # real gap under the normal review flow, confirm_extraction_
+                # result() marks every surviving comp "confirmed" before
+                # staging, so this only fires on a hand-edited or otherwise
+                # non-standard confirmed file.
+                raise ValueError(
+                    f"{record_kind} comp {record.get('identity_key')} has "
+                    "not been confirmed."
+                )
             findings = validate_record(record)
             if findings["errors"]:
                 raise ValueError(
@@ -961,33 +975,4 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
     }
 
 
-# ─── Entry point ──────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(__doc__)
-        sys.exit(1)
-
-    cmd = sys.argv[1]
-
-    if cmd == "scan" and len(sys.argv) >= 3:
-        scans = scan_projects_root(sys.argv[2])
-        for s in scans:
-            meta = s["folder_meta"]
-            print(f"  {s['name'][:55]:<55} "
-                  f"reports:{len(s['reports'])} "
-                  f"exhibits:{len(s['exhibits'])} "
-                  f"cap_rate_xl:{len(s['cap_rate_xls'])} "
-                  f"rental_xl:{len(s['rental_comp_xls'])}")
-
-    elif cmd == "run" and len(sys.argv) >= 3:
-        run_extraction(sys.argv[2])
-
-    elif cmd == "review":
-        review_staged()
-
-    elif cmd == "commit":
-        commit_confirmed()
-
-    else:
-        print(__doc__)
+# ─── Entry point ──�

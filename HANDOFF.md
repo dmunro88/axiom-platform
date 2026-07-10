@@ -2,9 +2,15 @@
 
 - Last updated: 2026-07-09
 - Current agent: Claude
-- Commits this session: pending — see "Completed this session (Claude,
+- Commits this session: `e05721b` — see "Completed this session (Claude,
   stress-test hardening — 2026-07-09)" below for the adversarial stress-test
-  pass and its four auto-fixed, low-risk hardening changes. Prior commit
+  pass and its four auto-fixed, low-risk hardening changes. A same-day
+  follow-up commit (pending) resolves two of that pass's flagged
+  judgment-call items per Derek's explicit direction: rent-roll identity now
+  includes the rent amount (matching expense identity), and an unconfirmed
+  comp/lease_comp inside a confirmed batch now raises instead of silently
+  skipping (matching every other harvest record type) — see "Completed this
+  session (Claude, stress-test follow-up — 2026-07-09)" below. Prior commit
   `6ad25af` — see "Completed this session (Claude, hardening pass —
   2026-07-08)". Prior to that, `dde13b8` covered Codex's 2026-07-09 work plus
   the review-pass fixes described under "Completed this session (Claude,
@@ -636,11 +642,4 @@ his own review instead of silently changing it.**
      corrupts arithmetic checks and dedupe. Both `_number()` helpers now
      check `math.isfinite()` and degrade to `None` (missing) instead,  so
      review catches it as an ordinary missing value.
-  3. **Malformed-staged/confirmed-JSON guards in `ingest.py`.** `review_staged()`
-     and `commit_confirmed()` used to crash the entire batch run on one
-     corrupt or non-object JSON file. Both now catch
-     `json.JSONDecodeError`/`RecursionError`/`OSError`/`ValueError`, print a
-     clear "SKIPPED unreadable file: ..." message, and continue to the next
-     file rather than aborting the whole run.
-  4. **Wrong-type list-field validation in `ingest.py`'s
-     `commit_extraction_resu
+  3. **Malformed-staged/confirmed-JSON guard

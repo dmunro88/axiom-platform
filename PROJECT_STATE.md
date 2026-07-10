@@ -69,18 +69,19 @@ Checks were performed without regenerating or modifying assignment outputs.
 
 - The CLI imports and displays help using Python 3.13 from the Codex bundled
   runtime.
-- Eighty-two automated validation, delivery-state, stress, golden-DOCX,
+- Eighty-four automated validation, delivery-state, stress, golden-DOCX,
   comparable, historical-harvest, media, comp-page,
   structured-block, model-routing, contract, presentation-derivation, and
-  OCR-lane tests pass, confirmed live with `python -m unittest discover -s
-  tests -v` (run per-module in this checkout on 2026-07-08 due to sandbox
-  time limits; same net coverage). The seven core OCR tests run against a
-  real local Tesseract install instead of being skipped (one of the seven,
-  the orientation-scoring test, doesn't require Tesseract at all). The suite
-  grew from 77 to 82 tests on 2026-07-08 with coverage for the OCR
-  page-image-pruning helper, the `AXIOM_OCR_PAGES_DIR` override, the
-  nested-financial-PDF duplicate/staleness warning, and the legacy
-  comp-row identity backfill.
+  OCR-lane tests pass, confirmed live (run per-file/per-batch in this
+  checkout due to sandbox time limits; same net coverage). The seven core
+  OCR tests run against a real local Tesseract install instead of being
+  skipped (one of the seven, the orientation-scoring test, doesn't require
+  Tesseract at all). The suite grew from 77 to 82 tests on 2026-07-08 with
+  coverage for the OCR page-image-pruning helper, the `AXIOM_OCR_PAGES_DIR`
+  override, the nested-financial-PDF duplicate/staleness warning, and the
+  legacy comp-row identity backfill; then to 84 on 2026-07-09 with coverage
+  for the rent-roll identity amount fix and the unconfirmed-comp-raises fix
+  from the stress-test follow-up.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -287,6 +288,14 @@ Checks were performed without regenerating or modifying assignment outputs.
   flagged for Derek's review rather than auto-fixed. See `HANDOFF.md`,
   "Completed this session (Claude, stress-test hardening — 2026-07-09)" for
   the full list.
+- Two of those flagged findings were resolved the same day per Derek's
+  explicit decision: rent-roll identity now includes the rent amount
+  (`monthly_rent`/`annual_rent`), matching expense identity, so a mid-lease
+  rent change no longer collapses into the prior rent during dedupe; and an
+  unconfirmed comp/lease_comp inside an otherwise-confirmed batch now raises
+  instead of silently skipping, matching every other harvest record type.
+  See `HANDOFF.md`, "Completed this session (Claude, stress-test follow-up —
+  2026-07-09)".
 
 ## Data-safety status
 
@@ -301,21 +310,4 @@ Checks were performed without regenerating or modifying assignment outputs.
 - `.gitignore` now excludes assignments, credentials, local databases, ingest
   work areas, generated dashboards, caches, and Office lock files.
 - Source Office artifacts passed structural package checks after
-  fictionalization. LibreOffice was unavailable, so DOCX visual rendering
-  could not be completed in this environment.
-
-## Current priorities
-
-### P0 — Delivery integrity
-
-1. **Completed:** add non-mutating `axiom.py validate <file_no>`.
-2. **Completed:** distinguish ordinary required fields, pipeline-handled
-   blocks, and unsupported/unresolved blocks.
-3. **Completed:** refuse final delivery unless validation passes; provide an
-   explicit `--draft` path with a distinct output filename.
-4. **Completed:** record validation, input, placeholder, and generation
-   failures without overwriting prior output or delivered state.
-
-### P0 — Safe repository baseline
-
-1.
+  fictionalization. LibreOffice was unava

@@ -528,6 +528,68 @@ class ComparablePipelineTests(unittest.TestCase):
             finally:
                 connection.close()
 
+    def test_unconfirmed_comp_in_confirmed_batch_raises_instead_of_silent_skip(
+        self,
+    ):
+        """A hand-edited or otherwise non-standard confirmed file could carry
+        an outer batch marked "confirmed" while one comp record inside it
+        still isn't. commit_extraction_result() used to silently `continue`
+        past that record -- so a batch where every comp was individually
+        unconfirmed could still get marked ".committed" by commit_confirmed()
+        while contributing zero database rows, with no warning. This now
+        raises, matching every other harvest record type (rent_roll/expense/
+        observation/artifact), instead of silently skipping."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "fictional.xlsx"
+            _build_historical_comp_workbook(source)
+            batch = canonicalize_extraction_result({
+                "folder_name": "Fictional Unconfirmed Comp",
+                "folder_meta": {},
+                "sources": [str(source)],
+                "narrative": {},
+                "income_data": {},
+                "comps": [
+                    {
+                        "data": {
+                            "address_street": "1 Unconfirmed Comp Way",
+                            "sale_price": 100000,
+                        },
+                        "confidence": {
+                            "address_street": "high",
+                            "sale_price": "high",
+                        },
+                        "source": str(source),
+                    }
+                ],
+                "lease_comps": [],
+            })
+            # Mark the outer batch confirmed but leave the individual comp's
+            # own review status untouched (still "unreviewed"), mimicking a
+            # corrupted/hand-edited confirmed file rather than the normal
+            # review_staged()/confirm_extraction_result() flow, which would
+            # have marked both consistently.
+            batch["review"] = {"status": "confirmed"}
+            db_path = root / "unconfirmed_comp.db"
+            init_db(db_path)
+            connection = get_conn(db_path)
+            try:
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "has not been confirmed",
+                ):
+                    with connection:
+                        commit_extraction_result(batch, connection)
+                for table in ("source_documents", "properties", "comps"):
+                    self.assertEqual(
+                        0,
+                        connection.execute(
+                            f"SELECT COUNT(*) FROM {table}"
+                        ).fetchone()[0],
+                    )
+            finally:
+                connection.close()
+
     def test_source_change_after_extraction_requires_reextract(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

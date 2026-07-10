@@ -241,6 +241,14 @@ def rent_roll_identity(data, assignment_identity_key=None, source_sha256=None):
         data.get("lease_start") or "",
         data.get("lease_end") or "",
         data.get("sf_leased"),
+        # Include rent amount, matching expense_identity: without this, two
+        # rows for the same unit/tenant/dates but a different rent amount
+        # silently collide during dedupe and only one survives, which is a
+        # real data-loss risk once real historical rent rolls (which can
+        # legitimately show a rent change for the same lease/period) are
+        # imported.
+        data.get("monthly_rent"),
+        data.get("annual_rent"),
     ))
 
 
