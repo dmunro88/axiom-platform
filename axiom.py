@@ -39,7 +39,7 @@ from field_registry import (
 )
 from fill_engine import fill_document, load_variables
 from comp_builder import inject_comp_section
-from dilmore import dilmore_factor, dilmore_adj_pct
+from dilmore import dilmore_factor, dilmore_adj_pct, dilmore_summary
 from media_blocks import create_media_directories, inject_media_blocks
 from structured_blocks import inject_ownership_history
 from validation import (
@@ -654,36 +654,51 @@ def cmd_dilmore(args):
     print()
 
     # Read comp GBAs from size_adj B7:B16
-    print(f"  {'Comp':<12} {'Comp GBA':>10}  {'Ratio':>8}  {'Factor':>8}  {'Adj %':>8}")
-    print("  " + "─" * 52)
-
-    count = 0
+    row_idxs = []
+    comp_gbas = []
     for i in range(1, 11):
         row_idx = 6 + i   # rows 7–16
-
         comp_gba_val = sa.cell(row=row_idx, column=2).value
         if not comp_gba_val:
             continue
-
         try:
             comp_gba = float(str(comp_gba_val).replace(',', '').replace(' SF', ''))
         except (ValueError, TypeError):
             continue
+        row_idxs.append(row_idx)
+        comp_gbas.append(comp_gba)
 
-        factor  = dilmore_factor(subject_gba, comp_gba, curve)
-        adj_pct = dilmore_adj_pct(subject_gba, comp_gba, curve)
-        ratio   = subject_gba / comp_gba if comp_gba else 0
-
-        sa.cell(row=row_idx, column=3).value = round(factor, 4)
-        sa.cell(row=row_idx, column=4).value = round(adj_pct, 2)
-
-        label = f'Comp {i}'
-        print(f'  {label:<12} {comp_gba:>10,.0f}  {ratio:>8.3f}  {factor:>8.4f}  {adj_pct:>+8.1f}%')
-        count += 1
-
-    if count == 0:
+    if not comp_gbas:
         print('  No comp GBAs found in size_adj B7:B16.')
         return
+
+    # dilmore_summary computes ratio = comp_gba / subject_gba (A_c/A_s) and
+    # applies it against the requested curve for every comp in one call --
+    # this used to be reimplemented inline here with the two raw GBAs passed
+    # as separate positional args to dilmore_factor/dilmore_adj_pct (a 3-arg
+    # call against their real 2-arg (ratio, curve) signature), which raised
+    # TypeError on every real run and also had the ratio backwards.
+    try:
+        summary = dilmore_summary(subject_gba, comp_gbas, curve)
+    except ValueError as exc:
+        print(f"  {exc}")
+        print(f"  Fix the curve in size_adj!B3 to one of 80, 82.5, 85, 87.5, 90.")
+        return
+
+    print(f"  {'Comp':<12} {'Comp GBA':>10}  {'Ratio':>8}  {'Factor':>8}  {'Adj %':>8}")
+    print("  " + "─" * 52)
+
+    count = 0
+    for row_idx, row in zip(row_idxs, summary):
+        sa.cell(row=row_idx, column=3).value = round(row["factor"], 4)
+        sa.cell(row=row_idx, column=4).value = round(row["adj_pct"], 2)
+
+        label = f'Comp {row["comp"]}'
+        print(
+            f'  {label:<12} {row["comp_gba"]:>10,.0f}  {row["ratio"]:>8.3f}  '
+            f'{row["factor"]:>8.4f}  {row["adj_pct"]:>+8.1f}%'
+        )
+        count += 1
 
     wb.save(str(workbook_path))
     print(f'  Wrote {count} size adjustments to workbook.xlsx')

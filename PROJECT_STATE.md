@@ -49,7 +49,7 @@ the signed deliverable.
 | `deliver` | Generates a final report only after validation passes; `--draft` generates a distinctly named draft without changing delivery stage |
 | `validate` | Checks fields, block handlers, workbook formula caches, and possible JSON staleness without changing assignment files or state |
 | `contract` | Audits workbook and configured template keys against field registry v1 |
-| `dilmore` | **Currently broken.** Calls `dilmore_factor(subject_gba, comp_gba, curve)` (3 args, ratio inverted) against the real 2-arg `dilmore_factor(ratio, curve)` signature in `dilmore.py`; raises `TypeError` on any real run. No test covers this path. `dilmore.py`'s own table/interpolation logic is correct — only this CLI command is broken. Fixing or retiring it is Pipeline step 0 in `docs/ADJUSTMENT_GRID_DESIGN.md`. |
+| `dilmore` | Fixed (2026-07-10): now calls the shared `dilmore_summary(subject_gba, comp_gbas, curve)` helper (correct ratio = comp/subject, correct 2-arg calls) instead of the old inline 3-arg call that raised `TypeError` on every real run. Invalid curve values in `size_adj!B3` now fail loudly with no partial write, instead of a raw traceback. Two regression tests added (`test_dilmore_uses_correct_ratio_direction_and_signature`, `test_dilmore_invalid_curve_fails_loudly_without_writing` in `tests/test_torture.py`) — this command had zero test coverage before. |
 | `extract` | Extracts comparable and narrative data from supported source documents |
 | `comp-ingest` | Scans historical assignment folders and stages versioned comparable, assignment, financial, and observation records |
 | `review-staged` / `comp-commit` | Confirms staged records and transactionally commits reviewed evidence |
@@ -303,5 +303,4 @@ Checks were performed without regenerating or modifying assignment outputs.
   2026-07-01.
 - Client, contact, owner, subject, comparable, tenant, utility, legal, FEMA,
   and file-number examples now use the `DEMO-001` identity.
-- Word author/revision metadata was scrubbed from project DOCX files.
-- Axiom branding, business contact information, and appraiser credentials w
+- Wo

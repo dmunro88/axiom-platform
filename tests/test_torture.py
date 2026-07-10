@@ -12,6 +12,7 @@ from docx.oxml.ns import qn
 
 import axiom
 from comp_builder import inject_comp_section
+from dilmore import dilmore_adj_pct, dilmore_factor
 from field_registry import inventory_templates
 from fill_engine import fill_document
 from media_blocks import MAX_IMAGE_BYTES, inject_media_blocks
@@ -665,6 +666,93 @@ class TortureTests(unittest.TestCase):
             self.assertEqual("generation_failed", final_state["last_delivery_status"])
             self.assertIn("locked output", final_state["last_delivery_error"])
             self.assertEqual([], list(outputs.glob(".*.tmp")))
+
+    def test_dilmore_uses_correct_ratio_direction_and_signature(self):
+        """cmd_dilmore used to call dilmore_factor/dilmore_adj_pct as
+        (subject_gba, comp_gba, curve) -- 3 positional args against their
+        real 2-arg (ratio, curve) signature -- which raised TypeError on
+        every real run, and separately had the ratio backwards (subject/comp
+        instead of comp/subject). This exercises a real subject/comp pair
+        where the two directions produce materially different, verifiable
+        numbers: a comp twice the subject's size should get a positive size
+        adjustment, and a comp half the subject's size should get a negative
+        one, each matching dilmore_factor/dilmore_adj_pct computed directly
+        with the correct ratio."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignments = root / "assignments"
+            assignments.mkdir()
+            assignment = assignments / "TEST-500_Fictional_Client"
+            assignment.mkdir()
+
+            workbook = openpyxl.Workbook()
+            intake = workbook.active
+            intake.title = "Intake"
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+
+            size_adj = workbook.create_sheet("size_adj")
+            size_adj["B3"] = 85
+            size_adj.cell(row=7, column=2).value = 20000  # Comp 1: 2x subject
+            size_adj.cell(row=8, column=2).value = 5000   # Comp 2: half subject
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook.save(workbook_path)
+            workbook.close()
+
+            with patch.object(axiom, "ASSIGNMENTS_DIR", assignments):
+                axiom.cmd_dilmore(["TEST-500"])
+
+            result_wb = openpyxl.load_workbook(workbook_path)
+            result_sa = result_wb["size_adj"]
+
+            expected_factor_1 = round(dilmore_factor(20000 / 10000, 85), 4)
+            expected_adj_1 = round(dilmore_adj_pct(20000 / 10000, 85), 2)
+            expected_factor_2 = round(dilmore_factor(5000 / 10000, 85), 4)
+            expected_adj_2 = round(dilmore_adj_pct(5000 / 10000, 85), 2)
+
+            self.assertEqual(expected_factor_1, result_sa.cell(row=7, column=3).value)
+            self.assertEqual(expected_adj_1, result_sa.cell(row=7, column=4).value)
+            self.assertEqual(expected_factor_2, result_sa.cell(row=8, column=3).value)
+            self.assertEqual(expected_adj_2, result_sa.cell(row=8, column=4).value)
+
+            # Comp 1 (larger than subject) gets a positive adjustment; comp 2
+            # (smaller than subject) gets a negative one. With the old
+            # backwards ratio these signs would flip.
+            self.assertGreater(result_sa.cell(row=7, column=4).value, 0)
+            self.assertLess(result_sa.cell(row=8, column=4).value, 0)
+            result_wb.close()
+
+    def test_dilmore_invalid_curve_fails_loudly_without_writing(self):
+        """An out-of-table curve value in size_adj!B3 must produce a clear
+        error and leave the workbook byte-for-byte untouched, not a raw
+        traceback or a partial write."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignments = root / "assignments"
+            assignments.mkdir()
+            assignment = assignments / "TEST-501_Fictional_Client"
+            assignment.mkdir()
+
+            workbook = openpyxl.Workbook()
+            intake = workbook.active
+            intake.title = "Intake"
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+
+            size_adj = workbook.create_sheet("size_adj")
+            size_adj["B3"] = 83  # not one of 80, 82.5, 85, 87.5, 90
+            size_adj.cell(row=7, column=2).value = 20000
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook.save(workbook_path)
+            workbook.close()
+            original_bytes = workbook_path.read_bytes()
+
+            with patch.object(axiom, "ASSIGNMENTS_DIR", assignments):
+                axiom.cmd_dilmore(["TEST-501"])
+
+            self.assertEqual(original_bytes, workbook_path.read_bytes())
 
 
 if __name__ == "__main__":

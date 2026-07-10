@@ -18,8 +18,30 @@
 - `docs/ADJUSTMENT_GRID_DESIGN.md` added (2026-07-09/10): scoped Phase 6
   design, adversarially reviewed via Fable (found and fixed two blocking
   gaps — the existing `land` tab's dependency in `narrative_generator.py`,
-  and the already-broken `cmd_dilmore` command noted above). Awaiting
-  Derek's implementation sign-off; not yet built.
+  and the then-broken `cmd_dilmore` command). Awaiting Derek's
+  implementation sign-off; the grid itself is not yet built.
+- **`cmd_dilmore` fixed (2026-07-10), per Derek's explicit go-ahead.** It
+  used to call `dilmore_factor`/`dilmore_adj_pct` with 3 positional args
+  (`subject_gba, comp_gba, curve`) against their real 2-arg `(ratio,
+  curve)` signature — `TypeError` on every real run — and had the ratio
+  backwards. Now calls the existing `dilmore_summary(subject_gba,
+  comp_gbas, curve)` helper directly instead of re-deriving the same math
+  inline. An invalid `size_adj!B3` curve now fails loudly with no partial
+  write, instead of a raw traceback. Two new regression tests in
+  `tests/test_torture.py` (this command had zero coverage before):
+  `test_dilmore_uses_correct_ratio_direction_and_signature` (a comp 2x
+  subject size gets a positive adjustment, a comp half subject size gets
+  a negative one, matching `dilmore_factor`/`dilmore_adj_pct` computed
+  directly) and `test_dilmore_invalid_curve_fails_loudly_without_writing`.
+  Verified: `tests/test_torture.py` 23/23 (32 incl. subtests), plus
+  `test_comp_pipeline.py`/`test_docx_golden.py`/`test_historical_harvest.py`/
+  `test_observation_harvest.py`/`test_validation.py`/`test_artifact_harvest.py`
+  (40/40) and `test_financial_harvest.py`'s non-OCR tests (14/14) all green;
+  `python axiom.py contract` clean at v1.2.0/220/20. OCR-specific tests in
+  `test_financial_harvest.py` weren't touched by this change and were only
+  partially re-run (they're slow with a real Tesseract install and hit this
+  environment's command time cap) — no failures observed in the portion
+  that did run.
 
 ## Current objective
 
@@ -642,4 +664,327 @@ his own review instead of silently changing it.**
      `harvest_contract.py`'s `_number()` helpers.** Python's `float()`
      accepts the literal strings `"nan"`/`"inf"`/`"Infinity"`, and
      `json.dump` then emits these as bare (invalid-JSON) tokens into staged
-     batches. A malformed or OCR-misread cell c
+     batches. A malformed or OCR-misread cell containing one of these
+     strings would previously produce a non-finite rent/expense amount that
+     corrupts arithmetic checks and dedupe. Both `_number()` helpers now
+     check `math.isfinite()` and degrade to `None` (missing) instead,  so
+     review catches it as an ordinary missing value.
+  3. **Malformed-staged/confirmed-JSON guards in `ingest.py`.** `review_staged()`
+     and `commit_confirmed()` used to crash the entire batch run on one
+     corrupt or non-object JSON file. Both now catch
+     `json.JSONDecodeError`/`RecursionError`/`OSError`/`ValueError`, print a
+     clear "SKIPPED unreadable file: ..." message, and continue to the next
+     file rather than aborting the whole run.
+  4. **Wrong-type list-field validation in `ingest.py`'s
+     `commit_extraction_result()`.** A staged batch with a wrong-typed list
+     field (e.g. `"comps": "not a list"`, from hand-edited or corrupted JSON)
+     used to crash with a confusing `'str' object has no attribute 'get'`
+     deep inside `canonicalize_extraction_result()`. Added an explicit
+     type check *before* that call, so the error is now a clear
+     `ValueError: 'comps' must be a list of records, got str.`
+- **Positive/reassuring findings** (no fix needed): all database writes use
+  parameterized queries — repeated SQL-injection attempts
+  (`Robert'); DROP TABLE...`-style payloads) found no vector anywhere in the
+  tested insert paths. SQLite's `with conn:` transaction context also
+  correctly leaves the database in a consistent, zero-partial-rows state even
+  under a hard `os._exit(137)` mid-transaction kill.
+- **Flagged for Derek's review — not auto-fixed, because each touches data
+  correctness, schema, or a business-logic judgment call:**
+  - A NaN/Infinity field can still reach the JSON-variable-export path into
+    Word reports (a second, architecturally separate code path from the two
+    `_number()` helpers fixed above) — needs a decision on where in the
+    field-registry/validation chain to add the same guard.
+  - `rent_roll_identity()` excludes dollar amounts from its identity key, so
+    two records for the same unit/tenant/dates but a different rent amount
+    silently collide and only one survives dedupe. `expense_identity()`, by
+    contrast, includes the amount and correctly keeps both. This is a real
+    design asymmetry worth a deliberate decision, not a silent patch.
+  - Small-angle scan skew (5°–15°, short of a full 90° rotation) completely
+    defeats OCR header recognition; a native text watermark on an otherwise
+    scanned page routes the whole file to native-text extraction, silently
+    skipping OCR and losing recoverable data.
+  - Assignment-folder scanning (both media/photo discovery and financial-PDF
+    folder scanning) follows symlinks pointing outside the assignment
+    folder and treats the target as legitimate in-folder content — a
+    folder-boundary gap on two independent code paths.
+  - `init_db()`'s raw schema script and `_apply_migrations()` crash with an
+    uncaught `OperationalError` on a synthetic minimal legacy `properties`
+    table missing recently-added columns — not an active bug today (no real
+    `axiom.db` exists yet) but a real risk the next time the schema evolves
+    after real data exists.
+  - `ingest.py`'s `commit_confirmed()` unconditionally marks a batch
+    `.committed` even when every comp/lease_comp record in it was
+    individually unconfirmed (silently skipped) — so a batch can be marked
+    "fully committed" while contributing zero database rows, with no
+    warning. This contradicts the documented "unreviewed/invalid batches
+    roll back" invariant, which does hold for every other record type
+    (rent_roll/expense/observation/artifact/assignment/income all raise on
+    an unconfirmed record; only comps/lease_comps silently skip).
+  - Unbounded field length has no sanity ceiling; hidden Excel rows and
+    stale/uncalculated worksheets are still extracted as if current; a
+    non-Latin tenant name can collapse identity in some cases; a read-only
+    DB directory surfaces a raw low-level error instead of a clear message;
+    homoglyph filenames aren't specially classified.
+- Ran the full 82-test suite (per-file/per-batch this session, same net
+  coverage, due to sandbox time limits) plus `python axiom.py contract`
+  live in this checkout after porting all four fixes — zero regressions,
+  v1.2.0/220 fields/20 blocks unchanged.
+
+## Completed this session (Claude, stress-test follow-up — 2026-07-09)
+
+Immediately after the stress-test pass above, asked Derek which way to
+resolve two of the flagged (not auto-fixed) items, since both are judgment
+calls about business logic rather than obvious bugs. His answers:
+
+- **Rent-roll dedupe should include the amount, matching expense dedupe.**
+  `rent_roll_identity()` in `harvest_contract.py` now includes
+  `monthly_rent`/`annual_rent` in its identity key alongside
+  unit/suite/tenant/dates/sf_leased, so two rows for the same unit/tenant/
+  dates but a different rent amount are correctly treated as distinct
+  records instead of one silently overwriting the other during dedupe. Added
+  `test_rent_roll_identity_distinguishes_same_unit_different_rent` to
+  `tests/test_financial_harvest.py`.
+- **A batch with zero confirmed comps/lease_comps should raise, matching
+  every other harvest record type.** `commit_extraction_result()` in
+  `ingest.py`'s comps/lease_comps loop previously did `continue` past any
+  record whose `review.status != "confirmed"` — silently skipping it. It now
+  raises `ValueError` naming the record, exactly like the existing
+  rent_roll/expense/observation/artifact loop already does. Under the normal
+  `review_staged()` -> `confirm_extraction_result()` flow this never
+  actually fires (every surviving comp is marked confirmed before staging),
+  so it's a defensive fix for a hand-edited or otherwise non-standard
+  confirmed file, not a change to ordinary review behavior. Added
+  `test_unconfirmed_comp_in_confirmed_batch_raises_instead_of_silent_skip` to
+  `tests/test_comp_pipeline.py`.
+- Ran the full suite (84 tests, up from 82 — the two new regression tests)
+  plus `python axiom.py contract` live in this checkout — zero regressions,
+  v1.2.0/220 fields/20 blocks unchanged.
+- Changed files: `harvest_contract.py`, `ingest.py`,
+  `tests/test_financial_harvest.py`, `tests/test_comp_pipeline.py`,
+  `HANDOFF.md`, `PROJECT_STATE.md`.
+
+## In progress
+
+- None — the stress-test pass and its immediate follow-up are both complete
+  for this session. The remaining flagged findings (OCR skew/watermark
+  routing, symlink folder-boundary escape, legacy-schema migration crash
+  risk, and the rest) are backlog, not in-progress work.
+
+## Exact next step
+
+1. Review the latest five staged copied-archive batches before any real
+   database commit (unchanged from before this session — still Derek's own
+   task, not something delegated to an agent). They include OCR-derived
+   operating expenses and OCR page-limit warnings, so confirm whether the
+   first 6 pages are enough for each long statement or whether a deeper
+   manual rerun is needed. Note: these five batches were staged before the
+   rent-roll identity fix above, so their baked-in identity keys use the
+   old (amount-excluding) formula — harmless for a first commit, but a
+   re-extraction would be needed to get the new formula's protection for
+   any of those specific rows.
+2. If Derek wants to keep hardening the OCR lane further: terminal
+   `review_staged` still lacks true per-record keep/skip for rent-roll/
+   expense rows (native or OCR) — a pre-existing gap noted since the OCR
+   lane first shipped, not newly introduced, and still not fixed. The OCR
+   skew/watermark routing gaps and the symlink folder-boundary escape from
+   the stress test are also still open, lower-priority backlog items.
+3. Otherwise, the next real milestone is importing Derek's actual historical
+   comp archive now that the identity-backfill migration is in place —
+   `axiom.py comp-ingest` against the real archive root, review, then
+   `comp-commit` into the real `axiom.db` (not a temporary one).
+
+## Baseline checks run
+
+- Full suite (via `pytest`, run per-file/per-batch this session due to
+  sandbox time limits, not as one combined invocation; same net coverage):
+  84 tests pass, confirmed live in this checkout with real OCR enabled and
+  zero skips (82 from the prior hardening pass plus 2 new regression tests
+  from this session's stress-test follow-up).
+- Six direct OCR tests pass against the installed local Tesseract engine.
+- One OCR orientation-scoring regression test passes without requiring
+  Tesseract.
+- `python axiom.py contract`: passed at v1.2.0 with 220 fields and 20 blocks.
+- `python -m compileall`: passed for runtime modules and tests.
+- Torture ceiling exercised: 50 comps, 50 photos, approximately 64,000
+  Unicode characters, malformed JSON/XLSX, corrupt/oversized media, split-run
+  placeholders, simulated generation failure, and a simulated locked output.
+- Complete generated-report golden: passed with 40 valid image relationships,
+  unique drawing IDs, 8 sections, and zero unresolved placeholders.
+- Document accessibility audit: 0 high, 65 medium table-header findings.
+- Document render attempt: blocked because LibreOffice/`soffice` is not
+  installed; no visual page-render claim is made.
+- Fictional historical-workbook vertical slice: 2 sale comps, 1 lease comp,
+  source-move idempotency, source-change rejection, rollback, reviewed search,
+  CSV export, and workbook export passed.
+- Registry-aware fixture freshness check: 0 stale Intake fields and 0 cache
+  warnings.
+- `axiom.py --help`: passed with the warning corrected.
+- `DEMO-001` fixture validation: 0 ordinary missing fields, 8 unresolved
+  blocks (all local AI narratives), and 10 expected sales-adjustment formula
+  cache errors because the separate adjustment grid remains unpopulated.
+- Fixture pipeline tests: 3 comp pages and 11 images across all 9 registered
+  media blocks injected without remaining comp/media placeholders.
+- Spreadsheet render review: Intake, market, lease-comps, rent-roll,
+  land-sales, and output sheets retained readable formatting.
+- DOCX render attempt: blocked because LibreOffice/`soffice` is unavailable;
+  structural package QA passed instead.
+- `axiom.py list`: passed; the active directory contains only the clearly
+  labeled fictional `DEMO-001` assignment.
+
+## Do not touch
+
+- Use only `tests/fixtures/DEMO-001` for repeatable assignment testing.
+- Do not push the repository or source Office documents to a remote.
+- Do not live-test Adobe Sign, Xero, or Anthropic without explicit approval and
+  local credentials.
+
+## Changed files this session (Claude, 2026-07-08)
+
+Both commits described above (`af29fb2` and the same-day follow-up) together
+touch:
+
+- `pdf_financial_extractor.py` — OCR lane implementation, plus the
+  follow-up's arithmetic/total-reconciliation checks and missing-header
+  warning.
+- `ingest.py` — OCR-aware terminal review markers (`_is_ocr_record`,
+  `_ocr_flag`); no logic changes to extraction/commit.
+- `comp_review.py` — OCR warning banner + inline rendered-page-image display
+  in `_render_record`.
+- `tests/test_financial_harvest.py` — 6 OCR tests total (the original 4 plus
+  2 follow-up regression tests) + fixture-building helpers.
+- `docs/OCR_LANE_DESIGN.md` — new design doc (approved and implemented).
+- `PROJECT_STATE.md`, `HANDOFF.md` — updated both times.
+
+## Changed files this session (Codex, 2026-07-09)
+
+- `pdf_financial_extractor.py` — Tesseract executable and tessdata
+  auto-detection for local Windows installs, plus financial-structure-aware
+  OCR orientation scoring.
+- `extractor.py` — `scan_assignment_folder` now recursively routes strictly
+  named financial PDFs found in subfolders (e.g. "Information Provided") into
+  the financial parser instead of only indexing them as artifacts. This file
+  was omitted from this list in an earlier draft of this handoff; caught
+  during a same-day review pass.
+- `.gitignore` — ignores `.local/` for local OCR model data, plus `*.bak` and
+  a bare `node_modules` line added in this same review pass (see "Known
+  limitations").
+- `docs/OCR_LANE_DESIGN.md` — documents the auto-detection paths.
+- `PROJECT_STATE.md`, `HANDOFF.md` — updated verified OCR install/test state.
+- `tests/test_financial_harvest.py` — adds OCR orientation-scoring coverage,
+  nested-financial-PDF-routing coverage, and statement-expense-fallback
+  coverage.
+- `comparable_contract.py` — normalizes placeholder date values to blank.
+- `tests/test_comp_pipeline.py` — adds placeholder lease-expiration coverage.
+
+## Changed files this session (Claude, hardening pass — 2026-07-08)
+
+- `harvest_contract.py` — new `enforce_ocr_low_confidence()`.
+- `pdf_financial_extractor.py` — `_ocr_pages_dir()` env-var override,
+  `prune_ocr_pages()`, `_finalize_rent_roll_row()` (shared native/OCR
+  rent-roll row logic), `_financial_structure_signals()`/
+  `_page_has_financial_structure()`, orientation re-detect trigger fix, and
+  centralized-confidence call sites replacing three ad hoc `force_low`
+  checks.
+- `extractor.py` — `_nested_financial_pdf_warnings()`, wired into
+  `scan_assignment_folder`/`extract_assignment`.
+- `db.py` — `backfill_legacy_identities()`, wired into `init_db()`.
+- `axiom.py` — new `ocr-cleanup` command.
+- `tests/test_financial_harvest.py` — 4 new tests (nested-PDF duplicate
+  warning, no-warning-for-single-PDF, OCR-pages-dir env override, OCR page
+  pruning).
+- `tests/test_comp_pipeline.py` — 1 new test (legacy comp-row identity
+  backfill matches a fresh import's identity).
+
+## Changed files this session (Claude, stress-test hardening — 2026-07-09)
+
+- `fill_engine.py` — `_XML_ILLEGAL_CHARS` regex and
+  `_reject_illegal_xml_value()`, wired into `_replace_in_paragraph`.
+- `financial_extractor.py` — `_number()` rejects non-finite
+  (`nan`/`inf`/`Infinity`) results via `math.isfinite()`.
+- `harvest_contract.py` — same `_number()` non-finite rejection.
+- `ingest.py` — `review_staged()` and `commit_confirmed()` catch and skip
+  unreadable/non-object JSON files instead of crashing the whole run;
+  `commit_extraction_result()` validates list-shaped fields before
+  `canonicalize_extraction_result()` touches them.
+- `HANDOFF.md` — this session's summary and escalation list.
+
+## Known limitations
+
+- Two stray files at the platform root — `zzz_discard_me.bak` (a stale
+  truncated copy of `pdf_financial_extractor.py`, harmless) and
+  `node_modules` (a broken/dangling symlink) — could not be deleted from
+  this sandbox: both `rm` and `mv` fail with "Operation not permitted" (the
+  same unlink restriction documented elsewhere for `.git` lock files, just
+  worse here since it blocks deletion entirely, not just lock cleanup).
+  Added `*.bak` and a bare `node_modules` line to `.gitignore` so neither can
+  be accidentally committed via `git add -A` in the meantime, but someone
+  with normal OS-level file access (not this sandbox) should delete both by
+  hand when convenient.
+- **New this session, same root cause:** running the live-Tesseract OCR
+  tests in this sandbox to verify the hardening pass wrote 31 synthetic
+  fixture page images (fictional test PDFs, not real assignment data) into
+  the real `ingest/staged/ocr_pages/` folder, because those tests use the
+  default `OCR_PAGES_DIR` rather than a redirected test tempdir. They could
+  not be deleted from this sandbox for the same "Operation not permitted"
+  reason as the two files above — confirmed the restriction applies to
+  arbitrary files on this mount, not just git-internal ones. They're
+  harmless (gitignored, no real data, don't affect any staged batch's
+  correctness) but add clutter; delete manually from
+  `ingest/staged/ocr_pages/` when convenient, or run `python axiom.py
+  ocr-cleanup` (added this session) from Derek's own machine where file
+  deletion isn't restricted, which will safely remove them along with any
+  other genuinely orphaned page images.
+
+- **This sandbox's bash tool mounts this OneDrive-synced folder in a way
+  that can lag behind edits made through the file-editing tool** — it can
+  take a snapshot-like view rather than a live sync within a session. This
+  was worked around successfully both times this session (once for the
+  original OCR-lane commit, once for the follow-up): after editing via the
+  file-editing tool and confirming correctness by re-reading, the same
+  content was pushed into bash's view via bash-native writes (`cp` from a
+  verified copy, or a heredoc write) before running tests — bash-native
+  writes to this mount are immediately self-consistent, unlike edits made
+  through the file-editing tool. Both times, the full suite was then run
+  live in this checkout and confirmed passing (71/71, then 73/73) before
+  committing — this is no longer an open verification gap, just a technique
+  worth knowing about for the next session's own edit/test cycles.
+- This same mount also does not let git commands unlink their own lock/temp
+  files after normal use (`.git/index.lock`, `.git/HEAD.lock`,
+  `.git/objects/**/tmp_obj_*` all warn "Operation not permitted" on cleanup,
+  even on a successful command). `mv` (not `rm`) clears a stale lock before
+  the next git command; the warnings themselves don't indicate corruption.
+  **This got worse, not just noisier, while committing `6ad25af`:** the same
+  restriction let a stale `.git/index.lock` get renamed over the real
+  `.git/index` on write, corrupting it (`bad signature 0x00000000`), and
+  separately left `HEAD` unmoved after a real commit object was already
+  created. Both were recoverable without touching any working-tree file —
+  `git read-tree HEAD` rebuilds a valid index from the last good commit
+  (safe: it only touches the index, never the working tree), and a commit
+  that exists as an object but didn't move `HEAD` can be recovered with
+  `git update-ref refs/heads/main <hash>` after confirming via `git cat-file
+  -p <hash>` that its tree/parent/message are the intended ones. This
+  produced one confirmed-harmless duplicate dangling commit (identical tree
+  to `dde13b8`, an earlier failed attempt at the same commit, 17 seconds
+  older) sitting in the object database; `git gc` will eventually reap it.
+  Moral for next time: do every index-modifying git command in its own bash
+  call (not chained with others) and verify `git cat-file -p HEAD` names the
+  right commit before trusting a "success" exit code on this mount.
+- Plain `python` is not on PATH in the current Codex environment. The bundled
+  Python runtime was used for checks.
+- Tesseract is installed and synthetic OCR tests now run. Live archive
+  extraction has been tested against an image-only rendering of Derek's
+  supplied rent roll and proforma, but a naturally image-only scanned rent
+  roll or P&L has not yet produced staged financial rows through full
+  staging/review in this checkout. The naturally image-only JeffCo income
+  statement OCRed clearly enough but did not match current expense-section
+  parsing rules.
+- DOCX media layout has structural test coverage but still needs visual QA with
+  representative landscape and portrait photos.
+- Streamlit comparable review/browse behavior has service-level coverage but
+  still needs an interactive browser pass.
+- Missing/error Excel caches are detectable. A valid-looking but stale cached
+  value cannot be proven stale from XLSX alone without an Excel-side
+  calculation stamp or automation.
+- The existing parent-folder `PROJECT_STATE.md` is historical and contains
+  stale claims. This file and the project-root `PROJECT_STATE.md` are the
+  canonical handoff documents going forward.
