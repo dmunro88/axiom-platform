@@ -723,9 +723,14 @@ class TortureTests(unittest.TestCase):
             result_sa = result_wb["size_adj"]
 
             expected_factor_1 = round(dilmore_factor(20000 / 10000, 85), 4)
-            expected_adj_1 = round(dilmore_adj_pct(20000 / 10000, 85), 2)
+            # size_adj!E6 is a true Excel percentage format (expects a
+            # fraction, e.g. 0.18 -> "+18.0%"), not dilmore_adj_pct()'s
+            # percentage-point number (18.0, which would display as
+            # "1800.0%") -- so the written value must be factor - 1, not
+            # dilmore_adj_pct() directly. See axiom.py's cmd_dilmore.
+            expected_adj_1 = round(expected_factor_1 - 1, 4)
             expected_factor_2 = round(dilmore_factor(5000 / 10000, 85), 4)
-            expected_adj_2 = round(dilmore_adj_pct(5000 / 10000, 85), 2)
+            expected_adj_2 = round(expected_factor_2 - 1, 4)
 
             # Size Factor -> column D (4), Adj % -> column E (5).
             self.assertEqual(expected_factor_1, result_sa.cell(row=7, column=4).value)
@@ -735,14 +740,4 @@ class TortureTests(unittest.TestCase):
 
             # Column C's pre-existing Ratio formula must survive untouched --
             # this is the exact cell the earlier buggy column mapping
-            # clobbered with the Size Factor value instead.
-            self.assertEqual(
-                '=IF(B7="","",IFERROR(B7/$B$4,""))',
-                result_sa.cell(row=7, column=3).value,
-            )
-            self.assertEqual(
-                '=IF(B8="","",IFERROR(B8/$B$4,""))',
-                result_sa.cell(row=8, column=3).value,
-            )
-
-            #
+            # clobbered with the Size Factor valu

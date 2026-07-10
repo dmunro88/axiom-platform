@@ -695,7 +695,11 @@ def cmd_dilmore(args):
         # E=Adj %, F=Adj $/SF, G=Notes. Column 3 is the Ratio formula, not a
         # write target; Size Factor/Adj % belong in columns 4/5 (D/E).
         sa.cell(row=row_idx, column=4).value = round(row["factor"], 4)
-        sa.cell(row=row_idx, column=5).value = round(row["adj_pct"], 2)
+        # size_adj!E6's cell format is a true Excel percentage
+        # ("+0.0%;-0.0%;0.0%"), which expects a fraction (0.18 -> "+18.0%"),
+        # not dilmore_adj_pct()'s percentage-point number (18.0, which would
+        # display as "1800.0%"). Write factor-1 (already a fraction) instead.
+        sa.cell(row=row_idx, column=5).value = round(row["factor"] - 1, 4)
 
         label = f'Comp {row["comp"]}'
         print(
@@ -1547,4 +1551,18 @@ def main():
         print('Usage: python axiom.py <command> [args]')
         for name, fn in COMMANDS.items():
             doc = (fn.__doc__ or '').split('\n')[0].strip()
-            prin
+            print(f'  {name:<14} {doc}')
+        return
+    cmd  = sys.argv[1].lower()
+    args = sys.argv[2:]
+    if cmd not in COMMANDS:
+        print(f'  Unknown command: {cmd}')
+        sys.exit(1)
+    result = COMMANDS[cmd](args)
+    if result is False:
+        sys.exit(1)
+
+
+
+if __name__ == '__main__':
+    main()
