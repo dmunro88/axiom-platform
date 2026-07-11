@@ -88,21 +88,37 @@ Checks were performed without regenerating or modifying assignment outputs.
   to 101 on 2026-07-10 with 16 new narrative-data-guard tests plus the
   `dilmore` column-mapping regression test correction; to 103 (non-OCR)
   same day with 7 new land_adjustment_grid tests (Phase 6 Adjustment Grid
-  step 2 — see below).
-- **Phase 6 Adjustment Grid, steps 1-2 (2026-07-10):** `size_adj` was
+  step 2); to 119 (non-OCR) same day with 16 new `test_adjustment_grid.py`
+  tests (Phase 6 steps 5-6 — see below). OCR suite is a further 9 tests,
+  run separately since together they exceed this sandbox's per-command
+  time limit.
+- **Phase 6 Adjustment Grid, complete (2026-07-10):** `size_adj` was
   replaced by `sca_adjustment_grid` (full sales-comparison net-adjustment
   grid, one time-adjustment checkpoint then summed category adjustments —
   see `docs/ADJUSTMENT_GRID_DESIGN.md`), and the old 3-section `land` tab
   was replaced by `land_adjustment_grid` (same pattern, Location/
   Topography/Surrounding Land Uses categories per `adjustment_factors.json`'s
   land preset, no Dilmore/Size column — land comps never had a real
-  building-GBA-elasticity basis for one). Fixed two real pre-existing bugs
-  found along the way: `size_adj!B4`'s Subject GBA reference pointed at the
-  wrong Intake row, and `narrative_generator._read_land_adj` read the wrong
-  row range from the old `land` tab (crashed on realistic data — see git
-  log for `9b832a7`). Remaining Phase 6 steps (qualitative 0/1/-1 grids,
-  field_registry wiring, `adjustment_grid.py` injector module) are not yet
-  built.
+  building-GBA-elasticity basis for one). `sca_qualitative`/
+  `land_qualitative` (0/1/-1 per-factor manual scoring, Overall =
+  AVERAGE() ignoring blanks, Rating via an adjustable threshold cell) were
+  added, `field_registry.py` now registers all 4 `*_GRID_BLOCK` markers
+  under the `comparables` handler and enforces a reverse-direction
+  contract-drift check (registry -> template, not just template ->
+  registry), and `adjustment_grid.py` (new) reads all 4 grid tabs via a
+  runtime header-row column map (not a fixed letter map) and injects each
+  as a Word table, wired into `axiom.py`'s deliver stage. Fixed three real
+  pre-existing bugs found along the way: `size_adj!B4`'s Subject GBA
+  reference pointed at the wrong Intake row; `narrative_generator._read_land_adj`
+  read the wrong row range from the old `land` tab (crashed on realistic
+  data — see git log for `9b832a7`); and `adjustment_grid.py`'s own row
+  scan initially misread a grid's MEAN/summary rows below the comps as
+  extra phantom comps until anchored on the "Sale No. N" comp label (see
+  `test_adjustment_grid.py`'s `test_stops_at_mean_and_summary_rows_below_comps`).
+  Also fixed an unrelated defect in the real `templates/workbook.xlsx`
+  found while running the full suite: the Intake sheet's `REPORT_TYPE` row
+  was merged across all 4 columns like a section header, so it had no
+  actual cell to type a value into.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -183,7 +199,7 @@ Checks were performed without regenerating or modifying assignment outputs.
   transfer-history, and prior-price fields.
 - Narrative generation honors `models.per_command`: drafting, adjustment
   justification, and reconciliation can use separate configured models.
-- Field registry v1 contains 220 scalar fields and 20 pipeline blocks.
+- Field registry v1 contains 220 scalar fields and 24 pipeline blocks.
 - Contract auditing detects unregistered workbook keys, template placeholders,
   assignment JSON keys, and pipeline blocks without handlers.
 - New assignments record application/schema versions; delivery records the
