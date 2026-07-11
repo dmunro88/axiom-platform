@@ -203,6 +203,34 @@ class ReadGridRowsTests(unittest.TestCase):
             with self.assertRaises(AdjustmentGridError):
                 read_grid_rows(workbook_path, "test_grid")
 
+    def test_orphaned_comp_below_cleared_anchor_raises_loudly(self):
+        """A second, more realistic way to silently drop a real comp
+        (caught on re-review of the first A5 fix): comp 3's own "Sale
+        No. 3" anchor label gets cleared/overwritten (e.g. by mistake
+        while editing), but comps 4-5 below it still hold real data. The
+        original scan just breaks at the first non-matching row and
+        never notices the populated rows underneath -- must raise rather
+        than silently deliver only comps 1-2."""
+        with _tmp_dir() as tmp_path:
+            workbook_path = _make_workbook(tmp_path)
+            wb = openpyxl.load_workbook(workbook_path)
+            ws = wb["test_grid"]
+            ws["A7"] = "Sale No. 1"
+            ws["B7"] = "123 Fictional Rd"
+            ws["A8"] = "Sale No. 2"
+            ws["B8"] = "456 Sample Ave"
+            # Row 9 ("Sale No. 3") cleared entirely -- comp 3 is gone, but
+            # comps 4 and 5 below it were never touched.
+            ws["A10"] = "Sale No. 4"
+            ws["B10"] = "789 Orphaned Blvd"
+            ws["A11"] = "Sale No. 5"
+            ws["B11"] = "321 Dropped St"
+            wb.save(workbook_path)
+            wb.close()
+
+            with self.assertRaises(AdjustmentGridError):
+                read_grid_rows(workbook_path, "test_grid")
+
 
 class FormatValueTests(unittest.TestCase):
     def test_percentage_header_formats_as_percent(self):

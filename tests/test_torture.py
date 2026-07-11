@@ -836,6 +836,54 @@ class TortureTests(unittest.TestCase):
             self.assertIsNone(grid_result.cell(row=7, column=5).value)
             result_wb.close()
 
+    def test_dilmore_writes_comps_hand_expanded_past_row_16(self):
+        """sca_adjustment_grid's fixed capacity is rows 7-16 ("Sale No.
+        1".."Sale No. 10"), but adjustment_grid.py's own MAX_DATA_ROW
+        design lets Derek hand-expand a sheet with more comps below that,
+        anchored the same way ("Sale No. 11", etc.). _run_dilmore_calc
+        used to scan only the fixed rows 7-16, so a hand-expanded comp's
+        GBA would silently never get a Size Factor/Adj % written at all
+        (Fable adversarial review finding N1) -- this exercises comp 11
+        at row 17."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignments = root / "assignments"
+            assignments.mkdir()
+            assignment = assignments / "TEST-503_Fictional_Client"
+            assignment.mkdir()
+
+            workbook = openpyxl.Workbook()
+            intake = workbook.active
+            intake.title = "Intake"
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+
+            grid = workbook.create_sheet("sca_adjustment_grid")
+            grid["B3"] = 85
+            grid.cell(row=7, column=1).value = "Sale No. 1"
+            grid.cell(row=7, column=3).value = 20000
+            # Hand-expanded 11th comp, anchored the same way real comp
+            # rows are.
+            grid.cell(row=17, column=1).value = "Sale No. 11"
+            grid.cell(row=17, column=3).value = 15000
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook.save(workbook_path)
+            workbook.close()
+
+            with patch.object(axiom, "ASSIGNMENTS_DIR", assignments):
+                axiom.cmd_dilmore(["TEST-503"])
+
+            result_wb = openpyxl.load_workbook(workbook_path)
+            grid_result = result_wb["sca_adjustment_grid"]
+
+            expected_factor_11 = round(dilmore_factor(15000 / 10000, 85), 4)
+            self.assertEqual(
+                expected_factor_11, grid_result.cell(row=17, column=11).value
+            )
+            self.assertIsNotNone(grid_result.cell(row=17, column=12).value)
+            result_wb.close()
+
     def test_dilmore_staleness_warning_is_read_only(self):
         """validate's staleness check must never write to the workbook --
         only cmd_dilmore/deliver's auto-run may write. A comp GBA with no

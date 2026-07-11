@@ -39,7 +39,10 @@ from field_registry import (
 )
 from fill_engine import fill_document, load_variables
 from comp_builder import inject_comp_section
-from adjustment_grid import inject_all_adjustment_grids
+from adjustment_grid import (
+    MAX_DATA_ROW as GRID_MAX_DATA_ROW,
+    inject_all_adjustment_grids,
+)
 from dilmore import dilmore_factor, dilmore_adj_pct, dilmore_summary
 from media_blocks import create_media_directories, inject_media_blocks
 from structured_blocks import inject_ownership_history
@@ -420,8 +423,7 @@ def cmd_deliver(args):
     # Adjustment, Indicated Value, the outputs tab -- see _run_dilmore_calc's
     # docstring) -- there's no way to safely proceed to generate a report
     # from data_only=True reads of a workbook whose cache was just
-    # invalidated, and no Excel/LibreOffice automation here to recalculate
-    # it. Stop and tell Derek to recalculate/save in Excel instead of
+    # invalidated. Stop and tell Derek to recalculate/save in Excel instead of
     # silently delivering a report with blank conclusion numbers.
     dilmore_result = _run_dilmore_calc(workbook_path)
     if dilmore_result["ok"] and dilmore_result.get("count"):
@@ -717,11 +719,30 @@ def _run_dilmore_calc(workbook_path):
             ),
         }
 
-    # Read comp GBAs from the detected tab's rows 7-16
+    # Read comp GBAs from the detected tab's comp rows. The original fixed
+    # capacity (rows 7-16, matching the tab's built-in "Sale No. 1".."Sale
+    # No. 10" labels) is always scanned unconditionally, same as before.
+    # But that was also the ENTIRE window -- a comp hand-expanded past row
+    # 16, exactly the kind of expansion adjustment_grid.py's own
+    # MAX_DATA_ROW error message tells Derek to do, would silently never
+    # get a Size Factor/Adj % written at all (Fable adversarial review
+    # finding N1), even though adjustment_grid.read_grid_rows happily reads
+    # comps all the way out to MAX_DATA_ROW. Extend the scan past row 16
+    # for sca_adjustment_grid using the same "Sale No." anchor check
+    # read_grid_rows uses, stopping at the first row that doesn't match --
+    # size_adj (the older, pre-Phase-6 tab) predates the hand-expansion
+    # design entirely and keeps its original fixed 10-row window only.
     row_idxs = []
     comp_gbas = []
-    for i in range(1, 11):
-        row_idx = 6 + i   # rows 7-16
+    scan_rows = list(range(7, 17))
+    if tab_name == "sca_adjustment_grid":
+        for extra_row in range(17, GRID_MAX_DATA_ROW + 1):
+            comp_label = sa.cell(row=extra_row, column=1).value
+            if not (isinstance(comp_label, str) and comp_label.startswith("Sale No.")):
+                break
+            scan_rows.append(extra_row)
+
+    for row_idx in scan_rows:
         comp_gba_val = sa.cell(row=row_idx, column=layout["comp_gba_col"]).value
         if not comp_gba_val:
             continue
@@ -1279,12 +1300,24 @@ def _dilmore_staleness_warnings(workbook_path):
     layout = _DILMORE_TAB_LAYOUTS[tab_name]
     sa = wb[tab_name]
     stale_comps = []
-    for i in range(1, 11):
-        row_idx = 6 + i
+    # Same fixed-plus-extension window as _run_dilmore_calc's write path
+    # (see its comment) -- this staleness check must cover exactly the
+    # rows Dilmore will actually write to, or a comp hand-expanded past
+    # row 16 would show no staleness warning even though it will never
+    # get a Size Factor either (Fable adversarial review finding N1).
+    scan_rows = list(range(7, 17))
+    if tab_name == "sca_adjustment_grid":
+        for extra_row in range(17, GRID_MAX_DATA_ROW + 1):
+            comp_label = sa.cell(row=extra_row, column=1).value
+            if not (isinstance(comp_label, str) and comp_label.startswith("Sale No.")):
+                break
+            scan_rows.append(extra_row)
+
+    for row_idx in scan_rows:
         comp_gba = sa.cell(row=row_idx, column=layout["comp_gba_col"]).value
         factor = sa.cell(row=row_idx, column=layout["factor_col"]).value
         if comp_gba and not factor:
-            stale_comps.append(str(i))
+            stale_comps.append(str(row_idx - 6))
 
     if not stale_comps:
         return []

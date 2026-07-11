@@ -185,9 +185,11 @@ def read_grid_rows(workbook_path, sheet_name):
     anchor_col = header_map[ANCHOR_HEADER]
 
     rows = []
+    break_row = MAX_DATA_ROW + 1  # unchanged if the loop never breaks
     for r in range(FIRST_DATA_ROW, MAX_DATA_ROW + 1):
         comp_label = ws.cell(row=r, column=anchor_col).value
         if not (isinstance(comp_label, str) and comp_label.startswith("Sale No.")):
+            break_row = r
             break
 
         row_values = {}
@@ -201,20 +203,31 @@ def read_grid_rows(workbook_path, sheet_name):
             continue
         rows.append(row_values)
 
-    # If a comp row still matches the "Sale No." anchor immediately past
-    # MAX_DATA_ROW, the sheet has been hand-expanded beyond this module's
-    # read window and comps are being silently dropped from every delivered
-    # report -- caught by the Fable adversarial review (finding A5). Fail
-    # loudly rather than quietly deliver an incomplete comp grid.
-    overflow_label = ws.cell(row=MAX_DATA_ROW + 1, column=anchor_col).value
-    if isinstance(overflow_label, str) and overflow_label.startswith("Sale No."):
-        wb.close()
-        raise AdjustmentGridError(
-            f"Sheet '{sheet_name}' has a comp row at row {MAX_DATA_ROW + 1}, "
-            f"past this module's MAX_DATA_ROW ({MAX_DATA_ROW}) -- comps "
-            "would be silently dropped from the delivered report. Raise "
-            "adjustment_grid.py's MAX_DATA_ROW to cover the expanded sheet."
-        )
+    # The scan above stops at the first row that doesn't match the "Sale
+    # No." anchor -- correct for skipping a summary section (MEAN, LAND
+    # VALUE CONCLUSION), but on its own it also silently drops any REAL
+    # comp sitting below a gap: a hand-expanded comp past MAX_DATA_ROW
+    # (the original Fable finding A5), or a comp whose own row still has
+    # data but whose anchor label got cleared/overwritten by mistake,
+    # orphaning every comp below it (a second way to trigger the same
+    # silent-drop failure, caught on re-review of the first A5 fix). Scan
+    # everything from the break point through one row past MAX_DATA_ROW
+    # for any lingering "Sale No." label and fail loudly if one turns up,
+    # rather than quietly deliver an incomplete comp grid either way.
+    for r in range(break_row, MAX_DATA_ROW + 2):
+        orphan_label = ws.cell(row=r, column=anchor_col).value
+        if isinstance(orphan_label, str) and orphan_label.startswith("Sale No."):
+            wb.close()
+            raise AdjustmentGridError(
+                f"Sheet '{sheet_name}' has a comp row at row {r} that this "
+                "module's scan never reached -- either it's past "
+                f"MAX_DATA_ROW ({MAX_DATA_ROW}) and the sheet needs "
+                "MAX_DATA_ROW raised, or an earlier row's \"Sale No.\" "
+                "label was cleared/overwritten, orphaning real comp data "
+                "below it. Either way, comps would be silently dropped "
+                "from the delivered report -- fix the sheet or "
+                "adjustment_grid.py before delivering."
+            )
 
     wb.close()
     return headers, rows

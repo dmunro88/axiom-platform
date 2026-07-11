@@ -28,6 +28,22 @@ from structured_blocks import (
 )
 
 
+# Adjustment-grid headers that are Excel formulas, not manual entry (see
+# adjustment_grid.py's own module docstring for this same distinction). Used
+# by _classify_blocks to detect a stale/wiped formula cache: a populated
+# comp row with real manual-entry data but a blank value in one of these
+# columns means the cell's cached formula result is missing, not that the
+# comp is incomplete (Fable adversarial review finding A1/N3).
+FORMULA_OUTPUT_HEADERS = frozenset({
+    "Time Adj %",
+    "Adjusted Price ($/SF)",
+    "Net Adjustment %",
+    "Indicated Value ($/SF)",
+    "Overall",
+    "Rating",
+})
+
+
 NARRATIVE_BLOCKS = frozenset({
     "INSPECTION_NARRATIVE",
     "MARKET_AREA_OVERVIEW",
@@ -377,13 +393,69 @@ def _classify_blocks(blocks, workbook_path, assignment_dir, variables):
             except AdjustmentGridError as exc:
                 unresolved[block] = str(exc)
                 continue
-            if rows:
-                handled.append(block)
-            else:
+            if not rows:
                 unresolved[block] = (
                     f"Adjustment-grid handler is registered, but '{sheet_name}' "
                     "has no populated comp rows yet."
                 )
+                continue
+
+            # A cached Excel formula-error token (#DIV/0!, #REF!, etc.) is
+            # flagged by adjustment_grid._format_value as a
+            # "[FORMULA ERROR -- ...]" string rather than rendered
+            # verbatim -- but until now that flagged string still counted
+            # as "handled" and shipped in the delivered report exactly
+            # like a normal text cell (Fable adversarial review findings
+            # A3/N2). Block delivery instead so the underlying formula
+            # gets fixed first.
+            error_comps = [
+                row.get("Comp", "?")
+                for row in rows
+                if any(
+                    isinstance(value, str) and value.startswith("[FORMULA ERROR")
+                    for value in row.values()
+                )
+            ]
+            if error_comps:
+                unresolved[block] = (
+                    f"'{sheet_name}' has a formula error in comp(s): "
+                    f"{', '.join(error_comps)}. Fix the underlying Excel "
+                    "formula and recalculate before delivering."
+                )
+                continue
+
+            # Every populated comp row's known formula-output columns
+            # (Time Adj %, Adjusted Price, Net Adjustment, Indicated
+            # Value/Overall/Rating -- see this module's own docstring)
+            # should have a real cached value. A blank one alongside real
+            # manual-entry data is the same signature left behind when
+            # _run_dilmore_calc's save() just silently wiped every OTHER
+            # cached formula result in the workbook (see its docstring),
+            # and Excel hasn't recalculated since -- previously nothing
+            # caught this on a SECOND delivery attempt once the auto-run
+            # dilmore hard-stop from the first attempt was satisfied
+            # (Fable adversarial review finding A1/N3).
+            stale_comps = [
+                row.get("Comp", "?")
+                for row in rows
+                if any(
+                    header in row and row[header] == ""
+                    for header in FORMULA_OUTPUT_HEADERS
+                )
+            ]
+            if stale_comps:
+                unresolved[block] = (
+                    f"'{sheet_name}' comp(s) {', '.join(stale_comps)} have "
+                    "blank formula-output columns (Time Adj %/Adjusted "
+                    "Price/Net Adjustment/Indicated Value/Overall/Rating). "
+                    "This usually means the workbook's cached formula "
+                    "results are stale (e.g. Dilmore just wrote new Size "
+                    "Factor values). Open workbook.xlsx, let it fully "
+                    "recalculate (e.g. press F9), save, then retry."
+                )
+                continue
+
+            handled.append(block)
             continue
 
         if block in NARRATIVE_BLOCKS:
