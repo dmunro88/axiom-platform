@@ -869,11 +869,20 @@ class TortureTests(unittest.TestCase):
             self.assertIn("Comp 1", warnings[0])
             self.assertNotIn("Comp 2", warnings[0])
 
-    def test_deliver_auto_runs_dilmore_without_separate_command(self):
+    def test_deliver_auto_runs_dilmore_but_hard_stops_when_it_writes(self):
         """Per Derek's explicit choice (2026-07-10), Dilmore stays a tested
-        Python calculation rather than a live Excel formula, but it must
+        Python calculation rather than a live Excel formula, and it must
         run automatically as part of deliver so Derek never has to
-        remember a separate `dilmore` step after editing a comp's GBA."""
+        remember a separate `dilmore` step after editing a comp's GBA.
+
+        But openpyxl has no formula engine: any save() that actually writes
+        a changed Size Factor/Adj % also silently wipes every OTHER cached
+        formula result in the workbook (Net Adjustment, Indicated Value,
+        the outputs tab -- see _run_dilmore_calc's docstring, and the
+        Fable adversarial review that caught this as finding A1). So a
+        real write must compute the right factor AND hard-stop delivery
+        with a clear message, rather than silently proceeding to build a
+        report from a workbook whose cache it just invalidated."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             assignment, templates, _ = build_assignment(
@@ -923,12 +932,81 @@ class TortureTests(unittest.TestCase):
             ):
                 result = axiom.cmd_deliver(["TEST-999", "--draft"])
 
-            self.assertTrue(result)
+            # The write happened and computed the right factor ...
             result_wb = openpyxl.load_workbook(workbook_path)
             grid_result = result_wb["sca_adjustment_grid"]
             expected_factor = round(dilmore_factor(20000 / 10000, 85), 4)
             self.assertEqual(expected_factor, grid_result.cell(row=7, column=11).value)
             result_wb.close()
+
+            # ... but delivery must NOT have completed, since the workbook's
+            # other cached formula values are now stale/blank.
+            self.assertFalse(result)
+            state = axiom._load_state(assignment)
+            self.assertEqual("input_failed", state["last_delivery_status"])
+            self.assertIn("recalculate", state["last_delivery_error"].lower())
+            self.assertNotEqual("delivered", state.get("stage"))
+
+    def test_deliver_proceeds_when_dilmore_values_already_current(self):
+        """If the adjustment grid's Size Factor/Adj % are already correct
+        (the common case -- nothing about the comps changed since the last
+        deliver), _run_dilmore_calc must skip the write entirely and
+        deliver must proceed normally, per the "changed": False path added
+        alongside the hard-stop above."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment, templates, _ = build_assignment(
+                root,
+                "[[VALUE]]",
+                {"VALUE": "safe"},
+            )
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook = openpyxl.load_workbook(workbook_path)
+            intake = workbook.create_sheet("Intake")
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+            grid = workbook.create_sheet("sca_adjustment_grid")
+            grid["B3"] = 85
+            grid.cell(row=7, column=3).value = 20000
+            expected_factor = round(dilmore_factor(20000 / 10000, 85), 4)
+            expected_adj_pct = round(expected_factor - 1, 4)
+            grid.cell(row=7, column=11).value = expected_factor
+            grid.cell(row=7, column=12).value = expected_adj_pct
+            workbook.save(workbook_path)
+            workbook.close()
+
+            stage = {
+                "deliver": {
+                    "documents": [
+                        {"template": "report.docx", "output": "Appraisal.docx"}
+                    ]
+                }
+            }
+
+            def fake_fill_document(_template, output, _variables, **_kwargs):
+                Document().save(output)
+                return {"missing": [], "blocks": [], "removed_sections": []}
+
+            with (
+                patch.object(axiom, "_find_assignment", return_value=assignment),
+                patch.object(
+                    axiom,
+                    "check_delivery_readiness",
+                    return_value={
+                        "ready": True,
+                        "errors": [],
+                        "missing": [],
+                        "unresolved_blocks": {},
+                    },
+                ),
+                patch.object(axiom, "STAGES", stage),
+                patch.object(axiom, "TEMPLATES_DIR", templates),
+                patch.object(axiom, "fill_document", side_effect=fake_fill_document),
+            ):
+                result = axiom.cmd_deliver(["TEST-999", "--draft"])
+
+            self.assertTrue(result)
 
 
 if __name__ == "__main__":

@@ -56,9 +56,27 @@ GRIDS = {
     "LAND_QUALITATIVE_GRID_BLOCK": "land_qualitative",
 }
 
+# Excel's fixed set of formula-error tokens. openpyxl (data_only=True) hands
+# these back as plain strings when a formula errored the last time the
+# workbook was recalculated (e.g. Ratio (Ac/As) with a blank Comp GBA divides
+# by zero). Left undetected, one of these would render verbatim in a
+# delivered comp grid, indistinguishable from a legitimate text cell like a
+# Flood Zone or Notes entry -- caught by the Fable adversarial review of this
+# module (finding A3).
+EXCEL_ERROR_TOKENS = {
+    "#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!",
+    "#SPILL!", "#CALC!", "#GETTING_DATA",
+}
+
+# Common non-ISO date strings a comp's Sale Date might be typed in as plain
+# text rather than a real Excel date (e.g. pasted from a source document).
+_TEXT_DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%B %d, %Y")
+
 
 class AdjustmentGridError(Exception):
-    """Raised when a grid sheet's header row doesn't match expectations."""
+    """Raised when a grid sheet's header row doesn't match expectations, or
+    when it has more populated comp rows than this module read (see
+    read_grid_rows's MAX_DATA_ROW truncation check)."""
 
 
 def _format_value(header, value):
@@ -68,21 +86,52 @@ def _format_value(header, value):
         return ""
     if isinstance(value, bool):
         return str(value)
+    if isinstance(value, str) and value.strip().upper() in EXCEL_ERROR_TOKENS:
+        # Surface loudly rather than let a raw Excel error token slip into
+        # a delivered report looking like an ordinary text cell.
+        return f"[FORMULA ERROR -- {value.strip()}]"
     if isinstance(value, (int, float)):
         header_lower = header.lower()
-        if "%" in header:
-            return f"{value * 100:.1f}%"
-        if any(token in header_lower for token in ("price", "value")) and (
-            "$" in header or "sf" in header_lower or "acre" in header_lower
+        if "$" in header:
+            # Checked before "%": a header could in principle contain both
+            # (none currently do), and a dollar amount must never be scaled
+            # by 100. Sign goes before the "$" (e.g. "-$2.32"), not after
+            # it (Python's default f"${value:,.2f}" on a negative number
+            # produces the confusing "$-2.32").
+            sign = "-" if value < 0 else ""
+            return f"{sign}${abs(value):,.2f}"
+        if "%" in header or (
+            header_lower.endswith("rate") and "$" not in header
         ):
-            return f"${value:,.2f}"
+            # Appraisal "rate" columns without an explicit unit (e.g.
+            # "Monthly Mkt Rate") are, in every real preset, a fractional
+            # rate meant to display as a percentage just like an explicit
+            # "... Adj %" column -- e.g. 0.005 must read "0.5%", not be
+            # silently rounded away to "0.01" by the plain-number branch
+            # below (Fable finding A4).
+            return f"{value * 100:.1f}%"
         if header_lower == "overall":
             return f"{value:.2f}"
         if isinstance(value, int):
-            return str(value)
+            return f"{value:,}"
         return f"{value:,.2f}"
     if hasattr(value, "strftime"):
         return value.strftime("%m/%d/%Y")
+    if isinstance(value, str) and "date" in header.lower():
+        # A date typed as plain text (not a real Excel date cell) skips the
+        # strftime branch above entirely and used to render however it was
+        # typed (e.g. ISO "2025-03-15") instead of the "%m/%d/%Y" every real
+        # date cell gets (Fable finding A4). Best-effort reparse; if it
+        # doesn't match a known format, fall through and show it as typed
+        # rather than fail the whole grid over one comp's date.
+        import datetime
+
+        text = value.strip()
+        for fmt in _TEXT_DATE_FORMATS:
+            try:
+                return datetime.datetime.strptime(text, fmt).strftime("%m/%d/%Y")
+            except ValueError:
+                continue
     return str(value).strip()
 
 
@@ -151,6 +200,21 @@ def read_grid_rows(workbook_path, sheet_name):
         if not any_non_label_value:
             continue
         rows.append(row_values)
+
+    # If a comp row still matches the "Sale No." anchor immediately past
+    # MAX_DATA_ROW, the sheet has been hand-expanded beyond this module's
+    # read window and comps are being silently dropped from every delivered
+    # report -- caught by the Fable adversarial review (finding A5). Fail
+    # loudly rather than quietly deliver an incomplete comp grid.
+    overflow_label = ws.cell(row=MAX_DATA_ROW + 1, column=anchor_col).value
+    if isinstance(overflow_label, str) and overflow_label.startswith("Sale No."):
+        wb.close()
+        raise AdjustmentGridError(
+            f"Sheet '{sheet_name}' has a comp row at row {MAX_DATA_ROW + 1}, "
+            f"past this module's MAX_DATA_ROW ({MAX_DATA_ROW}) -- comps "
+            "would be silently dropped from the delivered report. Raise "
+            "adjustment_grid.py's MAX_DATA_ROW to cover the expanded sheet."
+        )
 
     wb.close()
     return headers, rows

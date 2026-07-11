@@ -52,7 +52,7 @@
     "word/webSettings.xml"
   ],
   "xml_hashes": {
-    "word/document.xml": "9a18ac839d0197860cdc649f602b4ef87a7bdfab1e5190dce59b6308ed2e9ec7",
+    "word/document.xml": "2fbaac7cda10600ab89ef1609f738a737bb133d8d67c5b3d93b95d768c01723b",
     "word/endnotes.xml": "1fc6ea1da63fe72d26ea5d6799a524d2dd375dcc5b43e2ca2b49eafe0f4be75f",
     "word/fontTable.xml": "e9db5af99936474506ac9cc3bbf86ee42b6f2dbe56e4d6de52241234522d5c38",
     "word/footer1.xml": "e93f4f09f8f420a008611d4dc3afb91edcad3b5b9e55115c4c0ed5f800a7463a",
@@ -420,7 +420,7 @@
     "TableSubHead": 72,
     "TableValue": 713
   },
-  "paragraph_text_hash": "20381d9fe0efa00ebbcf1b349109a3270cb0556d94416b44f03223c2bac447c8",
+  "paragraph_text_hash": "c3f2fd7080336dfdb1ed701f4873768d7a11dc1b8c71ceeac7d29875cea853ac",
   "table_count": 67,
   "tables": [
     {

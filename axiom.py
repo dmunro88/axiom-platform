@@ -412,12 +412,37 @@ def cmd_deliver(args):
     # so Derek never has to remember a separate `dilmore` step after editing
     # a comp's GBA. Per Derek's explicit choice (2026-07-10): keep this as
     # a tested Python calculation rather than a live Excel formula -- see
-    # docs/ADJUSTMENT_GRID_DESIGN.md. This intentionally never blocks
-    # delivery: a missing adjustment-grid tab (older in-flight assignment)
-    # or no comp GBAs yet entered are both routine, not errors.
+    # docs/ADJUSTMENT_GRID_DESIGN.md. A missing adjustment-grid tab (older
+    # in-flight assignment), no comp GBAs yet entered, or values that are
+    # already current are all routine and never block delivery. But if this
+    # calc actually changes a Size Factor/Adj % value, its save() just
+    # discarded every other cached formula result in the workbook (Net
+    # Adjustment, Indicated Value, the outputs tab -- see _run_dilmore_calc's
+    # docstring) -- there's no way to safely proceed to generate a report
+    # from data_only=True reads of a workbook whose cache was just
+    # invalidated, and no Excel/LibreOffice automation here to recalculate
+    # it. Stop and tell Derek to recalculate/save in Excel instead of
+    # silently delivering a report with blank conclusion numbers.
     dilmore_result = _run_dilmore_calc(workbook_path)
     if dilmore_result["ok"] and dilmore_result.get("count"):
         print(f"  [Dilmore] {dilmore_result['message']}")
+        if dilmore_result.get("changed"):
+            state = _load_state(adir)
+            state["last_delivery_attempt"] = _today()
+            state["last_delivery_status"] = "input_failed"
+            state["last_delivery_blocker_count"] = 1
+            state["last_delivery_error"] = (
+                f"Size adjustments in {dilmore_result['tab']} just changed. "
+                "openpyxl cannot recalculate Excel formulas, so every other "
+                "cached formula result in this workbook (Net Adjustment, "
+                "Indicated Value, the outputs tab, etc.) is now stale or "
+                "blank until Excel recalculates it. Open workbook.xlsx, let "
+                "it fully recalculate (e.g. press F9), save, then re-run "
+                "deliver."
+            )
+            _save_state(adir, state)
+            print(f"\n  {state['last_delivery_error']}")
+            return False
     elif not dilmore_result["ok"]:
         print(f"  [Dilmore] skipped -- {dilmore_result['message']}")
 
@@ -711,6 +736,7 @@ def _run_dilmore_calc(workbook_path):
         return {
             "ok": True,
             "count": 0,
+            "changed": False,
             "tab": tab_name,
             "message": f"No comp GBAs found in {tab_name}.",
         }
@@ -732,16 +758,56 @@ def _run_dilmore_calc(workbook_path):
             ),
         }
 
+    # Only actually write (and therefore save) if a value is really
+    # changing. This matters a lot more than it looks: openpyxl has no
+    # formula engine, so ANY load-modify-save cycle on this workbook
+    # discards every OTHER formula cell's cached value workbook-wide, not
+    # just the Size Factor/Adj % cells this function touches -- confirmed
+    # directly this session (see HANDOFF.md, "Phase 6 completion"). Skipping
+    # the save entirely when nothing changed means re-running `deliver` on
+    # already-current data (the common case) never touches the file.
+    changed = False
     for row_idx, row in zip(row_idxs, summary):
-        sa.cell(row=row_idx, column=layout["factor_col"]).value = round(row["factor"], 4)
-        sa.cell(row=row_idx, column=layout["adj_pct_col"]).value = round(row["factor"] - 1, 4)
+        new_factor = round(row["factor"], 4)
+        new_adj_pct = round(row["factor"] - 1, 4)
+        factor_cell = sa.cell(row=row_idx, column=layout["factor_col"])
+        adj_pct_cell = sa.cell(row=row_idx, column=layout["adj_pct_col"])
+        if factor_cell.value != new_factor or adj_pct_cell.value != new_adj_pct:
+            changed = True
+        factor_cell.value = new_factor
+        adj_pct_cell.value = new_adj_pct
 
+    if not changed:
+        wb.close()
+        return {
+            "ok": True,
+            "count": len(row_idxs),
+            "changed": False,
+            "tab": tab_name,
+            "message": (
+                f"{len(row_idxs)} size adjustment(s) in {tab_name} already "
+                "up to date."
+            ),
+            "subject_gba": subject_gba,
+            "curve": curve,
+            "summary": summary,
+        }
+
+    # A real write is happening, which means this save WILL blank every
+    # other cached formula result in the workbook (Net Adjustment,
+    # Indicated Value, the outputs tab -- everything), per the note above.
+    # There is no Excel/LibreOffice automation in this codebase to
+    # recalculate before a caller's next data_only=True read, so the caller
+    # (cmd_deliver) must treat "changed": True as a hard stop rather than
+    # proceeding to read/deliver against a workbook whose cache it just
+    # invalidated.
     wb.save(str(workbook_path))
     return {
         "ok": True,
         "count": len(row_idxs),
+        "changed": True,
         "tab": tab_name,
-        "message": f"Wrote {len(row_idxs)} size adjustments to {tab_name}.",
+        "message": f"Wrote {len(row_idxs)} size adjustment(s) to {tab_name}.",
         "subject_gba": subject_gba,
         "curve": curve,
         "summary": summary,

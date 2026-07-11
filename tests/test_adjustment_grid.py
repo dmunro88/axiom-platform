@@ -182,6 +182,27 @@ class ReadGridRowsTests(unittest.TestCase):
             with self.assertRaises(AdjustmentGridError):
                 read_grid_rows(workbook_path, "test_grid")
 
+    def test_comp_row_past_max_data_row_raises_loudly(self):
+        """A sheet hand-expanded with a real comp row sitting past
+        MAX_DATA_ROW must fail loudly rather than silently drop that comp
+        from every delivered report (Fable adversarial review finding A5)."""
+        with _tmp_dir() as tmp_path:
+            from adjustment_grid import MAX_DATA_ROW
+
+            workbook_path = _make_workbook(tmp_path)
+            wb = openpyxl.load_workbook(workbook_path)
+            ws = wb["test_grid"]
+            ws["A7"] = "Sale No. 1"
+            ws["B7"] = "123 Fictional Rd"
+            overflow_row = MAX_DATA_ROW + 1
+            ws[f"A{overflow_row}"] = f"Sale No. {overflow_row - 6}"
+            ws[f"B{overflow_row}"] = "999 Overflow Ave"
+            wb.save(workbook_path)
+            wb.close()
+
+            with self.assertRaises(AdjustmentGridError):
+                read_grid_rows(workbook_path, "test_grid")
+
 
 class FormatValueTests(unittest.TestCase):
     def test_percentage_header_formats_as_percent(self):
@@ -215,6 +236,58 @@ class FormatValueTests(unittest.TestCase):
 
     def test_plain_text_is_stripped(self):
         self.assertEqual("X", _format_value("Flood Zone", "  X  "))
+
+    def test_excel_error_token_is_flagged_not_shown_verbatim(self):
+        """A formula-error cached value (e.g. a blank Comp GBA making
+        Ratio (Ac/As) divide by zero) must be surfaced as an unmistakable
+        error, not blend in as if it were a normal text cell like a Notes
+        or Flood Zone entry (Fable adversarial review finding A3)."""
+        self.assertEqual(
+            "[FORMULA ERROR -- #DIV/0!]",
+            _format_value("Ratio (Ac/As)", "#DIV/0!"),
+        )
+        self.assertEqual(
+            "[FORMULA ERROR -- #REF!]",
+            _format_value("Indicated Value ($/SF)", "#REF!"),
+        )
+
+    def test_rate_header_without_percent_sign_still_formats_as_percent(self):
+        """"Monthly Mkt Rate" is a real header on sca_adjustment_grid /
+        land_adjustment_grid that carries a fractional rate (e.g. 0.005 =
+        0.5%/month) but, unlike "Time Adj %", has no literal "%" in its
+        header text. The old plain-number branch rounded it straight to
+        "0.01", losing virtually all of its meaning (Fable adversarial
+        review finding A4)."""
+        self.assertEqual("0.5%", _format_value("Monthly Mkt Rate", 0.005))
+
+    def test_dollar_header_without_price_or_value_token_still_gets_dollar_sign(self):
+        """"Size Adj $/SF" is a real header (sca_adjustment_grid) that
+        contains neither "price" nor "value", so the old compound condition
+        (token AND unit) never matched it and it rendered with no dollar
+        sign at all (Fable adversarial review finding A4)."""
+        self.assertEqual("$0.95", _format_value("Size Adj $/SF", 0.948821765913758))
+        self.assertEqual("-$2.32", _format_value("Size Adj $/SF", -2.32243661190965))
+
+    def test_int_header_gets_thousands_separator(self):
+        """A plain int cell (e.g. Comp GBA (SF)) used to bypass the comma
+        formatting entirely -- 24000 rendered as "24000" instead of
+        "24,000" (Fable adversarial review finding A4)."""
+        self.assertEqual("24,000", _format_value("Comp GBA (SF)", 24000))
+
+    def test_text_date_is_reparsed_to_month_day_year(self):
+        """A Sale Date typed as plain text rather than a real Excel date
+        (openpyxl then hands back a str, not a date/datetime) used to skip
+        the strftime branch entirely and render however it was typed, e.g.
+        ISO "2025-03-15" instead of "03/15/2025" like every real date cell
+        gets (Fable adversarial review finding A4)."""
+        self.assertEqual("03/15/2025", _format_value("Sale Date", "2025-03-15"))
+        self.assertEqual("03/15/2025", _format_value("Sale Date", "03/15/2025"))
+
+    def test_unparseable_text_date_falls_back_to_original_text(self):
+        """A date header with a value that doesn't match any known text
+        date format must still render (as typed) rather than raise or
+        disappear."""
+        self.assertEqual("TBD", _format_value("Sale Date", "TBD"))
 
 
 class InjectAdjustmentGridBlockTests(unittest.TestCase):

@@ -16,6 +16,8 @@ import openpyxl
 from docx.oxml.ns import qn
 from lxml import etree
 
+from adjustment_grid import GRIDS as ADJUSTMENT_GRID_SHEETS
+from adjustment_grid import AdjustmentGridError, read_grid_rows
 from comp_builder import load_comp_data
 from field_registry import audit_assignment_contract, load_registry
 from fill_engine import fill_document, load_variables
@@ -365,6 +367,22 @@ def _classify_blocks(blocks, workbook_path, assignment_dir, variables):
                 unresolved[block] = (
                     "Comp-page handler is registered, but the workbook has no "
                     "usable comp_data rows."
+                )
+            continue
+
+        if block in ADJUSTMENT_GRID_SHEETS:
+            sheet_name = ADJUSTMENT_GRID_SHEETS[block]
+            try:
+                _, rows = read_grid_rows(workbook_path, sheet_name)
+            except AdjustmentGridError as exc:
+                unresolved[block] = str(exc)
+                continue
+            if rows:
+                handled.append(block)
+            else:
+                unresolved[block] = (
+                    f"Adjustment-grid handler is registered, but '{sheet_name}' "
+                    "has no populated comp rows yet."
                 )
             continue
 
