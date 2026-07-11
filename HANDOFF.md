@@ -1,25 +1,34 @@
 # Current Handoff
 
-- Last updated: 2026-07-09
+- Last updated: 2026-07-10
 - Current agent: Claude
-- Commits this session: `e05721b` — see "Completed this session (Claude,
-  stress-test hardening — 2026-07-09)" below for the adversarial stress-test
-  pass and its four auto-fixed, low-risk hardening changes. A same-day
-  follow-up commit `8400e01` resolves two of that pass's flagged
-  judgment-call items per Derek's explicit direction: rent-roll identity now
-  includes the rent amount (matching expense identity), and an unconfirmed
-  comp/lease_comp inside a confirmed batch now raises instead of silently
-  skipping (matching every other harvest record type) — see "Completed this
-  session (Claude, stress-test follow-up — 2026-07-09)" below. Prior commit
-  `6ad25af` — see "Completed this session (Claude, hardening pass —
-  2026-07-08)". Prior to that, `dde13b8` covered Codex's 2026-07-09 work plus
-  the review-pass fixes described under "Completed this session (Claude,
-  review pass — 2026-07-08)". Not pushed to any remote.
-- `docs/ADJUSTMENT_GRID_DESIGN.md` added (2026-07-09/10): scoped Phase 6
-  design, adversarially reviewed via Fable (found and fixed two blocking
-  gaps — the existing `land` tab's dependency in `narrative_generator.py`,
-  and the then-broken `cmd_dilmore` command). Awaiting Derek's
-  implementation sign-off; the grid itself is not yet built.
+- Commits this session: `2e124a1` — Phase 6 Adjustment Grid steps 5-6
+  (`adjustment_grid.py` injector module, `field_registry.py` wiring, the 4
+  new template markers, `axiom.py` deliver-stage wiring, and the unrelated
+  `REPORT_TYPE` Intake-row template fix found along the way), plus a
+  follow-up docs commit `6df37ef`. See "Completed this session (Claude,
+  Phase 6 completion — 2026-07-10)" below. This closes out Phase 6 entirely
+  — steps 1-2 and step 4 were completed and committed in an earlier
+  2026-07-10 session as `84fb3e5` and prior commits. Older commits: `e05721b`
+  — see "Completed this session (Claude, stress-test hardening —
+  2026-07-09)" below for the adversarial stress-test pass and its four
+  auto-fixed, low-risk hardening changes. A same-day follow-up commit
+  `8400e01` resolves two of that pass's flagged judgment-call items per
+  Derek's explicit direction: rent-roll identity now includes the rent
+  amount (matching expense identity), and an unconfirmed comp/lease_comp
+  inside a confirmed batch now raises instead of silently skipping (matching
+  every other harvest record type) — see "Completed this session (Claude,
+  stress-test follow-up — 2026-07-09)" below. Prior commit `6ad25af` — see
+  "Completed this session (Claude, hardening pass — 2026-07-08)". Prior to
+  that, `dde13b8` covered Codex's 2026-07-09 work plus the review-pass fixes
+  described under "Completed this session (Claude, review pass —
+  2026-07-08)". Not pushed to any remote.
+- `docs/ADJUSTMENT_GRID_DESIGN.md` (2026-07-09/10): scoped Phase 6 design,
+  adversarially reviewed via Fable (found and fixed two blocking gaps — the
+  existing `land` tab's dependency in `narrative_generator.py`, and the
+  then-broken `cmd_dilmore` command). **All 6 pipeline steps in this design
+  doc are now built and committed as of 2026-07-10 — Phase 6 is complete,**
+  not just scoped.
 - **Phase 7 (AI narrative drafting) live-tested end to end (2026-07-10), per
   Derek's explicit go-ahead — confirmed working.** This sandbox has no
   `ANTHROPIC_API_KEY` and its own network intercepts calls to
@@ -689,6 +698,112 @@ everything live here too — see "Baseline checks run" below.
   pass, zero skips (real Tesseract available). `python axiom.py contract`
   passed at v1.2.0 (220 fields, 20 blocks).
 
+## Completed this session (Claude, Phase 6 completion — 2026-07-10)
+
+Continuation of the same-day Phase 6 work (steps 1-2 and step 4 were already
+committed as `84fb3e5` and prior commits before this session began). Finished
+the remaining pipeline steps from `docs/ADJUSTMENT_GRID_DESIGN.md`:
+
+- **`field_registry.py`:** registered the 4 new `*_GRID_BLOCK` markers
+  (`SCA_ADJUSTMENT_GRID_BLOCK`, `SCA_QUALITATIVE_GRID_BLOCK`,
+  `LAND_ADJUSTMENT_GRID_BLOCK`, `LAND_QUALITATIVE_GRID_BLOCK`) under the
+  `comparables` handler. Added a reverse-direction contract-drift check to
+  `audit_assignment_contract` — every registered block with a non-empty
+  `used_in` must have its marker actually present in the audited templates,
+  not just the existing template -> registry direction. Without this, a
+  registered block whose marker is missing/typo'd in the template would pass
+  contract clean while silently never rendering — the same failure mode a
+  historical outputs-tab key mismatch already hit once.
+- **`adjustment_grid.py` (new):** reads `sca_adjustment_grid`,
+  `land_adjustment_grid`, `sca_qualitative`, and `land_qualitative` and
+  injects each as a Word table at its `[[..._GRID_BLOCK]]` marker. Column
+  layout is discovered from each sheet's header row at runtime (not a fixed
+  letter map like `comp_builder.py`'s `COMP_COLUMNS`), since category
+  columns vary by `adjustment_factors.json`'s per-property-type preset.
+- **`axiom.py`:** wired `inject_all_adjustment_grids` into `cmd_deliver`'s
+  per-document loop, gated by the same `inject_comps` flag as the other
+  comp/media injectors.
+- **`templates/appraisal_template_styled_clean.docx`:** added the 4 new
+  markers at the appropriate points in the Cost Approach (land) and Sales
+  Comparison Approach (SCA) sections.
+- **Real bug found and fixed:** `adjustment_grid.py`'s row scan initially
+  collected any row with a non-blank value in a header column as a "comp
+  row." This worked fine for `sca_adjustment_grid` (no summary rows below
+  its comps) but misread `land_adjustment_grid`'s MEAN row and 4-row "LAND
+  VALUE CONCLUSION" section as 5 extra phantom comps, because those rows
+  happen to have non-blank values in the same header columns by coincidence
+  of position (e.g. the conclusion section's own labels/values sitting in
+  what's normally the `Location` column). Fixed by anchoring on the
+  "Sale No. N" label every real comp row is written with, and stopping the
+  scan at the first row whose Comp cell doesn't match. Regression test:
+  `test_adjustment_grid.py`'s `test_stops_at_mean_and_summary_rows_below_comps`.
+- **`tests/test_adjustment_grid.py` (new, 16 tests):** covers
+  `read_grid_rows` (populated rows, blank-row skip, the MEAN/summary-row
+  regression above, missing sheet, missing anchor header raising
+  `AdjustmentGridError`), `_format_value` (percentage/currency/plain/date/
+  blank formatting), and both injector entry points (table injection +
+  marker removal, marker-not-found no-op, no-populated-rows no-op,
+  independent per-block handling in `inject_all_adjustment_grids`).
+- **`tests/demo_report_builder.py` + `tests/golden/demo_report_structure.json`:**
+  DEMO-001's fixture has `CA_DEVELOPED = "No"` (this fixture models an
+  assignment where the Cost Approach wasn't developed due to
+  age/depreciation reliability concerns), and the land value sub-section —
+  including the two LAND grid markers — sits inside the Cost Approach
+  section in the template, which `fill_document`'s
+  `_remove_conditional_sections` correctly strips for that reason. This
+  initially looked like a second bug (LAND grids reporting 0 rows injected)
+  until traced to body-index ranges confirming the LAND markers really do
+  live inside the removed Cost Approach section (body indices 194-196 vs.
+  the section's 153-252 range), while the SCA markers live in the separate,
+  developed Sales Comparison Approach section. Fixed the test's expectation
+  instead of the fixture: only the two SCA grid blocks are required to
+  inject for DEMO-001; land-side injection correctness is covered
+  independently by `test_adjustment_grid.py`. Golden snapshot regenerated to
+  reflect the two new SCA grid tables now present in the generated report
+  (paragraph count 1695 -> 1827, table count 65 -> 67).
+- **Unrelated pre-existing defect found and fixed:** while running the full
+  suite, `test_validation.py::test_sanitized_fixture_is_readable` flagged
+  `REPORT_TYPE` as a stale Intake field. Root cause: the Intake sheet's
+  `REPORT_TYPE` row (row 28) was merged across all 4 columns like a section
+  header (matching the genuine section-header row directly below it,
+  "PHYSICAL CHARACTERISTICS"), so there was no actual cell to type a value
+  into — `REPORT_TYPE` could never be filled in from the Intake tab in any
+  real assignment, even though `field_registry.py` lists its
+  `source_of_truth` as `intake`. Confirmed this same defect exists in the
+  real production `templates/workbook.xlsx`, not just the DEMO-001 fixture.
+  Unmerged the row and gave it the normal key/value/description/checkmark
+  structure every sibling row uses, in both files.
+- **OneDrive-mount gotchas hit and worked around this session** (same
+  categories as prior sessions, worth restating since they got unusually
+  bad this time): a stale/torn bash view of `adjustment_grid.py` kept
+  showing an old pre-fix version of `read_grid_rows` even after `__pycache__`
+  was cleared and `dis.dis()` confirmed the loaded bytecode lacked the fix —
+  resolved via the established `/tmp`-staged reconstruction + cross-mount
+  `cp` pattern. Separately, `git status`/`git diff` reported "clean" for a
+  `PROJECT_STATE.md` edit that `git hash-object` proved was genuinely
+  different from HEAD — the poisoned-stat-cache issue, this time affecting
+  `git add` itself (it left the index pointing at the old blob despite
+  reporting success) until the same `/tmp`-staged rewrite was applied. Also:
+  `openpyxl.Workbook.save()` after a normal (non-`data_only`) load silently
+  drops cached formula *values* for cells the code never touched (confirmed
+  on both `templates/workbook.xlsx` and the DEMO-001 fixture after the
+  `REPORT_TYPE` unmerge fix) — recovered both files with a headless
+  `soffice --headless --convert-to xlsx` recalculation pass. Worth
+  remembering for any future direct-openpyxl edit to either workbook: always
+  recalculate afterward if the workbook has formulas anywhere, even if the
+  edit itself only touched non-formula cells.
+- Full non-OCR suite grew from 103 to 119 tests (16 new in
+  `test_adjustment_grid.py`); OCR suite (9 tests, run separately per this
+  sandbox's time limits) unaffected and still green. `python axiom.py
+  contract` clean at v1.2.0, 220 fields, 24 blocks (up from 20).
+- Changed files: `adjustment_grid.py` (new), `field_registry.py`,
+  `schemas/field_registry.v1.json`,
+  `templates/appraisal_template_styled_clean.docx`, `templates/workbook.xlsx`,
+  `axiom.py`, `tests/demo_report_builder.py`,
+  `tests/fixtures/DEMO-001/workbook.xlsx`,
+  `tests/golden/demo_report_structure.json`, `tests/test_adjustment_grid.py`
+  (new), `PROJECT_STATE.md`, `HANDOFF.md`.
+
 ## Completed this session (Claude, stress-test hardening — 2026-07-09)
 
 Per Derek's request ("run a tough stress test from start to finish of the
@@ -928,128 +1043,4 @@ touch:
 - `extractor.py` — `scan_assignment_folder` now recursively routes strictly
   named financial PDFs found in subfolders (e.g. "Information Provided") into
   the financial parser instead of only indexing them as artifacts. This file
-  was omitted from this list in an earlier draft of this handoff; caught
-  during a same-day review pass.
-- `.gitignore` — ignores `.local/` for local OCR model data, plus `*.bak` and
-  a bare `node_modules` line added in this same review pass (see "Known
-  limitations").
-- `docs/OCR_LANE_DESIGN.md` — documents the auto-detection paths.
-- `PROJECT_STATE.md`, `HANDOFF.md` — updated verified OCR install/test state.
-- `tests/test_financial_harvest.py` — adds OCR orientation-scoring coverage,
-  nested-financial-PDF-routing coverage, and statement-expense-fallback
-  coverage.
-- `comparable_contract.py` — normalizes placeholder date values to blank.
-- `tests/test_comp_pipeline.py` — adds placeholder lease-expiration coverage.
-
-## Changed files this session (Claude, hardening pass — 2026-07-08)
-
-- `harvest_contract.py` — new `enforce_ocr_low_confidence()`.
-- `pdf_financial_extractor.py` — `_ocr_pages_dir()` env-var override,
-  `prune_ocr_pages()`, `_finalize_rent_roll_row()` (shared native/OCR
-  rent-roll row logic), `_financial_structure_signals()`/
-  `_page_has_financial_structure()`, orientation re-detect trigger fix, and
-  centralized-confidence call sites replacing three ad hoc `force_low`
-  checks.
-- `extractor.py` — `_nested_financial_pdf_warnings()`, wired into
-  `scan_assignment_folder`/`extract_assignment`.
-- `db.py` — `backfill_legacy_identities()`, wired into `init_db()`.
-- `axiom.py` — new `ocr-cleanup` command.
-- `tests/test_financial_harvest.py` — 4 new tests (nested-PDF duplicate
-  warning, no-warning-for-single-PDF, OCR-pages-dir env override, OCR page
-  pruning).
-- `tests/test_comp_pipeline.py` — 1 new test (legacy comp-row identity
-  backfill matches a fresh import's identity).
-
-## Changed files this session (Claude, stress-test hardening — 2026-07-09)
-
-- `fill_engine.py` — `_XML_ILLEGAL_CHARS` regex and
-  `_reject_illegal_xml_value()`, wired into `_replace_in_paragraph`.
-- `financial_extractor.py` — `_number()` rejects non-finite
-  (`nan`/`inf`/`Infinity`) results via `math.isfinite()`.
-- `harvest_contract.py` — same `_number()` non-finite rejection.
-- `ingest.py` — `review_staged()` and `commit_confirmed()` catch and skip
-  unreadable/non-object JSON files instead of crashing the whole run;
-  `commit_extraction_result()` validates list-shaped fields before
-  `canonicalize_extraction_result()` touches them.
-- `HANDOFF.md` — this session's summary and escalation list.
-
-## Known limitations
-
-- Two stray files at the platform root — `zzz_discard_me.bak` (a stale
-  truncated copy of `pdf_financial_extractor.py`, harmless) and
-  `node_modules` (a broken/dangling symlink) — could not be deleted from
-  this sandbox: both `rm` and `mv` fail with "Operation not permitted" (the
-  same unlink restriction documented elsewhere for `.git` lock files, just
-  worse here since it blocks deletion entirely, not just lock cleanup).
-  Added `*.bak` and a bare `node_modules` line to `.gitignore` so neither can
-  be accidentally committed via `git add -A` in the meantime, but someone
-  with normal OS-level file access (not this sandbox) should delete both by
-  hand when convenient.
-- **New this session, same root cause:** running the live-Tesseract OCR
-  tests in this sandbox to verify the hardening pass wrote 31 synthetic
-  fixture page images (fictional test PDFs, not real assignment data) into
-  the real `ingest/staged/ocr_pages/` folder, because those tests use the
-  default `OCR_PAGES_DIR` rather than a redirected test tempdir. They could
-  not be deleted from this sandbox for the same "Operation not permitted"
-  reason as the two files above — confirmed the restriction applies to
-  arbitrary files on this mount, not just git-internal ones. They're
-  harmless (gitignored, no real data, don't affect any staged batch's
-  correctness) but add clutter; delete manually from
-  `ingest/staged/ocr_pages/` when convenient, or run `python axiom.py
-  ocr-cleanup` (added this session) from Derek's own machine where file
-  deletion isn't restricted, which will safely remove them along with any
-  other genuinely orphaned page images.
-
-- **This sandbox's bash tool mounts this OneDrive-synced folder in a way
-  that can lag behind edits made through the file-editing tool** — it can
-  take a snapshot-like view rather than a live sync within a session. This
-  was worked around successfully both times this session (once for the
-  original OCR-lane commit, once for the follow-up): after editing via the
-  file-editing tool and confirming correctness by re-reading, the same
-  content was pushed into bash's view via bash-native writes (`cp` from a
-  verified copy, or a heredoc write) before running tests — bash-native
-  writes to this mount are immediately self-consistent, unlike edits made
-  through the file-editing tool. Both times, the full suite was then run
-  live in this checkout and confirmed passing (71/71, then 73/73) before
-  committing — this is no longer an open verification gap, just a technique
-  worth knowing about for the next session's own edit/test cycles.
-- This same mount also does not let git commands unlink their own lock/temp
-  files after normal use (`.git/index.lock`, `.git/HEAD.lock`,
-  `.git/objects/**/tmp_obj_*` all warn "Operation not permitted" on cleanup,
-  even on a successful command). `mv` (not `rm`) clears a stale lock before
-  the next git command; the warnings themselves don't indicate corruption.
-  **This got worse, not just noisier, while committing `6ad25af`:** the same
-  restriction let a stale `.git/index.lock` get renamed over the real
-  `.git/index` on write, corrupting it (`bad signature 0x00000000`), and
-  separately left `HEAD` unmoved after a real commit object was already
-  created. Both were recoverable without touching any working-tree file —
-  `git read-tree HEAD` rebuilds a valid index from the last good commit
-  (safe: it only touches the index, never the working tree), and a commit
-  that exists as an object but didn't move `HEAD` can be recovered with
-  `git update-ref refs/heads/main <hash>` after confirming via `git cat-file
-  -p <hash>` that its tree/parent/message are the intended ones. This
-  produced one confirmed-harmless duplicate dangling commit (identical tree
-  to `dde13b8`, an earlier failed attempt at the same commit, 17 seconds
-  older) sitting in the object database; `git gc` will eventually reap it.
-  Moral for next time: do every index-modifying git command in its own bash
-  call (not chained with others) and verify `git cat-file -p HEAD` names the
-  right commit before trusting a "success" exit code on this mount.
-- Plain `python` is not on PATH in the current Codex environment. The bundled
-  Python runtime was used for checks.
-- Tesseract is installed and synthetic OCR tests now run. Live archive
-  extraction has been tested against an image-only rendering of Derek's
-  supplied rent roll and proforma, but a naturally image-only scanned rent
-  roll or P&L has not yet produced staged financial rows through full
-  staging/review in this checkout. The naturally image-only JeffCo income
-  statement OCRed clearly enough but did not match current expense-section
-  parsing rules.
-- DOCX media layout has structural test coverage but still needs visual QA with
-  representative landscape and portrait photos.
-- Streamlit comparable review/browse behavior has service-level coverage but
-  still needs an interactive browser pass.
-- Missing/error Excel caches are detectable. A valid-looking but stale cached
-  value cannot be proven stale from XLSX alone without an Excel-side
-  calculation stamp or automation.
-- The existing parent-folder `PROJECT_STATE.md` is historical and contains
-  stale claims. This file and the project-root `PROJECT_STATE.md` are the
-  canonical handoff documents going forward.
+  was omitted from this list in an earlier dra
