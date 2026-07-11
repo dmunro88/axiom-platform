@@ -28,22 +28,6 @@ from structured_blocks import (
 )
 
 
-# Adjustment-grid headers that are Excel formulas, not manual entry (see
-# adjustment_grid.py's own module docstring for this same distinction). Used
-# by _classify_blocks to detect a stale/wiped formula cache: a populated
-# comp row with real manual-entry data but a blank value in one of these
-# columns means the cell's cached formula result is missing, not that the
-# comp is incomplete (Fable adversarial review finding A1/N3).
-FORMULA_OUTPUT_HEADERS = frozenset({
-    "Time Adj %",
-    "Adjusted Price ($/SF)",
-    "Net Adjustment %",
-    "Indicated Value ($/SF)",
-    "Overall",
-    "Rating",
-})
-
-
 NARRATIVE_BLOCKS = frozenset({
     "INSPECTION_NARRATIVE",
     "MARKET_AREA_OVERVIEW",
@@ -314,12 +298,70 @@ def intake_json_findings(workbook_path, json_path, registry_path):
     return sorted(stale), []
 
 
+def _dilmore_cache_still_stale(assignment_dir, workbook_path):
+    """Is the workbook's formula cache still in the state left by a real
+    (changed=True) Dilmore write? See axiom.py's _run_dilmore_calc
+    docstring: any such write's save() silently wipes every OTHER cached
+    formula result workbook-wide (Net Adjustment, Indicated Value, the
+    grid's own Time Adj %/Adjusted Price/Overall/Rating columns, the
+    outputs tab, etc). cmd_deliver hard-stops on the SAME attempt that
+    triggers the write, but a later attempt where Dilmore finds nothing
+    new to write (changed=False) sailed through uncaught even though the
+    cache from the earlier write was never actually recalculated in Excel
+    (Fable adversarial review finding A1/N3).
+
+    A first attempt at closing that gap inspected each grid row's known
+    formula-output columns for a blank value -- but several of those
+    columns are themselves conditional IF() formulas that legitimately
+    cache as blank whenever an optional input is left empty (e.g. Time
+    Adj % when Monthly Mkt Rate is blank, or Net Adjustment % on a land
+    comp needing no adjustments at all). openpyxl reads a cached empty
+    string back as the same None a wiped cache produces, so that
+    row-by-row check couldn't tell a genuinely stale cache apart from an
+    ordinary comp that simply doesn't need every adjustment -- a false
+    positive that could permanently block a legitimate delivery, since
+    pressing F9 does nothing to change an intentionally-blank IF() result
+    (round-3 adversarial review finding P1).
+
+    This replaces that per-row guess with the one signal that's actually
+    trustworthy: cmd_deliver records exactly when a real write happened
+    (state["formula_cache_stale"]) and the workbook's mtime at that exact
+    moment (state["formula_cache_stale_mtime"]). If the workbook's current
+    mtime still matches that recorded value, nothing has saved it since --
+    the cache is still stale. If the mtime differs, the workbook has been
+    saved again since (trusted to mean Derek let Excel recalculate first,
+    per the on-screen instructions, the same trust-the-user assumption
+    `_dilmore_staleness_warnings` already makes elsewhere) and the cache is
+    no longer considered stale. Purely reads state and stats the file --
+    writes nothing, keeping validate_assignment's non-mutating contract.
+    """
+    state_file = Path(assignment_dir) / ".axiom.json"
+    if not state_file.exists():
+        return False
+    try:
+        with open(state_file, encoding="utf-8") as f:
+            state = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return False
+    if not state.get("formula_cache_stale"):
+        return False
+    recorded_mtime = state.get("formula_cache_stale_mtime")
+    if recorded_mtime is None:
+        return False
+    try:
+        current_mtime = Path(workbook_path).stat().st_mtime
+    except OSError:
+        return False
+    return current_mtime == recorded_mtime
+
+
 def _classify_blocks(blocks, workbook_path, assignment_dir, variables):
     handled = []
     unresolved = {}
 
     anthropic_available = importlib.util.find_spec("anthropic") is not None
     anthropic_key_available = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    dilmore_cache_stale = _dilmore_cache_still_stale(assignment_dir, workbook_path)
 
     for block in sorted(blocks):
         if block == OWNERSHIP_HISTORY_BLOCK:
@@ -424,34 +466,18 @@ def _classify_blocks(blocks, workbook_path, assignment_dir, variables):
                 )
                 continue
 
-            # Every populated comp row's known formula-output columns
-            # (Time Adj %, Adjusted Price, Net Adjustment, Indicated
-            # Value/Overall/Rating -- see this module's own docstring)
-            # should have a real cached value. A blank one alongside real
-            # manual-entry data is the same signature left behind when
-            # _run_dilmore_calc's save() just silently wiped every OTHER
-            # cached formula result in the workbook (see its docstring),
-            # and Excel hasn't recalculated since -- previously nothing
-            # caught this on a SECOND delivery attempt once the auto-run
-            # dilmore hard-stop from the first attempt was satisfied
-            # (Fable adversarial review finding A1/N3).
-            stale_comps = [
-                row.get("Comp", "?")
-                for row in rows
-                if any(
-                    header in row and row[header] == ""
-                    for header in FORMULA_OUTPUT_HEADERS
-                )
-            ]
-            if stale_comps:
+            # See _dilmore_cache_still_stale's docstring: a real Dilmore
+            # write wipes every cached formula result workbook-wide, and
+            # this is the trustworthy (state + mtime based, not per-cell
+            # guessing) way to tell whether that's still true right now.
+            if dilmore_cache_stale:
                 unresolved[block] = (
-                    f"'{sheet_name}' comp(s) {', '.join(stale_comps)} have "
-                    "blank formula-output columns (Time Adj %/Adjusted "
-                    "Price/Net Adjustment/Indicated Value/Overall/Rating). "
-                    "This usually means the workbook's cached formula "
-                    "results are stale (e.g. Dilmore just wrote new Size "
-                    "Factor values). Open workbook.xlsx, let it fully "
-                    "recalculate (e.g. press F9), save, then retry."
+                    f"'{sheet_name}': the workbook's cached formula results "
+                    "are still stale from Dilmore's last size-adjustment "
+                    "write (Time Adj %/Adjusted Price/Net Adjustment/"
+                    "Indicated Value/Overall/Rating and other formulas may "
+                    "be blank or out of date). Open workbook.xlsx, let it "
+                    "fully recalculate (e.g. press F9), save, then retry."
                 )
                 continue
 

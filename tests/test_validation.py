@@ -586,5 +586,99 @@ class ValidateAssignmentTests(unittest.TestCase):
         self.assertEqual([], audit["warnings"])
 
 
+class DilmoreCacheStalenessTests(unittest.TestCase):
+    """_dilmore_cache_still_stale replaced a per-cell blank-value guess
+    (which false-positived on legitimately-blank IF() formula results --
+    round-3 adversarial review finding P1) with a state+mtime check. These
+    exercise that function directly against a real workbook.xlsx's mtime,
+    without needing a full adjustment-grid fixture."""
+
+    def _assignment_with_workbook(self, root):
+        assignment, _templates, _config = _build_assignment(root, "no blocks here")
+        return assignment
+
+    def test_no_state_file_is_not_stale(self):
+        from validation import _dilmore_cache_still_stale
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment = self._assignment_with_workbook(temp_dir)
+            self.assertFalse(
+                _dilmore_cache_still_stale(
+                    assignment, assignment / "workbook.xlsx"
+                )
+            )
+
+    def test_state_without_stale_flag_is_not_stale(self):
+        from validation import _dilmore_cache_still_stale
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment = self._assignment_with_workbook(temp_dir)
+            with open(assignment / ".axiom.json", "w", encoding="utf-8") as f:
+                json.dump({"stage": "engaged"}, f)
+            self.assertFalse(
+                _dilmore_cache_still_stale(
+                    assignment, assignment / "workbook.xlsx"
+                )
+            )
+
+    def test_stale_flag_with_matching_mtime_is_stale(self):
+        from validation import _dilmore_cache_still_stale
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment = self._assignment_with_workbook(temp_dir)
+            workbook_path = assignment / "workbook.xlsx"
+            recorded_mtime = workbook_path.stat().st_mtime
+            with open(assignment / ".axiom.json", "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "formula_cache_stale": True,
+                        "formula_cache_stale_mtime": recorded_mtime,
+                    },
+                    f,
+                )
+            self.assertTrue(
+                _dilmore_cache_still_stale(assignment, workbook_path)
+            )
+
+    def test_stale_flag_with_changed_mtime_is_not_stale(self):
+        """Once the workbook has been saved again since the recorded
+        Dilmore write (e.g. Derek let Excel recalculate and saved), the
+        cache is no longer considered stale -- this is the exact scenario
+        the old per-cell blank check false-positived on (P1): a comp's
+        legitimately-blank IF() result looked identical to a wiped cache,
+        and no amount of resaving in Excel could ever clear it."""
+        from validation import _dilmore_cache_still_stale
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment = self._assignment_with_workbook(temp_dir)
+            workbook_path = assignment / "workbook.xlsx"
+            stale_mtime = workbook_path.stat().st_mtime - 100
+            with open(assignment / ".axiom.json", "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "formula_cache_stale": True,
+                        "formula_cache_stale_mtime": stale_mtime,
+                    },
+                    f,
+                )
+            self.assertFalse(
+                _dilmore_cache_still_stale(assignment, workbook_path)
+            )
+
+    def test_malformed_state_file_is_not_stale(self):
+        from validation import _dilmore_cache_still_stale
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment = self._assignment_with_workbook(temp_dir)
+            (assignment / ".axiom.json").write_text(
+                "{not valid json", encoding="utf-8"
+            )
+            self.assertFalse(
+                _dilmore_cache_still_stale(
+                    assignment, assignment / "workbook.xlsx"
+                )
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

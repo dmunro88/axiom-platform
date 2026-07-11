@@ -231,6 +231,61 @@ class ReadGridRowsTests(unittest.TestCase):
             with self.assertRaises(AdjustmentGridError):
                 read_grid_rows(workbook_path, "test_grid")
 
+    def test_last_comps_own_cleared_anchor_raises_loudly(self):
+        """Round-3 adversarial review finding P2: the first orphan-scan fix
+        only caught a gap when an INTACT "Sale No." label survived further
+        down (test_orphaned_comp_below_cleared_anchor_raises_loudly above).
+        If the corrupted label is the LAST comp's own -- nothing intact
+        survives below it at all -- that first fix silently returned only
+        the earlier comps. Must still raise: comps 1-2 are real, comp 3's
+        anchor is cleared, but comp 3's OTHER cells (address) still hold
+        real data one row below the break, with no later "Sale No." label
+        to trigger the old check."""
+        with _tmp_dir() as tmp_path:
+            workbook_path = _make_workbook(tmp_path)
+            wb = openpyxl.load_workbook(workbook_path)
+            ws = wb["test_grid"]
+            ws["A7"] = "Sale No. 1"
+            ws["B7"] = "123 Fictional Rd"
+            ws["A8"] = "Sale No. 2"
+            ws["B8"] = "456 Sample Ave"
+            # Row 9's own anchor ("Sale No. 3") is cleared, but its address
+            # cell was never touched -- comp 3's data is orphaned right at
+            # the break point, with nothing labeled below it.
+            ws["B9"] = "789 Silently Dropped Ave"
+            wb.save(workbook_path)
+            wb.close()
+
+            with self.assertRaises(AdjustmentGridError):
+                read_grid_rows(workbook_path, "test_grid")
+
+    def test_summary_row_with_coincidental_data_does_not_false_positive(self):
+        """The blank-anchor requirement in the orphan-stray-data check
+        (round-3 P2 fix) must not regress the original MEAN/summary-row
+        handling: a legitimate summary row has its own non-blank label
+        (not a cleared anchor) even though it can coincidentally carry
+        data in the same header columns by position."""
+        with _tmp_dir() as tmp_path:
+            workbook_path = _make_workbook(tmp_path)
+            wb = openpyxl.load_workbook(workbook_path)
+            ws = wb["test_grid"]
+            ws["A7"] = "Sale No. 1"
+            ws["B7"] = "123 Fictional Rd"
+            ws["C7"] = 450000
+            ws["A8"] = "Sale No. 2"
+            ws["B8"] = "456 Sample Ave"
+            ws["C8"] = 380000
+            for r in range(9, 17):
+                ws[f"A{r}"] = f"Sale No. {r - 6}"
+            ws["A17"] = "MEAN"
+            ws["C17"] = 9.21
+
+            wb.save(workbook_path)
+            wb.close()
+
+            _, rows = read_grid_rows(workbook_path, "test_grid")
+            self.assertEqual(2, len(rows))
+
 
 class FormatValueTests(unittest.TestCase):
     def test_percentage_header_formats_as_percent(self):

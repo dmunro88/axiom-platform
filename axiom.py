@@ -425,28 +425,43 @@ def cmd_deliver(args):
     # from data_only=True reads of a workbook whose cache was just
     # invalidated. Stop and tell Derek to recalculate/save in Excel instead of
     # silently delivering a report with blank conclusion numbers.
-    dilmore_result = _run_dilmore_calc(workbook_path)
-    if dilmore_result["ok"] and dilmore_result.get("count"):
-        print(f"  [Dilmore] {dilmore_result['message']}")
-        if dilmore_result.get("changed"):
-            state = _load_state(adir)
-            state["last_delivery_attempt"] = _today()
-            state["last_delivery_status"] = "input_failed"
-            state["last_delivery_blocker_count"] = 1
-            state["last_delivery_error"] = (
-                f"Size adjustments in {dilmore_result['tab']} just changed. "
-                "openpyxl cannot recalculate Excel formulas, so every other "
-                "cached formula result in this workbook (Net Adjustment, "
-                "Indicated Value, the outputs tab, etc.) is now stale or "
-                "blank until Excel recalculates it. Open workbook.xlsx, let "
-                "it fully recalculate (e.g. press F9), save, then re-run "
-                "deliver."
-            )
-            _save_state(adir, state)
-            print(f"\n  {state['last_delivery_error']}")
-            return False
-    elif not dilmore_result["ok"]:
-        print(f"  [Dilmore] skipped -- {dilmore_result['message']}")
+    #
+    # Skipped entirely in draft mode: this auto-run calls wb.save() on real
+    # writes, which both mutates workbook.xlsx and (via _run_dilmore_calc's
+    # new state write) sets .axiom.json's formula_cache_stale flag -- either
+    # one contradicts the "Assignment delivery state will not be changed"
+    # promise draft mode prints above, and a draft is meant to be a quick,
+    # side-effect-free preview of an otherwise-incomplete assignment (Fable
+    # adversarial review finding P4).
+    if not draft_mode:
+        dilmore_result = _run_dilmore_calc(workbook_path)
+        if dilmore_result["ok"] and dilmore_result.get("count"):
+            print(f"  [Dilmore] {dilmore_result['message']}")
+            if dilmore_result.get("changed"):
+                state = _load_state(adir)
+                state["last_delivery_attempt"] = _today()
+                state["last_delivery_status"] = "input_failed"
+                state["last_delivery_blocker_count"] = 1
+                state["last_delivery_error"] = (
+                    f"Size adjustments in {dilmore_result['tab']} just changed. "
+                    "openpyxl cannot recalculate Excel formulas, so every other "
+                    "cached formula result in this workbook (Net Adjustment, "
+                    "Indicated Value, the outputs tab, etc.) is now stale or "
+                    "blank until Excel recalculates it. Open workbook.xlsx, let "
+                    "it fully recalculate (e.g. press F9), save, then re-run "
+                    "deliver."
+                )
+                _save_state(adir, state)
+                print(f"\n  {state['last_delivery_error']}")
+                return False
+        elif not dilmore_result["ok"]:
+            print(f"  [Dilmore] skipped -- {dilmore_result['message']}")
+    else:
+        print(
+            "  [Dilmore] skipped -- draft mode does not run the "
+            "size-adjustment auto-calc (would risk mutating workbook.xlsx "
+            "or delivery state)."
+        )
 
     print(f"\n  Loading variables ...")
     try:
@@ -719,28 +734,32 @@ def _run_dilmore_calc(workbook_path):
             ),
         }
 
-    # Read comp GBAs from the detected tab's comp rows. The original fixed
-    # capacity (rows 7-16, matching the tab's built-in "Sale No. 1".."Sale
-    # No. 10" labels) is always scanned unconditionally, same as before.
-    # But that was also the ENTIRE window -- a comp hand-expanded past row
-    # 16, exactly the kind of expansion adjustment_grid.py's own
-    # MAX_DATA_ROW error message tells Derek to do, would silently never
-    # get a Size Factor/Adj % written at all (Fable adversarial review
-    # finding N1), even though adjustment_grid.read_grid_rows happily reads
-    # comps all the way out to MAX_DATA_ROW. Extend the scan past row 16
-    # for sca_adjustment_grid using the same "Sale No." anchor check
-    # read_grid_rows uses, stopping at the first row that doesn't match --
-    # size_adj (the older, pre-Phase-6 tab) predates the hand-expansion
-    # design entirely and keeps its original fixed 10-row window only.
+    # Read comp GBAs from the detected tab's comp rows, following the exact
+    # same "Sale No." anchor convention read_grid_rows uses: for
+    # sca_adjustment_grid, scan every row from 7 up through
+    # GRID_MAX_DATA_ROW, stopping at the first row whose anchor doesn't
+    # match. Rows 7-16 used to be scanned unconditionally with no anchor
+    # check at all, which let this function write a Size Factor to a row
+    # read_grid_rows would never treat as a comp (e.g. one whose "Sale
+    # No." label got cleared/corrupted) -- Dilmore's own console output
+    # ("Wrote N size adjustment(s)") would then disagree with what the
+    # delivered report actually contained, reassuring Derek a comp was
+    # processed when the report silently dropped it (Fable adversarial
+    # review finding P3, the same root cause as adjustment_grid.py's P2
+    # orphan-anchor gap). size_adj (the older, pre-Phase-6 tab) predates
+    # the "Sale No." anchor convention entirely and keeps its original
+    # fixed, unconditional 7-16 window.
     row_idxs = []
     comp_gbas = []
-    scan_rows = list(range(7, 17))
     if tab_name == "sca_adjustment_grid":
-        for extra_row in range(17, GRID_MAX_DATA_ROW + 1):
-            comp_label = sa.cell(row=extra_row, column=1).value
+        scan_rows = []
+        for candidate_row in range(7, GRID_MAX_DATA_ROW + 1):
+            comp_label = sa.cell(row=candidate_row, column=1).value
             if not (isinstance(comp_label, str) and comp_label.startswith("Sale No.")):
                 break
-            scan_rows.append(extra_row)
+            scan_rows.append(candidate_row)
+    else:
+        scan_rows = list(range(7, 17))
 
     for row_idx in scan_rows:
         comp_gba_val = sa.cell(row=row_idx, column=layout["comp_gba_col"]).value
@@ -823,6 +842,22 @@ def _run_dilmore_calc(workbook_path):
     # proceeding to read/deliver against a workbook whose cache it just
     # invalidated.
     wb.save(str(workbook_path))
+
+    # Record exactly when this happened and the workbook's mtime at that
+    # moment, so validation.py's _dilmore_cache_still_stale can tell a
+    # LATER delivery attempt (where Dilmore finds nothing new to write,
+    # "changed": False) that the cache from THIS write was never actually
+    # recalculated in Excel -- without needing to guess from blank grid
+    # cells, which false-positived on legitimately-blank IF() formula
+    # results (round-3 adversarial review finding P1; see
+    # _dilmore_cache_still_stale's docstring for the full story). Written
+    # from whichever caller triggers a real write (cmd_dilmore or
+    # cmd_deliver's auto-run), not duplicated in each caller.
+    state = _load_state(workbook_path.parent)
+    state["formula_cache_stale"] = True
+    state["formula_cache_stale_mtime"] = workbook_path.stat().st_mtime
+    _save_state(workbook_path.parent, state)
+
     return {
         "ok": True,
         "count": len(row_idxs),
@@ -1300,18 +1335,22 @@ def _dilmore_staleness_warnings(workbook_path):
     layout = _DILMORE_TAB_LAYOUTS[tab_name]
     sa = wb[tab_name]
     stale_comps = []
-    # Same fixed-plus-extension window as _run_dilmore_calc's write path
-    # (see its comment) -- this staleness check must cover exactly the
-    # rows Dilmore will actually write to, or a comp hand-expanded past
-    # row 16 would show no staleness warning even though it will never
-    # get a Size Factor either (Fable adversarial review finding N1).
-    scan_rows = list(range(7, 17))
+    # Same anchor-checked window as _run_dilmore_calc's write path (see its
+    # comment) -- this staleness check must cover exactly the rows Dilmore
+    # will actually write to, or a comp past row 16 would show no
+    # staleness warning even though it will never get a Size Factor either
+    # (Fable adversarial review finding N1), and a row whose anchor got
+    # cleared/corrupted would wrongly still count as a live comp (finding
+    # P3).
     if tab_name == "sca_adjustment_grid":
-        for extra_row in range(17, GRID_MAX_DATA_ROW + 1):
-            comp_label = sa.cell(row=extra_row, column=1).value
+        scan_rows = []
+        for candidate_row in range(7, GRID_MAX_DATA_ROW + 1):
+            comp_label = sa.cell(row=candidate_row, column=1).value
             if not (isinstance(comp_label, str) and comp_label.startswith("Sale No.")):
                 break
-            scan_rows.append(extra_row)
+            scan_rows.append(candidate_row)
+    else:
+        scan_rows = list(range(7, 17))
 
     for row_idx in scan_rows:
         comp_gba = sa.cell(row=row_idx, column=layout["comp_gba_col"]).value

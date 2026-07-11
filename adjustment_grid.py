@@ -212,20 +212,41 @@ def read_grid_rows(workbook_path, sheet_name):
     # orphaning every comp below it (a second way to trigger the same
     # silent-drop failure, caught on re-review of the first A5 fix). Scan
     # everything from the break point through one row past MAX_DATA_ROW
-    # for any lingering "Sale No." label and fail loudly if one turns up,
-    # rather than quietly deliver an incomplete comp grid either way.
+    # for either an intact lingering "Sale No." label (an intact comp
+    # further down, past a gap) OR a BLANK anchor cell that still has data
+    # in some other column (the comp's OWN anchor label is the one that
+    # got cleared, so there's nothing intact below it to find). The blank-
+    # anchor condition is deliberately narrower than "any non-comp label
+    # with stray data": a legitimate summary row (MEAN, LAND VALUE
+    # CONCLUSION) has its own real, non-blank label and can coincidentally
+    # carry data in the same header columns by position -- flagging any
+    # stray data regardless of label caught that as a false positive on
+    # round-3 adversarial re-review (finding P2/P3's initial fix attempt).
+    # Requiring the anchor to be truly blank (not just non-"Sale No.")
+    # before treating stray data as orphaned still catches the most likely
+    # real failure -- an anchor cell cleared by accident -- without
+    # tripping on every recognized non-comp section below the comp rows.
     for r in range(break_row, MAX_DATA_ROW + 2):
         orphan_label = ws.cell(row=r, column=anchor_col).value
-        if isinstance(orphan_label, str) and orphan_label.startswith("Sale No."):
+        has_orphan_label = (
+            isinstance(orphan_label, str) and orphan_label.startswith("Sale No.")
+        )
+        anchor_is_blank = orphan_label is None or orphan_label == ""
+        has_stray_data = anchor_is_blank and any(
+            ws.cell(row=r, column=col_idx).value not in (None, "")
+            for header, col_idx in header_map.items()
+            if header != ANCHOR_HEADER
+        )
+        if has_orphan_label or has_stray_data:
             wb.close()
             raise AdjustmentGridError(
                 f"Sheet '{sheet_name}' has a comp row at row {r} that this "
                 "module's scan never reached -- either it's past "
                 f"MAX_DATA_ROW ({MAX_DATA_ROW}) and the sheet needs "
-                "MAX_DATA_ROW raised, or an earlier row's \"Sale No.\" "
-                "label was cleared/overwritten, orphaning real comp data "
-                "below it. Either way, comps would be silently dropped "
-                "from the delivered report -- fix the sheet or "
+                "MAX_DATA_ROW raised, or an earlier row's (or this row's "
+                "own) \"Sale No.\" label was cleared/overwritten, orphaning "
+                "real comp data. Either way, comps would be silently "
+                "dropped from the delivered report -- fix the sheet or "
                 "adjustment_grid.py before delivering."
             )
 

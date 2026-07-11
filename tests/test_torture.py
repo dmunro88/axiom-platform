@@ -809,6 +809,7 @@ class TortureTests(unittest.TestCase):
 
             grid = workbook.create_sheet("sca_adjustment_grid")
             grid["B3"] = 85
+            grid.cell(row=7, column=1).value = "Sale No. 1"
             # New layout: Comp GBA in column C (3), not B (2).
             grid.cell(row=7, column=3).value = 20000  # 2x subject -> positive
 
@@ -860,7 +861,14 @@ class TortureTests(unittest.TestCase):
 
             grid = workbook.create_sheet("sca_adjustment_grid")
             grid["B3"] = 85
-            grid.cell(row=7, column=1).value = "Sale No. 1"
+            # The real template pre-labels every one of its built-in rows
+            # 7-16 with "Sale No. 1".."Sale No. 10" regardless of whether
+            # a comp's data is filled in yet -- _run_dilmore_calc's scan
+            # (like read_grid_rows') stops at the first row whose anchor
+            # doesn't match, so a gap in the labels would hide every comp
+            # past the gap, including the intentionally-tested row 17.
+            for offset in range(10):
+                grid.cell(row=7 + offset, column=1).value = f"Sale No. {offset + 1}"
             grid.cell(row=7, column=3).value = 20000
             # Hand-expanded 11th comp, anchored the same way real comp
             # rows are.
@@ -899,8 +907,10 @@ class TortureTests(unittest.TestCase):
             intake.append(["GBA", 10000])
 
             grid = workbook.create_sheet("sca_adjustment_grid")
+            grid.cell(row=7, column=1).value = "Sale No. 1"
             grid.cell(row=7, column=3).value = 20000   # GBA entered
             # Size Factor (column 11) intentionally left blank -- stale.
+            grid.cell(row=8, column=1).value = "Sale No. 2"
             grid.cell(row=8, column=3).value = 5000    # GBA entered
             grid.cell(row=8, column=11).value = 0.85   # already computed
 
@@ -946,6 +956,7 @@ class TortureTests(unittest.TestCase):
             intake.append(["GBA", 10000])
             grid = workbook.create_sheet("sca_adjustment_grid")
             grid["B3"] = 85
+            grid.cell(row=7, column=1).value = "Sale No. 1"
             grid.cell(row=7, column=3).value = 20000
             workbook.save(workbook_path)
             workbook.close()
@@ -978,7 +989,11 @@ class TortureTests(unittest.TestCase):
                 patch.object(axiom, "TEMPLATES_DIR", templates),
                 patch.object(axiom, "fill_document", side_effect=fake_fill_document),
             ):
-                result = axiom.cmd_deliver(["TEST-999", "--draft"])
+                # NOT --draft: draft mode now skips the Dilmore auto-run
+                # entirely (Fable adversarial review finding P4), so the
+                # hard-stop-on-real-write behavior this test exercises only
+                # applies to a normal (non-draft) deliver.
+                result = axiom.cmd_deliver(["TEST-999"])
 
             # The write happened and computed the right factor ...
             result_wb = openpyxl.load_workbook(workbook_path)
@@ -1016,6 +1031,7 @@ class TortureTests(unittest.TestCase):
             intake.append(["GBA", 10000])
             grid = workbook.create_sheet("sca_adjustment_grid")
             grid["B3"] = 85
+            grid.cell(row=7, column=1).value = "Sale No. 1"
             grid.cell(row=7, column=3).value = 20000
             expected_factor = round(dilmore_factor(20000 / 10000, 85), 4)
             expected_adj_pct = round(expected_factor - 1, 4)
@@ -1052,9 +1068,82 @@ class TortureTests(unittest.TestCase):
                 patch.object(axiom, "TEMPLATES_DIR", templates),
                 patch.object(axiom, "fill_document", side_effect=fake_fill_document),
             ):
+                # NOT --draft: exercises _run_dilmore_calc's "changed": False
+                # skip path for real, rather than draft mode's unconditional
+                # Dilmore skip (Fable adversarial review finding P4).
+                result = axiom.cmd_deliver(["TEST-999"])
+
+            self.assertTrue(result)
+
+    def test_draft_mode_never_runs_dilmore_or_mutates_anything(self):
+        """Fable adversarial review finding P4: draft mode's banner promises
+        "Assignment delivery state will not be changed", but the Dilmore
+        auto-run used to execute unconditionally even in draft mode -- a
+        real write there both mutates workbook.xlsx (wipes every other
+        cached formula result) and sets .axiom.json's formula_cache_stale
+        flag, either of which breaks that promise. Draft mode must now skip
+        the Dilmore auto-run entirely, leaving the workbook and state
+        byte-for-byte/key-for-key untouched, even when Dilmore would
+        otherwise have real, uncomputed size adjustments to write."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment, templates, _ = build_assignment(
+                root,
+                "[[VALUE]]",
+                {"VALUE": "safe"},
+            )
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook = openpyxl.load_workbook(workbook_path)
+            intake = workbook.create_sheet("Intake")
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+            grid = workbook.create_sheet("sca_adjustment_grid")
+            grid["B3"] = 85
+            grid.cell(row=7, column=1).value = "Sale No. 1"
+            # A real, uncomputed size adjustment: Dilmore would write here
+            # if this were a normal (non-draft) deliver.
+            grid.cell(row=7, column=3).value = 20000
+            workbook.save(workbook_path)
+            workbook.close()
+            original_bytes = workbook_path.read_bytes()
+
+            stage = {
+                "deliver": {
+                    "documents": [
+                        {"template": "report.docx", "output": "Appraisal.docx"}
+                    ]
+                }
+            }
+
+            def fake_fill_document(_template, output, _variables, **_kwargs):
+                Document().save(output)
+                return {"missing": [], "blocks": [], "removed_sections": []}
+
+            with (
+                patch.object(axiom, "_find_assignment", return_value=assignment),
+                patch.object(
+                    axiom,
+                    "check_delivery_readiness",
+                    return_value={
+                        "ready": True,
+                        "errors": [],
+                        "missing": [],
+                        "unresolved_blocks": {},
+                    },
+                ),
+                patch.object(axiom, "STAGES", stage),
+                patch.object(axiom, "TEMPLATES_DIR", templates),
+                patch.object(axiom, "fill_document", side_effect=fake_fill_document),
+            ):
                 result = axiom.cmd_deliver(["TEST-999", "--draft"])
 
             self.assertTrue(result)
+            self.assertEqual(original_bytes, workbook_path.read_bytes())
+            state = axiom._load_state(assignment)
+            self.assertNotIn("formula_cache_stale", state)
+            self.assertNotIn("formula_cache_stale_mtime", state)
+            self.assertEqual("draft_generated", state["last_delivery_status"])
 
 
 if __name__ == "__main__":
