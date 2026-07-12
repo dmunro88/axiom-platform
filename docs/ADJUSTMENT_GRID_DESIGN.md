@@ -344,6 +344,14 @@ e. **Back-compat for in-flight assignments.** Assignment workbooks already
    one-time migration step needed to add the new tabs to already-engaged
    workbooks? Recommend the graceful-skip approach, consistent with
    existing patterns elsewhere in the platform.
+   **Resolved (implemented):** the graceful-skip approach was taken.
+   `axiom.py`'s `_DILMORE_TAB_LAYOUTS` detects whichever of
+   `sca_adjustment_grid` (current) or `size_adj` (pre-Phase-6) tab a given
+   workbook actually has and uses the matching column layout; no forced
+   migration exists. Confirmed still correct through the 2026-07-11
+   hardening rounds (see `HANDOFF.md`) — `size_adj` intentionally keeps its
+   original unconditional row-7-16 scan since it predates the "Sale No."
+   anchor convention `sca_adjustment_grid` uses.
 f. **Two qualitative-grid conventions living side by side.** After this
    ships, the platform will have the existing text-based lease-comp
    `qualitative_analysis` tab (Superior/Similar/Inferior as labels) *and*
@@ -355,11 +363,4 @@ f. **Two qualitative-grid conventions living side by side.** After this
    text/narrative-driven an intentional, permanent difference? No action
    needed for v1 either way, but this shouldn't be an accidental
    inconsistency Derek discovers later.
-g. **Excel-formula vs. Python-computed grids — confirm the recommended
-   default.** Pipeline step 6 recommends keeping Size/Time/Net
-   Adjustment/Indicated Value as Excel formulas (matching `size_adj`/
-   `dilmore` today) with `adjustment_grid.py` reading computed results via
-   `data_only=True`, rather than moving that math into Python. This affects
-   how test fixtures must be built (a real calculation pass is required,
-   not just cell values written via openpyxl) — flagging so this default
-   gets explicit sign-off rather than being assumed.
+g. **Excel-for

@@ -1,8 +1,22 @@
 # Current Handoff
 
-- Last updated: 2026-07-10
+- Last updated: 2026-07-11
 - Current agent: Claude
-- Commits this session: `2e124a1` — Phase 6 Adjustment Grid steps 5-6
+- **Handing off to Codex.** Three commits landed today closing out an
+  iterative Fable-model adversarial-review cycle on Phase 6 (the Adjustment
+  Grid feature shipped 2026-07-10): `9d198a5` (round 1, findings A1-A5),
+  `9026f2e` (round 2, findings N1 + residuals of A1/A3/A5), `4db2456`
+  (round 3, findings P1-P4). Full details in "Completed this session
+  (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)" below. **A fourth
+  review round already ran and found nine more issues (Q1-Q9, all
+  medium/low severity, none corrupting a delivered report under default
+  use) — Derek has NOT yet decided which to fix; he said "stop here for
+  now" pending a usage-limit reset. Do not act on Q1-Q9 without asking him
+  first** — see that same section for the full list and severities.
+- Commits this session (2026-07-11): `9d198a5`, `9026f2e`, `4db2456` — see
+  above and "Completed this session (Claude, Phase 6 hardening rounds 1-4 —
+  2026-07-11)" below.
+- Commits from the prior (2026-07-10) session: `2e124a1` — Phase 6 Adjustment Grid steps 5-6
   (`adjustment_grid.py` injector module, `field_registry.py` wiring, the 4
   new template markers, `axiom.py` deliver-stage wiring, and the unrelated
   `REPORT_TYPE` Intake-row template fix found along the way), plus a
@@ -355,6 +369,152 @@ baseline before connecting external services.
   speculative output.
 - Advanced the application to v0.10.4 and expanded the baseline to sixty-seven
   passing tests.
+
+## Completed this session (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)
+
+Phase 6 (the Adjustment Grid feature — `sca_adjustment_grid`/
+`land_adjustment_grid`/`sca_qualitative`/`land_qualitative` tabs, read by
+`adjustment_grid.py`, written by Dilmore's size-adjustment calc in
+`axiom.py`) shipped complete on 2026-07-10 (see "Completed this session
+(Claude, Phase 6 completion — 2026-07-10)" below). This session ran an
+iterative adversarial-review cycle against it: spawn a Fable-model
+(`model: "fable"`) agent to stress-test the real feature via synthetic
+openpyxl-workbook repros, triage and fix what it finds, re-spawn to verify,
+repeat. Four rounds ran; three produced real fixes now committed, the
+fourth found more issues Derek has not yet triaged.
+
+**Round 1 → commit `9d198a5`** ("Fix Fable adversarial review findings
+(A1-A5) in Phase 6 Adjustment Grid"). Findings A1-A5 — see the commit for
+exact details; broadly: gaps in how `adjustment_grid.py`'s row scan and
+`axiom.py`'s Dilmore write/staleness-check paths handled edge cases in the
+grid tabs (blank/malformed cells, the qualitative tabs' rating logic, and
+similar). Full suite + `axiom.py contract` green before commit.
+
+**Round 2 → commit `9026f2e`** ("Fix round-2 Fable adversarial review
+findings (N1, A1/A3/A5 residuals)"). A follow-up review of round 1's fixes
+found one new issue (N1) and residual gaps in three of round 1's fixes
+(A1/A3/A5 — round 1 narrowed but didn't fully close them). Fixed and
+re-verified.
+
+**Round 3 → commit `4db2456`** ("Fix round-3 Fable findings: stale-cache
+deadlock, orphan-anchor gap, scan disagreement, draft-mode side effect").
+Four findings, all fixed:
+- **P1 (highest severity):** `validation.py`'s stale-Dilmore-formula-cache
+  check used to guess by looking for blank grid cells, which
+  false-positived on legitimately-blank `IF()` formula results and
+  permanently blocked delivery with no escape. Replaced with an explicit
+  marker: `axiom.py`'s `_run_dilmore_calc`, right after a real write's
+  `wb.save()`, now writes `formula_cache_stale: true` and
+  `formula_cache_stale_mtime: <workbook mtime at that moment>` into
+  `.axiom.json`. `validation.py`'s new `_dilmore_cache_still_stale()`
+  compares that recorded mtime to the workbook file's *current* mtime —
+  equal means still-stale (block), different means presumably
+  resaved/recalculated since (let through). Read-only, matches
+  `validate_assignment`'s non-mutating contract.
+- **P2:** `adjustment_grid.py`'s `read_grid_rows` orphan-scan (which walks
+  past the last detected comp row looking for a corrupted/cleared "Sale
+  No." anchor) missed the case where the corrupted anchor belongs to the
+  *last* comp's own row — nothing intact survives below it to trigger
+  detection, silently dropping that comp from delivered reports. Now also
+  raises when a row past the break has a blank anchor but non-blank data
+  in any other tracked column.
+- **P3 (same root cause as P2):** `axiom.py`'s `_run_dilmore_calc` and
+  `_dilmore_staleness_warnings` used to scan `sca_adjustment_grid` rows
+  7-16 unconditionally with no "Sale No." anchor check — unlike
+  `read_grid_rows`, which always required one — so Dilmore could
+  write/warn about a row the report generator would silently skip,
+  producing a console/report disagreement about which comps were actually
+  processed. Both now use the identical anchor-checked scan
+  `read_grid_rows` uses (the older, pre-Phase-6 `size_adj` tab predates
+  the anchor convention and correctly keeps its original unconditional
+  7-16 window).
+- **P4:** `cmd_deliver`'s `--draft` mode prints "Assignment delivery state
+  will not be changed," but the Dilmore auto-run used to execute
+  unconditionally regardless of `draft_mode` — a real write there mutates
+  `workbook.xlsx` (wipes every other cached formula result) and, via P1's
+  new state write, `.axiom.json` — contradicting that promise. Fixed by
+  skipping the Dilmore auto-run entirely in draft mode.
+
+Updated `tests/test_adjustment_grid.py`, `tests/test_validation.py`, and
+`tests/test_torture.py` accordingly, including anchor labels added to four
+existing `test_torture.py` fixtures that predated the P3 anchor-checked
+scan (`test_dilmore_prefers_sca_adjustment_grid_over_size_adj`,
+`test_dilmore_writes_comps_hand_expanded_past_row_16`,
+`test_dilmore_staleness_warning_is_read_only`,
+`test_deliver_auto_runs_dilmore_but_hard_stops_when_it_writes`,
+`test_deliver_proceeds_when_dilmore_values_already_current` — the last two
+also had their `--draft` flag removed since P4 made draft mode skip
+Dilmore entirely, which would have silently defeated what those tests were
+checking), plus one new regression test locking in P4's draft-mode
+behavior (`test_draft_mode_never_runs_dilmore_or_mutates_anything`). Full
+suite — 108 tests total this round (`test_adjustment_grid.py` +
+`test_land_adjustment_grid.py` + `test_validation.py` + `test_torture.py`
+= 85; the remaining ~23 across `test_artifact_harvest.py`,
+`test_comp_pipeline.py`, `test_docx_golden.py`,
+`test_financial_harvest.py`, `test_historical_harvest.py`,
+`test_narrative_data_guard.py`, `test_observation_harvest.py`, run in
+smaller batches/with `-k` filters to fit this sandbox's per-command time
+limit, especially `test_financial_harvest.py`'s real-Tesseract OCR tests)
+— plus `python axiom.py contract` (v1.2.0, 220 fields, 24 blocks) both
+green before commit.
+
+**Round 4 (Fable review only — NOT YET ACTED ON).** Spawned a fourth
+Fable review against commit `4db2456` to verify rounds 1-3's fixes hold
+and look for anything new. It independently re-verified all four P1-P4
+fixes via its own repro scripts (not just reading the diff) and confirmed
+they work as intended — nothing found that silently corrupts a *delivered*
+report under default, unmodified-template use. It did find nine further
+issues (Q1-Q9), none urgent:
+- **Q2 (medium):** the P1 stale-cache marker tracks "the file was saved,"
+  not "Excel recalculated," and is platform-defeatable: `comp_review.py`'s
+  own workbook export (`comp_library.export_sale_comps_to_workbook`)
+  resaves the assignment workbook — wiping the formula cache exactly like
+  a real Dilmore write does — but doesn't set the new stale flag, since
+  only `_run_dilmore_calc`'s save does. That path silently clears (never
+  even sets) staleness detection.
+- **Q6 (medium):** Dilmore writes to hardcoded columns (3/11/12 on
+  `sca_adjustment_grid`), but `read_grid_rows` is header-driven and
+  adapts to hand-inserted columns by design (per `adjustment_grid.py`'s
+  own docstring). Insert one column before "Size Factor" and Dilmore
+  silently writes adjustment numbers into whatever now occupies those
+  column indices, reporting success with no error, and the delivered
+  report renders the garbage.
+- **Q7 (medium-low):** a comp GBA entered as an Excel formula reads
+  differently in Dilmore's calc (raw formula string, silently skipped,
+  loaded without `data_only`) vs. the staleness check/report reader
+  (cached value, `data_only=True`) — produces a permanent "runs
+  automatically on delivery" warning while the report ships with that
+  comp's Size Factor/Adj % blank or stale.
+- **Q1 (low-medium):** P2's fix only catches a *blank* corrupted anchor
+  on the last comp; a typo (`"Sale No 2"`) or stray whitespace (`" "`)
+  still silently drops that comp. Whitespace-only is the cheapest partial
+  fix (`str.strip()` before the blank check).
+- **Q3 (low-medium, environment-specific):** given the documented
+  OneDrive-mount stale-stat-cache issue (see "Known limitations" below),
+  running `validate`/`deliver` from a different environment than the one
+  that recalculated/saved could reintroduce P1's exact symptom via a
+  stale-cached mtime reading as still-equal.
+- **Q4 (low):** draft mode still overwrites `last_delivery_error`,
+  erasing a prior real delivery's "press F9 and recalculate" guidance
+  message (P1's primary user-facing instruction) even though it correctly
+  leaves `formula_cache_stale` itself untouched.
+- **Q5 (low-medium, product call):** draft mode silently skips Dilmore
+  with no document-visible warning when a real adjustment is actually
+  pending — only a generic console line that prints on every draft
+  regardless of whether anything is actually stale.
+- **Q8 (low):** the stale flag is never cleared after a successful
+  recalc+deliver (harmless to the mtime guard itself, but could mislead a
+  future feature reading that key naively); `.axiom.json` writes are
+  non-atomic, so a hand-edit interrupted mid-write silently fail-opens the
+  guard.
+- **Q9:** several checked-and-fine edge cases, not issues — see the full
+  agent report in this session's transcript if needed.
+
+Derek's call after seeing this list: **"stop here for now while we wait
+for a usage reset."** Q1-Q9 are backlog, not scheduled. If picking this up:
+ask Derek which of Q1-Q9 he wants fixed before touching anything (he was
+mid-decision when this session ended) — don't assume "fix everything" or
+"fix nothing" from this note alone.
 
 ## Completed this session (Claude, 2026-07-08)
 
@@ -945,30 +1105,44 @@ calls about business logic rather than obvious bugs. His answers:
 
 ## In progress
 
-- None — the stress-test pass and its immediate follow-up are both complete
-  for this session. The remaining flagged findings (OCR skew/watermark
-  routing, symlink folder-boundary escape, legacy-schema migration crash
-  risk, and the rest) are backlog, not in-progress work.
+- **Phase 6 hardening round 4's findings (Q1-Q9, see above) are triaged but
+  not fixed.** Derek asked to pause here pending a usage-limit reset and
+  has not yet said which (if any) of Q1-Q9 to act on. This is the actual
+  in-progress item for the next session — don't start fixing any of them
+  without asking him first.
+- The stress-test pass on the OCR/ingest side (2026-07-09) and its
+  immediate follow-up are complete. The remaining flagged findings from
+  that pass (OCR skew/watermark routing, symlink folder-boundary escape,
+  legacy-schema migration crash risk, and the rest) are backlog, not
+  in-progress work, same as before.
 
 ## Exact next step
 
-1. Review the latest five staged copied-archive batches before any real
-   database commit (unchanged from before this session — still Derek's own
-   task, not something delegated to an agent). They include OCR-derived
-   operating expenses and OCR page-limit warnings, so confirm whether the
-   first 6 pages are enough for each long statement or whether a deeper
-   manual rerun is needed. Note: these five batches were staged before the
-   rent-roll identity fix above, so their baked-in identity keys use the
-   old (amount-excluding) formula — harmless for a first commit, but a
+1. **Ask Derek which of round 4's Q1-Q9 findings to fix** (see "Completed
+   this session (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)"
+   above for the full list and severities). Q2 and Q6 are the two he'd
+   most likely want prioritized (both are silent-wrong-data paths, just
+   requiring unusual-but-plausible triggers) but he hadn't decided when
+   this session ended. If he says fix some/all: fix, run the full suite +
+   `axiom.py contract`, commit, then spawn a round-5 Fable review to
+   confirm clean — same cycle rounds 1-4 followed.
+2. Review the latest five staged copied-archive batches before any real
+   database commit (unchanged from before — still Derek's own task, not
+   something delegated to an agent). They include OCR-derived operating
+   expenses and OCR page-limit warnings, so confirm whether the first 6
+   pages are enough for each long statement or whether a deeper manual
+   rerun is needed. Note: these five batches were staged before the
+   rent-roll identity fix (2026-07-09), so their baked-in identity keys use
+   the old (amount-excluding) formula — harmless for a first commit, but a
    re-extraction would be needed to get the new formula's protection for
    any of those specific rows.
-2. If Derek wants to keep hardening the OCR lane further: terminal
+3. If Derek wants to keep hardening the OCR lane further: terminal
    `review_staged` still lacks true per-record keep/skip for rent-roll/
    expense rows (native or OCR) — a pre-existing gap noted since the OCR
    lane first shipped, not newly introduced, and still not fixed. The OCR
    skew/watermark routing gaps and the symlink folder-boundary escape from
    the stress test are also still open, lower-priority backlog items.
-3. Otherwise, the next real milestone is importing Derek's actual historical
+4. Otherwise, the next real milestone is importing Derek's actual historical
    comp archive now that the identity-backfill migration is in place —
    `axiom.py comp-ingest` against the real archive root, review, then
    `comp-commit` into the real `axiom.db` (not a temporary one).
@@ -1018,6 +1192,25 @@ calls about business logic rather than obvious bugs. His answers:
 - Do not live-test Adobe Sign, Xero, or Anthropic without explicit approval and
   local credentials.
 
+## Changed files this session (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)
+
+Across `9d198a5`, `9026f2e`, and `4db2456` combined:
+
+- `adjustment_grid.py` — round 1/2/3 fixes to `read_grid_rows`'s orphan-scan
+  (culminating in P2's last-comp-own-anchor fix).
+- `axiom.py` — round 1/2/3 fixes across `_run_dilmore_calc`,
+  `_dilmore_staleness_warnings`, and `cmd_deliver` (culminating in P1's
+  state-write, P3's anchor-checked scan, and P4's draft-mode guard).
+- `validation.py` — round 3's `_dilmore_cache_still_stale()` replacing the
+  round-1/2 blank-cell heuristic entirely (P1).
+- `tests/test_adjustment_grid.py`, `tests/test_validation.py`,
+  `tests/test_torture.py` — regression tests for every round's fixes.
+- `HANDOFF.md`, `PROJECT_STATE.md` — this update.
+
+Round 4 was review-only (a spawned Fable agent, no repo changes) — see
+"Completed this session (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)"
+above for its Q1-Q9 findings, not yet acted on.
+
 ## Changed files this session (Claude, 2026-07-08)
 
 Both commits described above (`af29fb2` and the same-day follow-up) together
@@ -1043,4 +1236,128 @@ touch:
 - `extractor.py` — `scan_assignment_folder` now recursively routes strictly
   named financial PDFs found in subfolders (e.g. "Information Provided") into
   the financial parser instead of only indexing them as artifacts. This file
-  was omitted from this list in an earlier dra
+  was omitted from this list in an earlier draft of this handoff; caught
+  during a same-day review pass.
+- `.gitignore` — ignores `.local/` for local OCR model data, plus `*.bak` and
+  a bare `node_modules` line added in this same review pass (see "Known
+  limitations").
+- `docs/OCR_LANE_DESIGN.md` — documents the auto-detection paths.
+- `PROJECT_STATE.md`, `HANDOFF.md` — updated verified OCR install/test state.
+- `tests/test_financial_harvest.py` — adds OCR orientation-scoring coverage,
+  nested-financial-PDF-routing coverage, and statement-expense-fallback
+  coverage.
+- `comparable_contract.py` — normalizes placeholder date values to blank.
+- `tests/test_comp_pipeline.py` — adds placeholder lease-expiration coverage.
+
+## Changed files this session (Claude, hardening pass — 2026-07-08)
+
+- `harvest_contract.py` — new `enforce_ocr_low_confidence()`.
+- `pdf_financial_extractor.py` — `_ocr_pages_dir()` env-var override,
+  `prune_ocr_pages()`, `_finalize_rent_roll_row()` (shared native/OCR
+  rent-roll row logic), `_financial_structure_signals()`/
+  `_page_has_financial_structure()`, orientation re-detect trigger fix, and
+  centralized-confidence call sites replacing three ad hoc `force_low`
+  checks.
+- `extractor.py` — `_nested_financial_pdf_warnings()`, wired into
+  `scan_assignment_folder`/`extract_assignment`.
+- `db.py` — `backfill_legacy_identities()`, wired into `init_db()`.
+- `axiom.py` — new `ocr-cleanup` command.
+- `tests/test_financial_harvest.py` — 4 new tests (nested-PDF duplicate
+  warning, no-warning-for-single-PDF, OCR-pages-dir env override, OCR page
+  pruning).
+- `tests/test_comp_pipeline.py` — 1 new test (legacy comp-row identity
+  backfill matches a fresh import's identity).
+
+## Changed files this session (Claude, stress-test hardening — 2026-07-09)
+
+- `fill_engine.py` — `_XML_ILLEGAL_CHARS` regex and
+  `_reject_illegal_xml_value()`, wired into `_replace_in_paragraph`.
+- `financial_extractor.py` — `_number()` rejects non-finite
+  (`nan`/`inf`/`Infinity`) results via `math.isfinite()`.
+- `harvest_contract.py` — same `_number()` non-finite rejection.
+- `ingest.py` — `review_staged()` and `commit_confirmed()` catch and skip
+  unreadable/non-object JSON files instead of crashing the whole run;
+  `commit_extraction_result()` validates list-shaped fields before
+  `canonicalize_extraction_result()` touches them.
+- `HANDOFF.md` — this session's summary and escalation list.
+
+## Known limitations
+
+- Two stray files at the platform root — `zzz_discard_me.bak` (a stale
+  truncated copy of `pdf_financial_extractor.py`, harmless) and
+  `node_modules` (a broken/dangling symlink) — could not be deleted from
+  this sandbox: both `rm` and `mv` fail with "Operation not permitted" (the
+  same unlink restriction documented elsewhere for `.git` lock files, just
+  worse here since it blocks deletion entirely, not just lock cleanup).
+  Added `*.bak` and a bare `node_modules` line to `.gitignore` so neither can
+  be accidentally committed via `git add -A` in the meantime, but someone
+  with normal OS-level file access (not this sandbox) should delete both by
+  hand when convenient.
+- **New this session, same root cause:** running the live-Tesseract OCR
+  tests in this sandbox to verify the hardening pass wrote 31 synthetic
+  fixture page images (fictional test PDFs, not real assignment data) into
+  the real `ingest/staged/ocr_pages/` folder, because those tests use the
+  default `OCR_PAGES_DIR` rather than a redirected test tempdir. They could
+  not be deleted from this sandbox for the same "Operation not permitted"
+  reason as the two files above — confirmed the restriction applies to
+  arbitrary files on this mount, not just git-internal ones. They're
+  harmless (gitignored, no real data, don't affect any staged batch's
+  correctness) but add clutter; delete manually from
+  `ingest/staged/ocr_pages/` when convenient, or run `python axiom.py
+  ocr-cleanup` (added this session) from Derek's own machine where file
+  deletion isn't restricted, which will safely remove them along with any
+  other genuinely orphaned page images.
+
+- **This sandbox's bash tool mounts this OneDrive-synced folder in a way
+  that can lag behind edits made through the file-editing tool** — it can
+  take a snapshot-like view rather than a live sync within a session. This
+  was worked around successfully both times this session (once for the
+  original OCR-lane commit, once for the follow-up): after editing via the
+  file-editing tool and confirming correctness by re-reading, the same
+  content was pushed into bash's view via bash-native writes (`cp` from a
+  verified copy, or a heredoc write) before running tests — bash-native
+  writes to this mount are immediately self-consistent, unlike edits made
+  through the file-editing tool. Both times, the full suite was then run
+  live in this checkout and confirmed passing (71/71, then 73/73) before
+  committing — this is no longer an open verification gap, just a technique
+  worth knowing about for the next session's own edit/test cycles.
+- This same mount also does not let git commands unlink their own lock/temp
+  files after normal use (`.git/index.lock`, `.git/HEAD.lock`,
+  `.git/objects/**/tmp_obj_*` all warn "Operation not permitted" on cleanup,
+  even on a successful command). `mv` (not `rm`) clears a stale lock before
+  the next git command; the warnings themselves don't indicate corruption.
+  **This got worse, not just noisier, while committing `6ad25af`:** the same
+  restriction let a stale `.git/index.lock` get renamed over the real
+  `.git/index` on write, corrupting it (`bad signature 0x00000000`), and
+  separately left `HEAD` unmoved after a real commit object was already
+  created. Both were recoverable without touching any working-tree file —
+  `git read-tree HEAD` rebuilds a valid index from the last good commit
+  (safe: it only touches the index, never the working tree), and a commit
+  that exists as an object but didn't move `HEAD` can be recovered with
+  `git update-ref refs/heads/main <hash>` after confirming via `git cat-file
+  -p <hash>` that its tree/parent/message are the intended ones. This
+  produced one confirmed-harmless duplicate dangling commit (identical tree
+  to `dde13b8`, an earlier failed attempt at the same commit, 17 seconds
+  older) sitting in the object database; `git gc` will eventually reap it.
+  Moral for next time: do every index-modifying git command in its own bash
+  call (not chained with others) and verify `git cat-file -p HEAD` names the
+  right commit before trusting a "success" exit code on this mount.
+- Plain `python` is not on PATH in the current Codex environment. The bundled
+  Python runtime was used for checks.
+- Tesseract is installed and synthetic OCR tests now run. Live archive
+  extraction has been tested against an image-only rendering of Derek's
+  supplied rent roll and proforma, but a naturally image-only scanned rent
+  roll or P&L has not yet produced staged financial rows through full
+  staging/review in this checkout. The naturally image-only JeffCo income
+  statement OCRed clearly enough but did not match current expense-section
+  parsing rules.
+- DOCX media layout has structural test coverage but still needs visual QA with
+  representative landscape and portrait photos.
+- Streamlit comparable review/browse behavior has service-level coverage but
+  still needs an interactive browser pass.
+- Missing/error Excel caches are detectable. A valid-looking but stale cached
+  value cannot be proven stale from XLSX alone without an Excel-side
+  calculation stamp or automation.
+- The existing parent-folder `PROJECT_STATE.md` is historical and contains
+  stale claims. This file and the project-root `PROJECT_STATE.md` are the
+  canonical handoff documents going forward.

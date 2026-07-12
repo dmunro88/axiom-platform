@@ -1,8 +1,16 @@
 # Axiom Platform — Project State
 
-- Last verified: 2026-07-10
+- Last verified: 2026-07-11
 - Status: Functional prototype in active local use; production safeguards and
   repeatable tests are incomplete.
+- **Handing off to Codex as of 2026-07-11.** Phase 6 (Adjustment Grid)
+  shipped complete 2026-07-10 and has since been through four rounds of
+  Fable-model adversarial review; rounds 1-3 found real bugs and are fixed
+  and committed (`9d198a5`, `9026f2e`, `4db2456`). Round 4 found nine more
+  issues (Q1-Q9, medium/low severity) that Derek has **not yet decided**
+  whether to fix — see `HANDOFF.md`'s "Completed this session (Claude,
+  Phase 6 hardening rounds 1-4 — 2026-07-11)" for the full list before
+  touching any Dilmore/adjustment-grid code.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.
@@ -91,7 +99,10 @@ Checks were performed without regenerating or modifying assignment outputs.
   step 2); to 119 (non-OCR) same day with 16 new `test_adjustment_grid.py`
   tests (Phase 6 steps 5-6 — see below). OCR suite is a further 9 tests,
   run separately since together they exceed this sandbox's per-command
-  time limit.
+  time limit. Grew again across the 2026-07-11 Phase 6 hardening rounds
+  (regression tests for findings A1-A5, N1, and P1-P4) to **146 tests
+  total** (`pytest --collect-only`, confirmed live), all passing — run in
+  per-file/per-`-k`-filter batches in this checkout, same reason as above.
 - **Phase 6 Adjustment Grid, complete (2026-07-10):** `size_adj` was
   replaced by `sca_adjustment_grid` (full sales-comparison net-adjustment
   grid, one time-adjustment checkpoint then summed category adjustments —
@@ -119,6 +130,26 @@ Checks were performed without regenerating or modifying assignment outputs.
   found while running the full suite: the Intake sheet's `REPORT_TYPE` row
   was merged across all 4 columns like a section header, so it had no
   actual cell to type a value into.
+- **Phase 6 hardening, rounds 1-3 complete (2026-07-11), round 4 pending
+  triage.** An iterative Fable-model adversarial-review cycle (spawn a
+  review agent, fix real findings, re-spawn to verify, repeat) against
+  Phase 6 found and fixed real bugs across three rounds: round 1
+  (`9d198a5`, findings A1-A5), round 2 (`9026f2e`, finding N1 plus
+  residual gaps in round 1's A1/A3/A5 fixes), round 3 (`4db2456`,
+  findings P1-P4 — a false-positive stale-formula-cache deadlock that
+  could permanently block valid deliveries, a last-comp orphan-anchor gap
+  that could silently drop a comp from a delivered report, a Dilmore/
+  report-reader row-scan disagreement, and a `--draft` mode side effect
+  that could mutate the workbook/delivery state despite promising not
+  to). A fourth review round (2026-07-11, review-only, no code changes)
+  independently re-verified all of rounds 1-3's fixes hold via its own
+  repro scripts and found nine further issues (Q1-Q9, all medium/low
+  severity — none corrupting a delivered report under default,
+  unmodified-template use). **Derek has not yet decided which of Q1-Q9 to
+  fix** ("stop here for now while we wait for a usage reset") — see
+  `HANDOFF.md` for the full list, severities, and repro details before
+  touching `adjustment_grid.py`, the Dilmore paths in `axiom.py`, or
+  `validation.py`'s `_dilmore_cache_still_stale`.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -409,47 +440,4 @@ Checks were performed without regenerating or modifying assignment outputs.
 1. **Completed:** introduce a versioned field registry/schema independent of
    Word templates.
 2. **Completed for six deterministic variants:** derive presentation variants
-   rather than entering duplicate facts. Semantically distinct short/full
-   labels remain explicit.
-3. **Completed for canonical Intake drift and missing/error caches:** detect
-   stale JSON and scope cache checks to active workbook-owned report fields.
-   Valid-but-stale cache proof still requires an Excel-side calculation stamp.
-4. **Completed for new assignments and delivery attempts:** record template,
-   schema, and application versions per assignment.
-
-### P1 — Comparable intelligence
-
-1. **Completed:** define canonical sale/lease record contract, provenance,
-   review status, identity, and database idempotency.
-2. **Completed:** verify fictional extract → stage → review → commit → search →
-   CSV/workbook export.
-3. **Completed:** extend provenance/review to assignment conclusions and
-   compact income snapshots.
-4. **Completed:** extend the model to row-level rent rolls, specialty Excel
-   rent-roll layouts, native PDF rent-roll tables, native text-position PDF
-   expenses, normalized operating expenses, and basic wide multi-year
-   operating statements.
-5. **Completed:** extend the model to bounded reusable market observations.
-6. **Completed:** extend the model to external and Office-embedded charts,
-   maps, photos, sketches, and archived exhibits.
-7. **Completed:** add database migrations/backfills for any legacy local
-   comp rows before importing a real historical archive
-   (`backfill_legacy_identities` in `db.py`, run automatically by
-   `init_db()`).
-
-### P2 — Integrations
-
-Live-test Adobe Sign and Xero only after the core workflow has delivery
-integrity. External actions must be idempotent and retain provider IDs,
-timestamps, and failure states.
-
-## Known external blockers
-
-- Adobe Sign requires a usable API application and local credentials.
-- Xero requires a configured custom connection and local credentials.
-- AI narrative generation requires the Anthropic package, network access, and
-  `ANTHROPIC_API_KEY` — confirmed working end to end on 2026-07-10 (see
-  "Verified baseline" above). Note: this cloud sandbox's own network routes
-  through an intercepting proxy that blocks/misrepresents calls to
-  `api.anthropic.com`, so live AI narrative testing must happen on Derek's
-  own machine, not in this sandbox.
+   rather than entering duplicate facts. Semantically distinct s
