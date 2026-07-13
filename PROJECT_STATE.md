@@ -52,6 +52,16 @@
   No copied archive, test, or build data was committed into the real database.
   The next database step is to ingest/review/commit actual selected records,
   not to create the database file.
+- **Track 2 UI/UX consolidation started 2026-07-13:** `axiom_ui.py` is now a
+  single Streamlit workbench with Dashboard, Assignment Workflow, Comp Library,
+  Search, and System views. It surfaces `validate`, `contract`, dashboard
+  generation, reviewed comp/financial/observation/artifact search, database
+  counts, staged/confirmed counts, assignment file actions, draft delivery,
+  and the existing comp-library review/browse module. `start_axiom_ui.bat`
+  now installs from `requirements.txt` so the launcher matches the verified
+  dependency manifest. Syntax and contract checks pass; live browser QA is
+  still pending because the bundled Codex Python used here does not have
+  Streamlit installed.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.
@@ -84,7 +94,8 @@ the signed deliverable.
    - `comp_builder.py`: comparable-sale page injection
    - `narrative_generator.py`: Anthropic-backed narrative drafting
    - `db.py`, `extractor.py`, `ingest.py`: comp extraction/review/database
-   - `axiom_ui.py`, `comp_review.py`: Streamlit interfaces
+   - `axiom_ui.py`: Streamlit v1 workbench shell
+   - `comp_review.py`: comp-library extract/review/database/browse module
 5. Local integrations
    - `adobe_sign.py`: Acrobat Sign OAuth client
    - `xero_client.py`: Xero custom-connection client

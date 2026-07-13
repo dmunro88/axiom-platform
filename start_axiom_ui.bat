@@ -4,7 +4,7 @@ echo Starting Axiom Command Center...
 echo (First run installs a few packages -- this can take a minute.)
 echo.
 
-python -m pip install --quiet streamlit python-docx openpyxl requests
+python -m pip install --quiet -r requirements.txt
 
 if errorlevel 1 (
     echo.

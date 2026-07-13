@@ -36,6 +36,18 @@
   all application tables have 0 rows, `source_artifacts` includes
   `comp_id`/`lease_comp_id`, and `axiom.py comp-search --city Demo` returns
   0 reviewed sale comps. No staged archive data was committed.
+- **Track 2 UI/UX consolidation started (2026-07-13).** Replaced the old
+  single long `axiom_ui.py` page with a five-view Streamlit workbench:
+  Dashboard, Assignment Workflow, Comp Library, Search, and System. The new
+  shell keeps commands backed by `axiom.py`, adds visible access to
+  `validate`, draft delivery, `contract`, dashboard generation, database
+  counts, reviewed comp/financial/observation/artifact searches, and keeps
+  the existing `comp_review.py` module as the Comp Library page. Also updated
+  `start_axiom_ui.bat` to install from `requirements.txt` instead of an old
+  partial package list. Verified with bundled Python `py_compile` for
+  `axiom_ui.py`/`comp_review.py`, `axiom.py contract`, and `git diff --check`.
+  Live Streamlit/browser QA is pending because the bundled Codex Python used
+  in this session does not have Streamlit installed.
 - **This session (2026-07-13) found and fixed a real defect that had been
   sitting undetected in git history since 2026-07-09/07-10: `ingest.py` and
   `narrative_generator.py` (plus `.gitignore`, this file, `PROJECT_STATE.md`,
@@ -302,6 +314,10 @@ do this read-only, not yet done.
 
 **Track 2 — UI/UX consolidation (agreed direction, sequenced after Track 1
 has something real to show).**
+Codex has started this: `axiom_ui.py` is now a multipage Streamlit workbench
+instead of a single assignment list with the comp library appended below it.
+Still pending: live browser QA, interaction pass, and any visual polish after
+seeing it run with real Streamlit.
 Two Streamlit apps already exist and shouldn't be rebuilt from scratch:
 `axiom_ui.py` ("Command Center" — wraps `cmd_new`/`cmd_engage`/
 `cmd_deliver`/`cmd_dilmore`) and `comp_review.py` (staged review + comp
@@ -1494,7 +1510,9 @@ calls about business logic rather than obvious bugs. His answers:
 ## Exact next step
 
 Current next step after Codex's manual-photo and schema-only DB construction:
-review the latest sale/lease rows in
+run the Streamlit workbench with the real Python environment (`start_axiom_ui.bat`)
+and do a browser QA pass through Dashboard, Assignment Workflow, Comp Library,
+Search, and System. After that, review the latest sale/lease rows in
 `scratch/staged_comp_review/latest_sale_lease_comp_review.csv`. After review,
 either use the Streamlit Review tab or selectively move/confirm only the
 latest staged JSON files named in the packet summary before running

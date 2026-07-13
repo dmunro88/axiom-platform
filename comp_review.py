@@ -580,7 +580,7 @@ def _render_photo_attachment(kind, df):
 
 
 def render_comp_library():
-    st.subheader("📚 Comp Library")
+    st.subheader("Comp Library")
     st.caption("Pull comp data out of old reports and build a searchable database over time.")
 
     tabs = st.tabs(["1. Extract", "2. Review", "3. Database", "4. Browse"])
