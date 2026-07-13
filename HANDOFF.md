@@ -15,8 +15,7 @@
   `unittest tests.test_artifact_harvest tests.test_comp_pipeline` (17 tests),
   and `axiom.py contract` (v1.2.0/220/24). `pytest` was not available in the
   bundled Python environment, so the affected test modules were run through
-  `unittest` instead. The real `axiom.db` still does not exist here and no
-  real archive ingest was run.
+  `unittest` instead.
 - **Codex next-step progress (2026-07-13): copied-archive staging was rerun
   with current code and a review packet was generated.** `axiom.py
   comp-ingest scratch\historical_ingest_test_2` completed for five copied
@@ -29,8 +28,14 @@
   The current packet has 6 latest staged batches and 95 sale/lease rows
   (57 sale, 38 lease) with zero hard comparable validation errors. Older
   duplicate staged JSON files still exist in `ingest/staged`; the packet
-  names the exact latest files to use. The real `axiom.db` still does not
-  exist, and no `review-staged`/`comp-commit` was run.
+  names the exact latest files to use. No `review-staged`/`comp-commit` was
+  run.
+- **Real local database constructed schema-only (2026-07-13).** Per Derek's
+  direction not to use copied/test/build data for the real database, Codex ran
+  `db.py` and initialized `axiom.db` with the current schema only. Verified
+  all application tables have 0 rows, `source_artifacts` includes
+  `comp_id`/`lease_comp_id`, and `axiom.py comp-search --city Demo` returns
+  0 reviewed sale comps. No staged archive data was committed.
 - **This session (2026-07-13) found and fixed a real defect that had been
   sitting undetected in git history since 2026-07-09/07-10: `ingest.py` and
   `narrative_generator.py` (plus `.gitignore`, this file, `PROJECT_STATE.md`,
@@ -236,13 +241,12 @@
 
 ## Current objective
 
-Update from Codex, 2026-07-13: Track 1 items 2-4 below are now built. The
-remaining Track 1 operational step is still item 1: run real comp
-ingest/review/commit against Derek's historical archive so the local
-`axiom.db` actually has sale/lease comps to browse and attach photos to.
-The copied-archive staged queue has also been refreshed with current code and
-summarized in `scratch/staged_comp_review/latest_sale_lease_comp_review.csv`;
-this is review prep only, not a database commit.
+Update from Codex, 2026-07-13: Track 1 items 2-4 below are now built, and the
+real local `axiom.db` now exists as a schema-only database with zero rows. Per
+Derek's direction, copied/test/build data was not committed to it. The copied
+archive staged queue has also been refreshed with current code and summarized
+in `scratch/staged_comp_review/latest_sale_lease_comp_review.csv`; this is
+review prep only, not a database commit.
 
 The OCR lane, Phase 6 (Adjustment Grid, all four hardening rounds), and
 Phase 7 (AI narrative drafting) are all complete and live-tested. Two new
@@ -252,14 +256,16 @@ in this order:
 
 **Track 1 — Comp database: real data + visual reference (agreed priority,
 start here).**
-1. The real local comp database (`axiom.db`) doesn't exist on this machine
-   yet — every comp-ingest run so far (Codex, 2026-07-09) only went into a
-   *temporary* database for verification. Despite Phase 12/5.5 being fully
-   built, zero real comp rows exist locally. Run `comp-ingest` ->
-   `review-staged` -> `comp-commit` for real against Derek's actual
-   historical archive. Suggest starting with the highest-value subset
-   (sale/lease comps) rather than reviewing everything (rent-roll/expense
-   volume is large — one 5-folder batch alone produced 962 rent-roll rows).
+Current status: the database file has now been constructed empty; copied
+archive data remains staged/review-packet-only and has not been committed.
+1. The real local comp database (`axiom.db`) now exists as an empty
+   schema-only database. Every comp-ingest run so far has either gone into
+   temporary databases or stopped at staged review files; zero real comp rows
+   have been committed locally. The next data step is selective review and
+   commit of actual historical records. Suggest starting with the highest-
+   value subset (sale/lease comps) rather than reviewing everything
+   (rent-roll/expense volume is large — one 5-folder batch alone produced
+   962 rent-roll rows).
 2. Add nullable `comp_id`/`lease_comp_id` link columns to the existing
    `source_artifacts` table (small additive migration, same pattern as
    `MIGRATION_COLUMNS` elsewhere in `db.py`). Confirmed by reading
@@ -1487,8 +1493,8 @@ calls about business logic rather than obvious bugs. His answers:
 
 ## Exact next step
 
-Current next step after Codex's manual-photo work: commit this coherent change
-set if Derek wants it kept, then review the latest sale/lease rows in
+Current next step after Codex's manual-photo and schema-only DB construction:
+review the latest sale/lease rows in
 `scratch/staged_comp_review/latest_sale_lease_comp_review.csv`. After review,
 either use the Streamlit Review tab or selectively move/confirm only the
 latest staged JSON files named in the packet summary before running

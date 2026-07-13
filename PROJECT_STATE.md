@@ -38,9 +38,7 @@
   direct manual comp-photo attachments, and `comp_review.py`'s Browse tab can
   attach JPG/PNG photos to a selected sale or lease comp and show thumbnails
   for comps with attached photos. Uploaded images are copied under ignored
-  local storage (`.local/comp_media`). This does not populate the real
-  `axiom.db`; real archive ingest/review/commit is still the next operational
-  step.
+  local storage (`.local/comp_media`).
 - **Current-code staging pass completed 2026-07-13 against the copied archive
   folders in `scratch/`:** six latest staged batches now exist for review,
   with 95 sale/lease rows total (57 sale comps, 38 lease comps) and zero hard
@@ -48,6 +46,12 @@
   writes `scratch/staged_comp_review/latest_sale_lease_comp_review.csv` and
   `.md` from the newest staged batch per assignment without confirming records,
   moving staged files, or writing `axiom.db`.
+- **The real local `axiom.db` was initialized schema-only on 2026-07-13.**
+  It contains all current tables/migrations, including `source_artifacts`
+  `comp_id`/`lease_comp_id`, and has zero rows in every application table.
+  No copied archive, test, or build data was committed into the real database.
+  The next database step is to ingest/review/commit actual selected records,
+  not to create the database file.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.
