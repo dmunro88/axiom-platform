@@ -21,6 +21,23 @@
   `ANTHROPIC_API_KEY` (not set in this environment) to be classified as
   resolved at all — not just to produce real prose. Full suite: 164 passed
   (up from 155), contract clean at v1.2.0/220/24.
+- **Calculation-engine rebuild, Phase 1 (Sales Comparison Approach) merged
+  to `main` 2026-07-13** as commit `1b5ea55`. `sca_engine.py` is a new,
+  pure-function module (no I/O) implementing the Appraisal Institute's
+  documented sequence-of-adjustments methodology: transactional adjustments
+  (property rights, financing, conditions of sale, expenditures,
+  market conditions) compound sequentially in a fixed order; property
+  adjustments (location, physical, economic, use, non-realty) sum
+  independently against the fixed post-transactional base. Also provides
+  sample statistics, CV-based unit-of-comparison selection,
+  gross-adjustment-percentage ranking for reconciliation support, and an
+  inbreeding-of-data guardrail — no function selects a final concluded
+  value, by design. 35 tests in `tests/test_sca_engine.py`, 13 of them
+  transcribed from and verified against the actual Appraisal Institute
+  course textbook/solutions booklet. **This module is not yet wired into
+  `axiom.py`/`fill_engine`/the field registry and does not yet retire any
+  of Excel's staleness-tracking machinery** — it exists standalone,
+  verified by `pytest` alone. See `HANDOFF.md` for the full account.
 - **Per Derek's explicit direction, Excel is no longer considered the right
   long-term calculation engine for this platform.** The rest of the stack
   (comps, financials, observations) already runs on SQLite + Python +

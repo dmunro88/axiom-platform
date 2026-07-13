@@ -2,6 +2,27 @@
 
 - Last updated: 2026-07-13
 - Current agent: Claude
+- **Calculation-engine rebuild, Phase 1 (SCA) merged to `main` — 2026-07-13.**
+  Following the decision above to replace Excel as the calculation engine,
+  the Sales Comparison Approach plan was refined via a remote Ultraplan
+  session and delivered as a git bundle (`sca_engine.py` + initial
+  `tests/test_sca_engine.py`, 22 tests, self-disclosed as hand-constructed
+  fixtures since that environment had no access to the source textbook
+  PDFs). Reviewed in an isolated worktree (all 22 passed; math hand-verified
+  against the plan's sequence-of-adjustments rule) before touching `main`.
+  Added 13 more tests transcribed from and verified against the actual
+  Appraisal Institute textbook/solutions booklet (3.2 Example, the Part 16
+  apartment and Part 17 office/retail case studies, two Part 2 statistics
+  problems, Diagnostic Quiz Q8, Part 11.1's inbreeding citation) — every
+  expected value independently recomputed in Python before being hardcoded,
+  not transcribed by eye. Merged as `1b5ea55` (`--no-ff`, 35 tests total).
+  Full suite 199 passed, `axiom.py contract` clean at v1.2.0/220/24.
+  **Not yet wired into `axiom.py`/`fill_engine`/the field registry, and does
+  not retire Excel's staleness-tracking machinery** — `sca_engine.py` is
+  pure functions, no I/O, decoupled from the workbook/DB/pipeline by design;
+  that integration is explicitly deferred to a later phase (see the plan
+  file referenced above, "Deferred to a later phase" section). Not yet
+  pushed to `origin` — ask Derek before pushing.
 - **Claude, live-fire test + Excel-COM findings — 2026-07-13.** Derek asked
   for the quickest path to a genuinely operational platform; agreed plan was
   a full live-fire pipeline test against a new, conspicuously fictional
