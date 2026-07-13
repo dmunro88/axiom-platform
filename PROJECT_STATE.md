@@ -63,10 +63,11 @@
   still pending because the bundled Codex Python used here does not have
   Streamlit installed.
 - **Manual comp entry was added to the Comp Library UI on 2026-07-13.**
-  `comp_review.py` now has a Manual Entry tab for sale and lease comps, and
-  `db.py` inserts those typed-in records through the same normalization,
-  validation, confirmed-review status, identity key, duplicate detection, and
-  reviewed search path used by extracted historical comps.
+  `axiom_ui.py` exposes it as a top-level Manual Comp Entry view, Comp Library
+  also keeps it as the first tab, and `db.py` inserts those typed-in records
+  through the same normalization, validation, confirmed-review status,
+  identity key, duplicate detection, and reviewed search path used by
+  extracted historical comps.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.

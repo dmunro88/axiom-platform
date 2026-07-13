@@ -330,6 +330,12 @@ def _render_manual_entry():
                 st.info(f"Matching {label} comp already exists as #{result['id']}.")
 
 
+def render_manual_comp_entry():
+    st.subheader("Manual Comp Entry")
+    st.caption("Create sale and lease comps directly in the reviewed comp database.")
+    _render_manual_entry()
+
+
 def _staged_files():
     return sorted(STAGED_DIR.glob("*.json"))
 
@@ -774,7 +780,7 @@ def render_comp_library():
     ])
 
     with tabs[0]:
-        _render_manual_entry()
+        render_manual_comp_entry()
 
     # ── Tab 1: Extract ──────────────────────────────────────────────────────
     with tabs[1]:

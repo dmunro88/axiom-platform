@@ -29,7 +29,12 @@ from axiom import (
     _load_state,
     check_delivery_readiness,
 )
-from comp_review import CONFIRMED_DIR, STAGED_DIR, render_comp_library
+from comp_review import (
+    CONFIRMED_DIR,
+    STAGED_DIR,
+    render_comp_library,
+    render_manual_comp_entry,
+)
 from db import (
     DB_PATH,
     init_db,
@@ -500,7 +505,14 @@ def main():
     st.title("Axiom")
     page = st.sidebar.radio(
         "View",
-        ["Dashboard", "Assignment Workflow", "Comp Library", "Search", "System"],
+        [
+            "Dashboard",
+            "Assignment Workflow",
+            "Manual Comp Entry",
+            "Comp Library",
+            "Search",
+            "System",
+        ],
     )
     st.sidebar.markdown(f"`{BASE_DIR}`")
 
@@ -508,6 +520,8 @@ def main():
         render_dashboard()
     elif page == "Assignment Workflow":
         render_workflow()
+    elif page == "Manual Comp Entry":
+        render_manual_comp_entry()
     elif page == "Comp Library":
         render_comp_library()
     elif page == "Search":

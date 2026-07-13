@@ -48,8 +48,9 @@
   `axiom_ui.py`/`comp_review.py`, `axiom.py contract`, and `git diff --check`.
   Live Streamlit/browser QA is pending because the bundled Codex Python used
   in this session does not have Streamlit installed.
-- **Manual sale/lease comp entry added to Comp Library (2026-07-13).**
-  `comp_review.py` now has a Manual Entry tab ahead of Extract/Review, with
+- **Manual sale/lease comp entry added to the UI (2026-07-13).**
+  `axiom_ui.py` now exposes a top-level Manual Comp Entry sidebar view, and
+  `comp_review.py` also keeps Manual Entry as the first Comp Library tab, with
   sale and lease forms for direct typed-in comps. `db.py` inserts those
   records as confirmed manual comparables after canonical normalization,
   required-field validation, identity-key generation, and duplicate detection,
