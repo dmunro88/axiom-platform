@@ -77,7 +77,9 @@ Use these as the starting controlled property-type list:
 - `industrial`
 - `multifamily`
 - `hospitality`
+- `self_storage`
 - `land`
+- `religious_facility`
 - `special_purpose`
 
 UI labels:
@@ -88,7 +90,9 @@ UI labels:
 - Industrial
 - Multifamily
 - Hospitality
+- Self-Storage
 - Land
+- Religious Facility
 - Special Purpose
 
 Implementation notes:
@@ -101,6 +105,11 @@ Implementation notes:
   example, multifamily can require unit metrics, land can require site/utility
   fields, and office/retail/industrial can emphasize building area, tenancy,
   income, and physical characteristics.
+- VALIDATION: Self-storage should have its own unit, rentable-area, occupancy,
+  and income indicator rules rather than using generic industrial defaults.
+- VALIDATION: Religious facilities should have their own physical, seating,
+  site/parking, and special-use considerations rather than being buried inside
+  generic Special Purpose.
 - QUESTION: Should Medical Office be stored as its own top-level property type,
   or as `office` with `property_subtype = Medical Office`? Derek's starter list
   treats it as top-level for now.
