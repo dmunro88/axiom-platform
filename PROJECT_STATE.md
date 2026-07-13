@@ -41,6 +41,13 @@
   local storage (`.local/comp_media`). This does not populate the real
   `axiom.db`; real archive ingest/review/commit is still the next operational
   step.
+- **Current-code staging pass completed 2026-07-13 against the copied archive
+  folders in `scratch/`:** six latest staged batches now exist for review,
+  with 95 sale/lease rows total (57 sale comps, 38 lease comps) and zero hard
+  comparable validation errors in the generated review packet. A helper script
+  writes `scratch/staged_comp_review/latest_sale_lease_comp_review.csv` and
+  `.md` from the newest staged batch per assignment without confirming records,
+  moving staged files, or writing `axiom.db`.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.
@@ -501,6 +508,10 @@ Checks were performed without regenerating or modifying assignment outputs.
    selected sale or lease comp from the Browse tab, and show attached-photo
    thumbnails in that same Browse view. Automated photo-to-comp extraction
    remains deferred pending real archive layout review.
+9. **Completed for staged review prep:** add a non-mutating staged-comp review
+   packet builder and run a current-code staging pass against the copied
+   archive folders under `scratch/`, producing a latest-batch sale/lease CSV
+   for human review before any real database commit.
 
 ### P2 — Integrations
 

@@ -17,6 +17,20 @@
   bundled Python environment, so the affected test modules were run through
   `unittest` instead. The real `axiom.db` still does not exist here and no
   real archive ingest was run.
+- **Codex next-step progress (2026-07-13): copied-archive staging was rerun
+  with current code and a review packet was generated.** `axiom.py
+  comp-ingest scratch\historical_ingest_test_2` completed for five copied
+  archive assignments, and `axiom.py comp-ingest scratch\historical_ingest_test`
+  completed for the remaining 25C008 copied assignment. Added
+  `scripts/build_staged_comp_review_packet.py`, which reads `ingest/staged`,
+  selects the newest staged JSON per assignment folder, and writes
+  `scratch/staged_comp_review/latest_sale_lease_comp_review.csv` plus `.md`
+  without confirming records, moving staged files, or writing `axiom.db`.
+  The current packet has 6 latest staged batches and 95 sale/lease rows
+  (57 sale, 38 lease) with zero hard comparable validation errors. Older
+  duplicate staged JSON files still exist in `ingest/staged`; the packet
+  names the exact latest files to use. The real `axiom.db` still does not
+  exist, and no `review-staged`/`comp-commit` was run.
 - **This session (2026-07-13) found and fixed a real defect that had been
   sitting undetected in git history since 2026-07-09/07-10: `ingest.py` and
   `narrative_generator.py` (plus `.gitignore`, this file, `PROJECT_STATE.md`,
@@ -226,6 +240,9 @@ Update from Codex, 2026-07-13: Track 1 items 2-4 below are now built. The
 remaining Track 1 operational step is still item 1: run real comp
 ingest/review/commit against Derek's historical archive so the local
 `axiom.db` actually has sale/lease comps to browse and attach photos to.
+The copied-archive staged queue has also been refreshed with current code and
+summarized in `scratch/staged_comp_review/latest_sale_lease_comp_review.csv`;
+this is review prep only, not a database commit.
 
 The OCR lane, Phase 6 (Adjustment Grid, all four hardening rounds), and
 Phase 7 (AI narrative drafting) are all complete and live-tested. Two new
@@ -1471,11 +1488,14 @@ calls about business logic rather than obvious bugs. His answers:
 ## Exact next step
 
 Current next step after Codex's manual-photo work: commit this coherent change
-set if Derek wants it kept, then run `axiom.py comp-ingest` against the real
-historical archive root, review the staged sale/lease comps, and `comp-commit`
-into the real local `axiom.db`. Once at least one comp exists, open the Comp
-Library Browse tab and do a quick interactive attach/thumbnail smoke test with
-a real local JPG/PNG.
+set if Derek wants it kept, then review the latest sale/lease rows in
+`scratch/staged_comp_review/latest_sale_lease_comp_review.csv`. After review,
+either use the Streamlit Review tab or selectively move/confirm only the
+latest staged JSON files named in the packet summary before running
+`comp-commit`; do not run plain `review-staged` blindly while older duplicate
+staged files remain in `ingest/staged`. Once at least one comp exists in the
+real local `axiom.db`, open the Comp Library Browse tab and do a quick
+interactive attach/thumbnail smoke test with a real local JPG/PNG.
 
 1. Round 4 is done — no round-5 Fable review has been spawned yet. Don't
    spawn one without checking with Derek first (he's previously flagged
