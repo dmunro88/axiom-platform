@@ -11,6 +11,7 @@ that the bad-data cases are caught *before* any API call is made.
 """
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -135,7 +136,7 @@ class InjectAllNarrativesSkipsApiOnBadDataTests(unittest.TestCase):
 
         doc = Document()
         doc.add_paragraph("[[SCA_CONCLUSION_NARRATIVE]]")
-        tmp_doc = Path("/tmp/_test_narrative_guard.docx")
+        tmp_doc = Path(tempfile.gettempdir()) / "_test_narrative_guard.docx"
         doc.save(str(tmp_doc))
 
         variables = {
