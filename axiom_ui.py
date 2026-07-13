@@ -29,12 +29,7 @@ from axiom import (
     _load_state,
     check_delivery_readiness,
 )
-from comp_review import (
-    CONFIRMED_DIR,
-    STAGED_DIR,
-    render_comp_library,
-    render_manual_comp_entry,
-)
+import comp_review
 from db import (
     DB_PATH,
     init_db,
@@ -48,6 +43,9 @@ from db import (
 
 
 st.set_page_config(page_title="Axiom", layout="wide")
+
+CONFIRMED_DIR = comp_review.CONFIRMED_DIR
+STAGED_DIR = comp_review.STAGED_DIR
 
 STAGE_COLORS = {
     "new": "#767676",
@@ -501,6 +499,15 @@ def render_system():
     _show_output()
 
 
+def render_manual_comp_entry_page():
+    renderer = getattr(
+        comp_review,
+        "render_manual_comp_entry",
+        comp_review.render_comp_library,
+    )
+    renderer()
+
+
 def main():
     st.title("Axiom")
     page = st.sidebar.radio(
@@ -521,9 +528,9 @@ def main():
     elif page == "Assignment Workflow":
         render_workflow()
     elif page == "Manual Comp Entry":
-        render_manual_comp_entry()
+        render_manual_comp_entry_page()
     elif page == "Comp Library":
-        render_comp_library()
+        comp_review.render_comp_library()
     elif page == "Search":
         render_search()
     elif page == "System":
