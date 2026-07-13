@@ -28,8 +28,40 @@
   its "Round 4 fixes — completed 2026-07-13" note. No round-5 Fable review
   has been spawned — don't spawn one without checking with Derek first
   (usage-consumption concern he's raised previously).
+- **This session also ran the full test suite live to confirm none of the
+  above broke anything, on a genuinely different environment than prior
+  sessions: Derek's own real Windows machine (`python` from a system
+  install), not the prior cloud sandbox.** That surfaced two environment
+  gaps, both now closed:
+  - This repo had zero dependency manifest of any kind. `pdfplumber`
+    (a hard, unguarded import in `pdf_financial_extractor.py`) and
+    `reportlab` (used only to build test PDF fixtures) weren't installed
+    and had to be `pip install`ed before tests could even collect.
+  - Once collecting, 148 passed / 1 failed / 6 skipped. The 1 failure
+    (`test_narrative_data_guard.py::test_broken_sca_conclusion_data_skips_api_call`,
+    pre-existing since commit `dce5d9d`, 2026-07-10 — not something this
+    session's other changes touched) hardcoded a POSIX `Path("/tmp/...")`
+    for a scratch file, which isn't a real writable path on Windows. Fixed
+    with `tempfile.gettempdir()` instead — commit `2623a2a`.
+  - The 6 skips were the real-Tesseract OCR tests in
+    `test_financial_harvest.py`, needing `PyMuPDF`/`pytesseract` (not yet
+    installed on this machine) plus a working local Tesseract — which,
+    handily, was already installed from an earlier session on this same
+    machine, English tessdata included (`.local/tessdata/eng.traineddata`).
+    Installed the two missing pip packages and all 6 now pass against the
+    real local Tesseract 5.5.0 install.
+  - Wrote `requirements.txt` (commit `30469b6`) pinning all 10 actual
+    third-party dependencies (core runtime, the optional OCR lane, and
+    test-only fixture generation) to the versions just verified working,
+    so the next fresh environment doesn't have to rediscover any of this
+    by trial and error.
+  - **Final state: 155 passed, 0 skipped, 16 subtests passed**, plus
+    `python axiom.py contract` clean at v1.2.0/220/24.
 - Commits this session (2026-07-13): `8f08aa6` (round-4 Q1-Q9 fixes),
-  `a646c51` (git-integrity/truncation fix), `e476235` (add `CLAUDE.md`).
+  `a646c51` (git-integrity/truncation fix), `e476235` (add `CLAUDE.md`),
+  `e6d41e4` (HANDOFF.md update), `d9e9b07` (PROJECT_STATE.md update),
+  `2623a2a` (fix `/tmp` test portability bug), `30469b6` (add
+  `requirements.txt`).
 - Commits from the 2026-07-11 session: `9d198a5` (round 1, findings A1-A5),
   `9026f2e` (round 2, findings N1 + residuals of A1/A3/A5), `4db2456`
   (round 3, findings P1-P4). Full details in "Completed this session
@@ -671,9 +703,49 @@ trust neither automatically" rule:
 - Working tree is now clean except for the known, deliberately-untouched
   LFS/binary mismatch on `.docx`/`.xlsx` files described above.
 
-No test suite changes were needed for this fix (it restores content, not
-new behavior), but re-verified `python axiom.py contract` and a compile pass
-across all changed `.py` files stayed green.
+No test suite changes were needed for the fix above (it restores content,
+not new behavior), but `HANDOFF.md`/`PROJECT_STATE.md` were updated to
+record it (`e6d41e4`, `d9e9b07`) and `python axiom.py contract` stayed green
+throughout.
+
+**Follow-on same session: ran the full test suite live to prove it, since
+Derek asked directly rather than taking the contract/compile checks as
+sufficient.** This was also the first time this codebase's test suite ran
+on Derek's own real Windows machine rather than the prior cloud sandbox,
+which surfaced environment gaps neither prior HANDOFF entry mentioned:
+
+- **No dependency manifest existed anywhere in this repo.** `pytest
+  --collect-only` failed outright: `pdfplumber` (a hard, module-level import
+  in `pdf_financial_extractor.py`) and `reportlab` (used only to build test
+  PDF fixtures) weren't installed. Installed both via `pip install` to get
+  collection working (155 tests collected).
+- **Result with those two installed: 148 passed, 1 failed, 6 skipped.**
+  Confirmed neither was caused by anything in this session before touching
+  either:
+  - The failure,
+    `test_narrative_data_guard.py::InjectAllNarrativesSkipsApiOnBadDataTests::test_broken_sca_conclusion_data_skips_api_call`,
+    hardcoded `Path("/tmp/_test_narrative_guard.docx")` — a POSIX path with
+    no real writable meaning on Windows, so the `.docx` save inside the test
+    raised `FileNotFoundError`. Pre-existing since commit `dce5d9d`
+    (2026-07-10); unrelated to anything touched today. Fixed with
+    `tempfile.gettempdir()` — commit `2623a2a`. Full suite re-run confirmed
+    green with this fix alone before moving on.
+  - The 6 skips were `test_financial_harvest.py`'s real-Tesseract OCR tests,
+    gated on `PyMuPDF`/`Pillow`/a working local Tesseract per their existing
+    `unittest.skipUnless` guards. This machine already had Tesseract 5.5.0
+    and English tessdata (`.local/tessdata/eng.traineddata`) installed from
+    an earlier session — only `PyMuPDF` and `pytesseract` themselves were
+    missing from this machine's Python environment. Installed both;
+    `_ocr_available()` now returns `True` and all 6 pass against the real
+    OCR engine, no code changes needed.
+- **Wrote `requirements.txt`** (commit `30469b6`), pinning all 10 actual
+  third-party runtime/OCR/test-fixture dependencies to the exact versions
+  just verified working (`pip install -r requirements.txt` confirmed
+  resolves cleanly against this environment with zero conflicts) — this
+  repo had never had one, so every dependency until now had been discovered
+  ad hoc, session by session, exactly like the two gaps above.
+- **Final verified state: 155 passed, 0 skipped, 16 subtests passed**, plus
+  `python axiom.py contract` clean at v1.2.0/220/24, confirmed live.
 
 ## Completed this session (Claude, 2026-07-08)
 
