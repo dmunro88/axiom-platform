@@ -26,6 +26,13 @@
   "Completed this session (Claude, git-integrity fix — 2026-07-13)" for the
   full account, including the stale git-lock workaround needed to commit on
   this mount and 10 orphaned scratch files cleaned up in the same pass.
+- **The full test suite was verified live the same day (2026-07-13) on
+  Derek's own real machine** (the first time it ran here rather than in the
+  prior cloud sandbox), surfacing and closing two environment gaps: a
+  pre-existing Windows-incompatible hardcoded `/tmp` path in one test (fixed,
+  `2623a2a`), and this repo having no dependency manifest at all (fixed by
+  adding `requirements.txt`, `30469b6`). See "Verified baseline" below for
+  the resulting numbers and `HANDOFF.md` for the full account.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.
@@ -90,34 +97,24 @@ are separate modules and are not wired into the command workflow.
 
 Checks were performed without regenerating or modifying assignment outputs.
 
-- The CLI imports and displays help using Python 3.13 from the Codex bundled
-  runtime.
-- 101 automated validation, delivery-state, stress, golden-DOCX,
-  comparable, historical-harvest, media, comp-page,
-  structured-block, model-routing, contract, presentation-derivation,
-  narrative-data-guard, and OCR-lane tests pass, confirmed live (run
-  per-file/per-batch in this checkout due to sandbox time limits; same net
-  coverage). The seven core OCR tests run against a real local Tesseract
-  install instead of being skipped (one of the seven, the
-  orientation-scoring test, doesn't require Tesseract at all) — these seven
-  are individually too slow for this sandbox's per-command time limit and
-  were last fully re-verified 2026-07-09; they are unaffected by the
-  2026-07-10 `dilmore` and narrative-guard changes. The suite grew from 77
-  to 82 tests on 2026-07-08 with coverage for the OCR page-image-pruning
-  helper, the `AXIOM_OCR_PAGES_DIR` override, the nested-financial-PDF
-  duplicate/staleness warning, and the legacy comp-row identity backfill;
-  to 84 on 2026-07-09 with coverage for the rent-roll identity amount fix
-  and the unconfirmed-comp-raises fix from the stress-test follow-up; and
-  to 101 on 2026-07-10 with 16 new narrative-data-guard tests plus the
-  `dilmore` column-mapping regression test correction; to 103 (non-OCR)
-  same day with 7 new land_adjustment_grid tests (Phase 6 Adjustment Grid
-  step 2); to 119 (non-OCR) same day with 16 new `test_adjustment_grid.py`
-  tests (Phase 6 steps 5-6 — see below). OCR suite is a further 9 tests,
-  run separately since together they exceed this sandbox's per-command
-  time limit. Grew again across the 2026-07-11 Phase 6 hardening rounds
-  (regression tests for findings A1-A5, N1, and P1-P4) to **146 tests
-  total** (`pytest --collect-only`, confirmed live), all passing — run in
-  per-file/per-`-k`-filter batches in this checkout, same reason as above.
+- The CLI imports and displays help. Verified 2026-07-13 using Python 3.14
+  from a real local install on Derek's own machine; earlier verifications
+  (through 2026-07-11) used Python 3.13 from the Codex cloud sandbox's
+  bundled runtime.
+- **155 automated tests pass, 0 skipped, 16 subtests passed — confirmed live
+  in a single full run** (`pytest tests/ -q`) on 2026-07-13, covering
+  validation, delivery-state, stress, golden-DOCX, comparable,
+  historical-harvest, media, comp-page, structured-block, model-routing,
+  contract, presentation-derivation, narrative-data-guard, Phase 6
+  adjustment-grid, and OCR-lane tests. All 6 real-Tesseract OCR tests in
+  `test_financial_harvest.py` ran against a genuine local Tesseract 5.5.0
+  install with English tessdata already present on this machine — no test
+  was skipped or split into batches, since the prior cloud sandbox's
+  per-command time limit doesn't apply here. `requirements.txt` (added the
+  same day) now pins the 10 third-party packages this required. See
+  `HANDOFF.md`'s per-session entries for the full test-count growth history
+  (77 -> 146 tests across 2026-07-08 through 2026-07-11) leading up to this
+  count.
 - **Phase 6 Adjustment Grid, complete (2026-07-10):** `size_adj` was
   replaced by `sca_adjustment_grid` (full sales-comparison net-adjustment
   grid, one time-adjustment checkpoint then summed category adjustments —
