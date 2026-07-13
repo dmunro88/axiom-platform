@@ -48,6 +48,11 @@ That is better than overthinking the structure.
 
 - Manual entry should use the same canonical comparable model as extracted
   historical comps.
+- This field list is intentionally expandable. Derek's starter `db fields.docx`
+  is a beginning inventory, not an exhaustive schema.
+- Field applicability should be property-type-aware. Office, retail,
+  industrial, multifamily, land, special-use, and mixed-use comps should not
+  all be forced through the same required fields.
 - Calculations should live in tested Python functions, not only in UI code.
 - Stored raw facts and derived metrics should be clearly separated.
 - The UI should show calculated values before save/confirm.
@@ -55,6 +60,115 @@ That is better than overthinking the structure.
 - Confirmed records should be traceable to verification notes and attachments.
 - Database fields, UI fields, search fields, exports, and report fields should
   be mapped intentionally instead of drifting apart.
+
+## Starter Field Inventory From `db fields.docx`
+
+Derek provided this as an initial field inventory. It should be treated as a
+starter checklist for schema/UI planning, not a final list. Some fields apply
+only to certain property types.
+
+### Property Identification
+
+- `record_id`
+- `property_type`
+- `property_subtype`
+- `street_address`
+- `city`
+- `county`
+- `state`
+- `parcel_numbers`
+- `longitude`
+- `latitude`
+
+### Sale Data
+
+- `grantor`
+- `grantee`
+- `sale_date`
+- `deed_book_page`
+- `verification`
+- `sale_price`
+- `cash_equivalent_price`
+- `adjusted_sale_price`
+
+### Land Data
+
+- `land_size`
+- `zoning`
+- `topography`
+- `utilities`
+- `shape`
+- `flood_hazard`
+- `access`
+- `visibility`
+
+### General Physical Data
+
+- `building_type`
+- `single_tenant`
+- `multi_tenant`
+- `construction_type`
+- `roof_type`
+- `foundation`
+- `electrical`
+- `hvac`
+- `stories`
+- `year_built`
+- `condition`
+- `unit_type`
+- `number_of_units`
+- `unit_size`
+- `unit_amenities`
+
+### Indicators
+
+- `sale_price_per_sf`
+- `sale_price_per_acre`
+- `floor_area_ratio`
+- `land_to_building_ratio`
+- `average_unit_size`
+- `total_number_of_units`
+- `sale_price_per_unit`
+- `occupancy_at_sale`
+- `pgim`
+- `egim`
+- `expenses_per_sf`
+- `expenses_per_unit`
+- `expenses_as_pct_of_pgi`
+- `expenses_as_pct_of_egi`
+- `overall_cap_rate`
+- `noi_per_sf`
+- `noi_per_unit`
+
+### Income Data
+
+- `potential_gross_income`
+- `vacancy`
+- `effective_gross_income`
+- `expenses`
+- `net_operating_income`
+
+### Property-Type Applicability Notes
+
+- FIELD: Unit type, number of units, unit size, unit amenities, average unit
+  size, sale price per unit, expenses per unit, and NOI per unit are most
+  relevant to multifamily, self-storage, hospitality, mobile home parks, or
+  other unit-based properties.
+- FIELD: Land size, zoning, topography, utilities, shape, flood hazard, access,
+  and visibility are relevant across many types but become primary fields for
+  land comps.
+- FIELD: Single-tenant and multi-tenant should probably be occupancy or tenancy
+  structure fields, not separate unrelated booleans.
+- FIELD: Cash equivalent price and adjusted sale price should be preserved
+  separately from raw sale price.
+- CALC: Indicator fields should generally be calculated from raw facts where
+  possible, while still allowing an appraiser-entered override or reconciled
+  value when the source reports a different figure.
+- QUESTION: Should `record_id` be an internal database ID only, or should the
+  UI also support a human comp number such as Sale 1, Sale 2, or an appraiser
+  file/reference ID?
+- QUESTION: Which property types should control which fields are required,
+  optional, hidden, or merely warned?
 
 ## Record Status
 
@@ -93,6 +207,7 @@ Candidate fields:
 - `property_subtype`
 - `submarket`
 - `market_area`
+- `record_id`
 
 Required before confirmation:
 
@@ -110,27 +225,47 @@ Candidate fields:
 
 - `gba_sf`
 - `nla_sf`
+- `land_size`
 - `site_area_sf`
 - `site_area_acres`
 - `year_built`
 - `year_renovated`
 - `building_age`
 - `stories`
+- `building_type`
 - `construction_type`
+- `roof_type`
+- `foundation`
+- `electrical`
+- `hvac`
 - `condition`
 - `quality`
 - `zoning`
 - `flood_zone`
+- `flood_hazard`
+- `topography`
+- `utilities`
+- `shape`
+- `access`
+- `visibility`
 - `parking_spaces`
 - `parking_ratio`
 - `occupancy_pct`
+- `single_tenant`
+- `multi_tenant`
+- `unit_type`
+- `number_of_units`
+- `unit_size`
+- `unit_amenities`
 
 Potential calculations:
 
 - CALC: `site_area_acres = site_area_sf / 43560`
 - CALC: `building_age = effective_year - year_built`
 - CALC: `land_to_building_ratio = site_area_sf / gba_sf`
+- CALC: `floor_area_ratio = gba_sf / site_area_sf`
 - CALC: `parking_ratio = parking_spaces / (gba_sf / 1000)`
+- CALC: `average_unit_size = gba_sf / number_of_units`
 
 Derek notes:
 
@@ -142,9 +277,12 @@ Derek notes:
 Candidate fields:
 
 - `sale_price`
+- `cash_equivalent_price`
+- `adjusted_sale_price`
 - `sale_date`
 - `recording_date`
 - `deed_ref`
+- `deed_book_page`
 - `instrument_number`
 - `grantor`
 - `grantee`
@@ -170,6 +308,7 @@ Potential calculations:
 - CALC: `price_per_nla_sf = sale_price / nla_sf`
 - CALC: `price_per_site_sf = sale_price / site_area_sf`
 - CALC: `price_per_acre = sale_price / site_area_acres`
+- CALC: `sale_price_per_unit = sale_price / number_of_units`
 - CALC: `months_since_sale = months_between(effective_date, sale_date)`
 
 Derek notes:
@@ -182,22 +321,40 @@ Derek notes:
 Candidate fields:
 
 - `noi`
+- `potential_gross_income`
+- `vacancy`
+- `effective_gross_income`
+- `expenses`
 - `noi_source`
 - `noi_period`
 - `noi_per_sf`
+- `noi_per_unit`
 - `cap_rate`
 - `occupancy_at_sale`
 - `expense_ratio`
 - `pgi`
 - `egi`
 - `total_expenses`
+- `expenses_per_sf`
+- `expenses_per_unit`
+- `expenses_as_pct_of_pgi`
+- `expenses_as_pct_of_egi`
+- `pgim`
+- `egim`
 
 Potential calculations:
 
 - CALC: `cap_rate = noi / sale_price`
 - CALC: `noi = sale_price * cap_rate`
 - CALC: `noi_per_sf = noi / gba_sf` or `noi / nla_sf`
+- CALC: `noi_per_unit = noi / number_of_units`
 - CALC: `expense_ratio = total_expenses / egi`
+- CALC: `pgim = sale_price / potential_gross_income`
+- CALC: `egim = sale_price / effective_gross_income`
+- CALC: `expenses_per_sf = expenses / gba_sf` or `expenses / nla_sf`
+- CALC: `expenses_per_unit = expenses / number_of_units`
+- CALC: `expenses_as_pct_of_pgi = expenses / potential_gross_income`
+- CALC: `expenses_as_pct_of_egi = expenses / effective_gross_income`
 
 Open questions:
 
