@@ -73,6 +73,7 @@ Use these as the starting controlled property-type list:
 
 - `office`
 - `retail`
+- `retail_service`
 - `medical_office`
 - `industrial`
 - `multifamily`
@@ -86,6 +87,7 @@ UI labels:
 
 - Office
 - Retail
+- Retail-Service
 - Medical Office
 - Industrial
 - Multifamily
@@ -105,6 +107,9 @@ Implementation notes:
   example, multifamily can require unit metrics, land can require site/utility
   fields, and office/retail/industrial can emphasize building area, tenancy,
   income, and physical characteristics.
+- VALIDATION: Retail-service should have its own profile for service-oriented
+  retail/commercial uses rather than being forced into standard retail or
+  special-purpose defaults.
 - VALIDATION: Self-storage should have its own unit, rentable-area, occupancy,
   and income indicator rules rather than using generic industrial defaults.
 - VALIDATION: Religious facilities should have their own physical, seating,
