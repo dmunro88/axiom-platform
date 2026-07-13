@@ -16,8 +16,10 @@ Usage: import render_comp_library() and call it from axiom_ui.py.
 """
 
 import io
+import hashlib
 import json
 import contextlib
+import re
 import sqlite3
 from pathlib import Path
 
@@ -31,6 +33,8 @@ import db as db_module
 
 CONFIRMED_DIR = STAGED_DIR.parent / "confirmed"
 CONFIRMED_DIR.mkdir(exist_ok=True)
+LOCAL_MEDIA_DIR = Path(__file__).parent / ".local" / "comp_media"
+PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 _SALE_EDIT_FIELDS = [
     ("address_street", "Address"), ("address_city", "City"),
@@ -93,6 +97,27 @@ _ARTIFACT_EDIT_FIELDS = [
     ("description", "Description"), ("effective_date", "Effective Date"),
     ("geography", "Geography"), ("property_type", "Property Type"),
 ]
+
+
+def _safe_upload_name(name):
+    stem = Path(name or "comp-photo").stem
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-")
+    return stem[:80] or "comp-photo"
+
+
+def _save_uploaded_comp_photo(uploaded_file, record_kind, record_id):
+    suffix = Path(uploaded_file.name or "").suffix.lower()
+    if suffix not in PHOTO_EXTENSIONS:
+        raise ValueError("Use a JPG or PNG image.")
+    data = uploaded_file.getvalue()
+    digest = hashlib.sha256(data).hexdigest()
+    folder = LOCAL_MEDIA_DIR / record_kind / str(record_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    filename = f"{digest[:16]}_{_safe_upload_name(uploaded_file.name)}{suffix}"
+    path = folder / filename
+    if not path.exists():
+        path.write_bytes(data)
+    return path
 
 
 def _fmt(val, field=None):
@@ -379,6 +404,22 @@ _SALE_BROWSE_SQL = """
            c.price_per_sf AS "Price/SF", c.cap_rate AS "Cap Rate", c.noi AS "NOI",
            c.grantor AS "Grantor", c.grantee AS "Grantee",
            c.verification_source AS "Verification", c.submarket AS "Submarket",
+           (
+               SELECT s.artifact_filename
+               FROM source_artifacts s
+               WHERE s.comp_id = c.comp_id
+                 AND s.review_status = 'confirmed'
+                 AND lower(s.artifact_kind) = 'photo'
+               ORDER BY s.artifact_id DESC
+               LIMIT 1
+           ) AS photo_path,
+           (
+               SELECT COUNT(*)
+               FROM source_artifacts s
+               WHERE s.comp_id = c.comp_id
+                 AND s.review_status = 'confirmed'
+                 AND lower(s.artifact_kind) = 'photo'
+           ) AS "Photos",
            sd.filename AS "Source"
     FROM comps c
     LEFT JOIN properties p ON c.property_id = p.property_id
@@ -393,6 +434,22 @@ _LEASE_BROWSE_SQL = """
            lc.lease_date AS "Lease Date", lc.term_years AS "Term (yrs)",
            lc.sf_leased AS "SF Leased", lc.base_rent_psf AS "Base Rent/SF",
            lc.rent_structure AS "Structure", lc.escalations AS "Escalations",
+           (
+               SELECT s.artifact_filename
+               FROM source_artifacts s
+               WHERE s.lease_comp_id = lc.lease_comp_id
+                 AND s.review_status = 'confirmed'
+                 AND lower(s.artifact_kind) = 'photo'
+               ORDER BY s.artifact_id DESC
+               LIMIT 1
+           ) AS photo_path,
+           (
+               SELECT COUNT(*)
+               FROM source_artifacts s
+               WHERE s.lease_comp_id = lc.lease_comp_id
+                 AND s.review_status = 'confirmed'
+                 AND lower(s.artifact_kind) = 'photo'
+           ) AS "Photos",
            lc.submarket AS "Submarket", sd.filename AS "Source"
     FROM lease_comps lc
     LEFT JOIN properties p ON lc.property_id = p.property_id
@@ -428,7 +485,98 @@ def _browse_query(kind, property_types, cities, address_search):
         df = pd.read_sql_query(sql, conn, params=params)
     finally:
         conn.close()
-    return df.drop(columns=[c for c in ("comp_id", "lease_comp_id") if c in df.columns])
+    return df
+
+
+def _browse_display_df(df):
+    hidden = {"comp_id", "lease_comp_id", "photo_path"}
+    return df.drop(columns=[column for column in hidden if column in df.columns])
+
+
+def _browse_row_label(row, kind):
+    address = row.get("Address") or "(no address)"
+    city = row.get("City") or ""
+    if kind == "lease" and row.get("Tenant"):
+        return f"{address}, {city} - {row.get('Tenant')}".strip(" ,-")
+    date = row.get("Sale Date") or row.get("Lease Date") or ""
+    return f"{address}, {city} - {date}".strip(" ,-")
+
+
+def _render_browse_thumbnails(df, kind):
+    photo_rows = [
+        row
+        for _, row in df.iterrows()
+        if row.get("photo_path") and Path(str(row.get("photo_path"))).is_file()
+    ]
+    if not photo_rows:
+        return
+    st.markdown("##### Attached Photos")
+    columns = st.columns(min(4, len(photo_rows)))
+    for index, row in enumerate(photo_rows):
+        with columns[index % len(columns)]:
+            st.image(
+                str(row["photo_path"]),
+                caption=_browse_row_label(row, kind),
+                width=160,
+            )
+
+
+def _render_photo_attachment(kind, df):
+    id_column = "comp_id" if kind == "sale" else "lease_comp_id"
+    if id_column not in df.columns or df.empty:
+        return
+    st.markdown("##### Photo Attachment")
+    choices = list(df.index)
+    selected_index = st.selectbox(
+        "Selected comp",
+        choices,
+        format_func=lambda idx: _browse_row_label(df.loc[idx], kind),
+        key=f"attach_target_{kind}",
+    )
+    record_id = int(df.loc[selected_index, id_column])
+    photos = db_module.comp_photo_artifacts(
+        record_kind=kind,
+        record_id=record_id,
+    )
+    if photos:
+        columns = st.columns(min(3, len(photos)))
+        for index, photo in enumerate(photos):
+            path = Path(photo.get("artifact_filename") or "")
+            with columns[index % len(columns)]:
+                if path.is_file():
+                    st.image(str(path), caption=photo.get("title"), width=180)
+                else:
+                    st.caption(f"Missing local file: {path}")
+    else:
+        st.caption("No attached photos yet.")
+
+    upload_key = f"photo_upload_{kind}_{record_id}"
+    title_key = f"photo_title_{kind}_{record_id}"
+    uploaded = st.file_uploader(
+        "Attach photo",
+        type=["jpg", "jpeg", "png"],
+        key=upload_key,
+    )
+    title = st.text_input("Photo title", key=title_key)
+    if st.button(
+        "Attach to selected comp",
+        disabled=uploaded is None,
+        key=f"attach_photo_{kind}_{record_id}",
+    ):
+        try:
+            saved_path = _save_uploaded_comp_photo(uploaded, kind, record_id)
+            artifact_id = db_module.insert_manual_comp_photo(
+                kind,
+                record_id,
+                saved_path,
+                title=title.strip() or None,
+                original_filename=uploaded.name,
+            )
+        except Exception as exc:
+            st.error(f"Could not attach photo: {exc}")
+        else:
+            st.success(f"Attached photo artifact #{artifact_id}.")
+            st.rerun()
 
 
 def render_comp_library():
@@ -728,12 +876,15 @@ def render_comp_library():
             st.caption(f"{len(df)} {kind_label.lower()} found")
 
             if len(df):
-                st.dataframe(df, width='stretch', hide_index=True)
-                csv = df.to_csv(index=False).encode("utf-8")
+                _render_browse_thumbnails(df, kind)
+                display_df = _browse_display_df(df)
+                st.dataframe(display_df, width='stretch', hide_index=True)
+                csv = display_df.to_csv(index=False).encode("utf-8")
                 st.download_button(
                     "Download as CSV", data=csv,
                     file_name=f"{kind}_comps.csv", mime="text/csv",
                     key="browse_download",
                 )
+                _render_photo_attachment(kind, df)
             else:
                 st.info("No comps match these filters yet.")

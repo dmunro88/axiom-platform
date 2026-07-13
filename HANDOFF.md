@@ -1,7 +1,22 @@
 # Current Handoff
 
 - Last updated: 2026-07-13
-- Current agent: Claude
+- Current agent: Codex
+- **Codex progress after the planning handoff (2026-07-13): Track 1's
+  manual comp-photo foundation is built.**
+  `source_artifacts` has nullable `comp_id`/`lease_comp_id` link columns and
+  indexes; `db.py` has `insert_manual_comp_photo()` and
+  `comp_photo_artifacts()` helpers with duplicate protection by comp id +
+  image hash; `search_source_artifacts()` can filter by those new links; and
+  `comp_review.py`'s Browse tab can upload a JPG/PNG, copy it into ignored
+  local storage (`.local/comp_media`), link it directly to the selected sale
+  or lease comp, and show thumbnails for comps with attached photos. Focused
+  verification passed with bundled Python: `py_compile` for edited files,
+  `unittest tests.test_artifact_harvest tests.test_comp_pipeline` (17 tests),
+  and `axiom.py contract` (v1.2.0/220/24). `pytest` was not available in the
+  bundled Python environment, so the affected test modules were run through
+  `unittest` instead. The real `axiom.db` still does not exist here and no
+  real archive ingest was run.
 - **This session (2026-07-13) found and fixed a real defect that had been
   sitting undetected in git history since 2026-07-09/07-10: `ingest.py` and
   `narrative_generator.py` (plus `.gitignore`, this file, `PROJECT_STATE.md`,
@@ -206,6 +221,11 @@
   fixed it.
 
 ## Current objective
+
+Update from Codex, 2026-07-13: Track 1 items 2-4 below are now built. The
+remaining Track 1 operational step is still item 1: run real comp
+ingest/review/commit against Derek's historical archive so the local
+`axiom.db` actually has sale/lease comps to browse and attach photos to.
 
 The OCR lane, Phase 6 (Adjustment Grid, all four hardening rounds), and
 Phase 7 (AI narrative drafting) are all complete and live-tested. Two new
@@ -1449,6 +1469,13 @@ calls about business logic rather than obvious bugs. His answers:
   in-progress work, same as before.
 
 ## Exact next step
+
+Current next step after Codex's manual-photo work: commit this coherent change
+set if Derek wants it kept, then run `axiom.py comp-ingest` against the real
+historical archive root, review the staged sale/lease comps, and `comp-commit`
+into the real local `axiom.db`. Once at least one comp exists, open the Comp
+Library Browse tab and do a quick interactive attach/thumbnail smoke test with
+a real local JPG/PNG.
 
 1. Round 4 is done — no round-5 Fable review has been spawned yet. Don't
    spawn one without checking with Derek first (he's previously flagged

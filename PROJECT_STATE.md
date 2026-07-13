@@ -33,6 +33,14 @@
   `2623a2a`), and this repo having no dependency manifest at all (fixed by
   adding `requirements.txt`, `30469b6`). See "Verified baseline" below for
   the resulting numbers and `HANDOFF.md` for the full account.
+- **Track 1 visual-reference foundation started 2026-07-13:** `source_artifacts`
+  now has nullable `comp_id`/`lease_comp_id` links, `db.py` has helpers for
+  direct manual comp-photo attachments, and `comp_review.py`'s Browse tab can
+  attach JPG/PNG photos to a selected sale or lease comp and show thumbnails
+  for comps with attached photos. Uploaded images are copied under ignored
+  local storage (`.local/comp_media`). This does not populate the real
+  `axiom.db`; real archive ingest/review/commit is still the next operational
+  step.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.
@@ -488,6 +496,11 @@ Checks were performed without regenerating or modifying assignment outputs.
    comp rows before importing a real historical archive
    (`backfill_legacy_identities` in `db.py`, run automatically by
    `init_db()`).
+8. **Completed for manual visual reference:** add nullable comp/lease-comp
+   links to `source_artifacts`, manually attach local JPG/PNG photos to a
+   selected sale or lease comp from the Browse tab, and show attached-photo
+   thumbnails in that same Browse view. Automated photo-to-comp extraction
+   remains deferred pending real archive layout review.
 
 ### P2 — Integrations
 

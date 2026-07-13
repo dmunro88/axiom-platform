@@ -22,6 +22,8 @@ Usage
   conn = get_conn()          # sqlite3 connection with Row factory
 """
 
+import datetime
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -255,6 +257,8 @@ CREATE TABLE IF NOT EXISTS source_artifacts (
     assignment_id       INTEGER REFERENCES assignments(assignment_id),
     property_id         INTEGER REFERENCES properties(property_id),
     source_doc_id       INTEGER REFERENCES source_documents(doc_id),
+    comp_id             INTEGER REFERENCES comps(comp_id),
+    lease_comp_id       INTEGER REFERENCES lease_comps(lease_comp_id),
     artifact_kind       TEXT,
     title               TEXT,
     description         TEXT,
@@ -321,6 +325,10 @@ MIGRATION_COLUMNS = {
         "reviewed_at": "TEXT",
         "source_record_json": "TEXT",
     },
+    "source_artifacts": {
+        "comp_id": "INTEGER REFERENCES comps(comp_id)",
+        "lease_comp_id": "INTEGER REFERENCES lease_comps(lease_comp_id)",
+    },
 }
 
 IDENTITY_INDEXES = """
@@ -353,6 +361,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_source_artifacts_identity_key
     WHERE identity_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_source_artifacts_sha256
     ON source_artifacts(artifact_sha256);
+CREATE INDEX IF NOT EXISTS idx_source_artifacts_comp_id
+    ON source_artifacts(comp_id);
+CREATE INDEX IF NOT EXISTS idx_source_artifacts_lease_comp_id
+    ON source_artifacts(lease_comp_id);
 """
 
 
@@ -964,6 +976,8 @@ def insert_source_artifact(
         "effective_date",
         "geography",
         "property_type",
+        "comp_id",
+        "lease_comp_id",
     ]
     return _insert_harvest_row(
         "source_artifacts",
@@ -975,6 +989,161 @@ def insert_source_artifact(
         conn,
         **record_metadata,
     )
+
+
+def _sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _image_dimensions(path):
+    try:
+        from PIL import Image
+    except ImportError:
+        return None, None
+    try:
+        with Image.open(path) as image:
+            return image.size
+    except Exception:
+        return None, None
+
+
+def _manual_photo_media_type(extension):
+    ext = extension.lower().lstrip(".")
+    if ext == "jpg":
+        ext = "jpeg"
+    return f"image/{ext}" if ext in {"jpeg", "png"} else "image"
+
+
+def insert_manual_comp_photo(
+    record_kind,
+    record_id,
+    image_path,
+    conn=None,
+    *,
+    title=None,
+    original_filename=None,
+):
+    """Attach a locally asserted photo artifact to one sale or lease comp.
+
+    This is intentionally a direct confirmed insert rather than a staged
+    extraction record: the appraiser is manually attaching the image to the
+    selected comp in the Browse tab.
+    """
+    if record_kind not in {"sale", "lease"}:
+        raise ValueError("record_kind must be 'sale' or 'lease'.")
+
+    close_after = conn is None
+    if conn is None:
+        conn = get_conn()
+
+    table = "comps" if record_kind == "sale" else "lease_comps"
+    id_column = "comp_id" if record_kind == "sale" else "lease_comp_id"
+    link_column = id_column
+    row = conn.execute(
+        f"""
+        SELECT c.{id_column}, c.property_id, c.source_doc_id,
+               p.address_street, p.address_city, p.property_type
+        FROM {table} c
+        LEFT JOIN properties p ON p.property_id = c.property_id
+        WHERE c.{id_column} = ?
+        """,
+        (record_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"No {record_kind} comp found with id {record_id}.")
+
+    path = Path(image_path)
+    if not path.is_file():
+        raise ValueError(f"Photo file not found: {path}")
+
+    sha256 = _sha256_file(path)
+    identity_key = f"manual-{record_kind}-photo:{record_id}:{sha256}"
+    existing = harvest_id_by_identity("artifact", identity_key, conn)
+    if existing:
+        if close_after:
+            conn.close()
+        return existing
+
+    width_px, height_px = _image_dimensions(path)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    address = row["address_street"] or f"{record_kind.title()} comp {record_id}"
+    data = {
+        "artifact_kind": "photo",
+        "title": title or f"Comp photo - {address}",
+        "description": "Manually attached comp photo.",
+        "artifact_filename": str(path),
+        "container_filename": original_filename,
+        "media_type": _manual_photo_media_type(path.suffix),
+        "extension": path.suffix.lower().lstrip("."),
+        "artifact_sha256": sha256,
+        "artifact_size": path.stat().st_size,
+        "width_px": width_px,
+        "height_px": height_px,
+        "geography": row["address_city"],
+        "property_type": row["property_type"],
+        "comp_id": record_id if record_kind == "sale" else None,
+        "lease_comp_id": record_id if record_kind == "lease" else None,
+    }
+    artifact_id = insert_source_artifact(
+        data,
+        None,
+        row["property_id"],
+        row["source_doc_id"],
+        conn,
+        identity_key=identity_key,
+        confidence={
+            "artifact_filename": "high",
+            "artifact_sha256": "high",
+            link_column: "high",
+        },
+        review={"status": "confirmed", "reviewed_at": now},
+        source_record={
+            "manual_attach": True,
+            "record_kind": record_kind,
+            "record_id": record_id,
+            "original_filename": original_filename,
+        },
+    )
+    if close_after:
+        conn.commit()
+        conn.close()
+    return artifact_id
+
+
+def comp_photo_artifacts(db_path=None, *, record_kind, record_id):
+    """Return confirmed photo artifacts manually linked to one comp."""
+    if record_kind not in {"sale", "lease"}:
+        raise ValueError("record_kind must be 'sale' or 'lease'.")
+    path = Path(db_path) if db_path else DB_PATH
+    if not path.exists():
+        return []
+    init_db(path, quiet=True)
+    conn = get_conn(path)
+    column = "comp_id" if record_kind == "sale" else "lease_comp_id"
+    try:
+        rows = [
+            dict(row)
+            for row in conn.execute(
+                f"""
+                SELECT *
+                FROM source_artifacts
+                WHERE {column} = ?
+                  AND review_status = 'confirmed'
+                  AND lower(artifact_kind) = 'photo'
+                ORDER BY artifact_id DESC
+                """,
+                (record_id,),
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
+    for row in rows:
+        row["confidence"] = json.loads(row.get("confidence") or "{}")
+    return rows
 
 
 def harvest_id_by_identity(record_kind, identity_key, conn):
@@ -1143,6 +1312,8 @@ def search_source_artifacts(
     geography=None,
     property_type=None,
     artifact_sha256=None,
+    comp_id=None,
+    lease_comp_id=None,
     include_unreviewed=False,
 ):
     """Return reviewed external and container-embedded source artifacts."""
@@ -1180,6 +1351,12 @@ def search_source_artifacts(
     if artifact_sha256:
         sql += " AND s.artifact_sha256 = ?"
         params.append(artifact_sha256)
+    if comp_id is not None:
+        sql += " AND s.comp_id = ?"
+        params.append(comp_id)
+    if lease_comp_id is not None:
+        sql += " AND s.lease_comp_id = ?"
+        params.append(lease_comp_id)
     sql += " ORDER BY s.effective_date DESC, s.artifact_id DESC"
     try:
         rows = [dict(row) for row in conn.execute(sql, params).fetchall()]

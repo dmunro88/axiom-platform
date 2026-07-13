@@ -1,6 +1,7 @@
 import base64
 import json
 import shutil
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +11,16 @@ import openpyxl
 from openpyxl.chart import LineChart, Reference
 
 from comparable_contract import confirm_extraction_result
-from db import get_conn, init_db, search_source_artifacts
+from db import (
+    comp_photo_artifacts,
+    get_conn,
+    init_db,
+    insert_comp,
+    insert_manual_comp_photo,
+    insert_property,
+    insert_source_document,
+    search_source_artifacts,
+)
 from harvest_contract import ARTIFACT_CONTRACT_ID
 from ingest import commit_extraction_result, run_extraction
 
@@ -262,8 +272,115 @@ class ArtifactHarvestTests(unittest.TestCase):
                 }
                 self.assertIn("artifact_sha256", columns)
                 self.assertIn("source_record_json", columns)
+                self.assertIn("comp_id", columns)
+                self.assertIn("lease_comp_id", columns)
             finally:
                 connection.close()
+
+    def test_legacy_artifact_table_adds_comp_link_columns(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "legacy-artifacts.db"
+            connection = sqlite3.connect(db_path)
+            connection.executescript(
+                """
+                CREATE TABLE source_artifacts (
+                    artifact_id INTEGER PRIMARY KEY,
+                    artifact_kind TEXT,
+                    artifact_sha256 TEXT,
+                    identity_key TEXT,
+                    review_status TEXT
+                );
+                """
+            )
+            connection.commit()
+            connection.close()
+
+            init_db(db_path, quiet=True)
+            connection = sqlite3.connect(db_path)
+            try:
+                columns = {
+                    row[1]
+                    for row in connection.execute(
+                        "PRAGMA table_info(source_artifacts)"
+                    )
+                }
+                self.assertIn("comp_id", columns)
+                self.assertIn("lease_comp_id", columns)
+            finally:
+                connection.close()
+
+    def test_manual_comp_photo_attachment_links_artifact_to_sale_comp(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "manual-photo.db"
+            photo_path = root / "fictional-comp-photo.png"
+            photo_path.write_bytes(TINY_PNG)
+
+            init_db(db_path, quiet=True)
+            connection = get_conn(db_path)
+            try:
+                property_id = insert_property(
+                    {
+                        "address_street": "700 Fictional Photo Way",
+                        "address_city": "Demo City",
+                        "property_type": "Office",
+                    },
+                    connection,
+                )
+                source_doc_id = insert_source_document(
+                    root / "Fictional Source.docx",
+                    "report",
+                    conn=connection,
+                )
+                comp_id = insert_comp(
+                    {
+                        "sale_price": 1_250_000,
+                        "sale_date": "2025-05-01",
+                    },
+                    property_id,
+                    source_doc_id,
+                    {"sale_price": "high"},
+                    connection,
+                    identity_key="fictional-sale-photo-test",
+                    review={"status": "confirmed"},
+                )
+                first_artifact_id = insert_manual_comp_photo(
+                    "sale",
+                    comp_id,
+                    photo_path,
+                    connection,
+                    title="Front elevation",
+                    original_filename="upload.png",
+                )
+                second_artifact_id = insert_manual_comp_photo(
+                    "sale",
+                    comp_id,
+                    photo_path,
+                    connection,
+                    title="Duplicate upload title should not matter",
+                    original_filename="upload-again.png",
+                )
+                connection.commit()
+                self.assertEqual(first_artifact_id, second_artifact_id)
+            finally:
+                connection.close()
+
+            photos = comp_photo_artifacts(
+                db_path,
+                record_kind="sale",
+                record_id=comp_id,
+            )
+            self.assertEqual(1, len(photos))
+            self.assertEqual(comp_id, photos[0]["comp_id"])
+            self.assertEqual("confirmed", photos[0]["review_status"])
+            self.assertEqual("Front elevation", photos[0]["title"])
+            self.assertEqual(str(photo_path), photos[0]["artifact_filename"])
+            self.assertEqual(1, photos[0]["width_px"])
+            self.assertEqual(1, photos[0]["height_px"])
+
+            search_records = search_source_artifacts(db_path, comp_id=comp_id)
+            self.assertEqual(1, len(search_records))
+            self.assertEqual(first_artifact_id, search_records[0]["artifact_id"])
 
 
 if __name__ == "__main__":
