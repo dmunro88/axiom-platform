@@ -57,11 +57,35 @@
     by trial and error.
   - **Final state: 155 passed, 0 skipped, 16 subtests passed**, plus
     `python axiom.py contract` clean at v1.2.0/220/24.
+- **This repo now has a GitHub remote.** Derek created
+  `https://github.com/dmunro88/axiom-platform` (private) and had it added as
+  `origin`; pushed through `7053cac` with his explicit go-ahead. This was
+  the first push ever for this repo (previously local-only).
+- **Separately, normalized 15 Office template/workbook files to real Git LFS
+  pointers** (commit `b63d4f5`, **not yet pushed**). `.gitattributes` has
+  routed `*.docx`/`*.xlsx` through the LFS clean filter since the baseline
+  commit, but these 15 files had been committed as full binary blobs
+  directly in git history instead — the exact mismatch Codex flagged
+  2026-07-09 as needing a deliberate decision (`git lfs ls-files` showed
+  zero real LFS pointers in `HEAD` before this fix). Working tree content
+  is byte-identical before/after; only what git stores changed. Does not
+  rewrite prior commits — old history still carries the full binaries, so
+  this only stops the mismatch recurring going forward. Re-verified full
+  suite (155 passed) and `python axiom.py contract` green after.
+- **Planning-only discussion, no code written:** talked through the
+  broader roadmap with Derek (he supplied the actual master roadmap file,
+  `axiom_platform_roadmap_status.html`, which lives outside this repo and
+  is stale — it still badges Phases 5.5/6/7 as "next" when they're
+  actually done) and agreed a concrete two-track plan for next session.
+  **See "Current objective" below for the full plan** — do not re-derive
+  it from scratch, it's already scoped.
 - Commits this session (2026-07-13): `8f08aa6` (round-4 Q1-Q9 fixes),
   `a646c51` (git-integrity/truncation fix), `e476235` (add `CLAUDE.md`),
   `e6d41e4` (HANDOFF.md update), `d9e9b07` (PROJECT_STATE.md update),
   `2623a2a` (fix `/tmp` test portability bug), `30469b6` (add
-  `requirements.txt`).
+  `requirements.txt`), `7053cac` (PROJECT_STATE.md update, pushed),
+  `b63d4f5` (LFS normalization, **not yet pushed** — ask Derek before
+  pushing, don't assume standing approval from the earlier push).
 - Commits from the 2026-07-11 session: `9d198a5` (round 1, findings A1-A5),
   `9026f2e` (round 2, findings N1 + residuals of A1/A3/A5), `4db2456`
   (round 3, findings P1-P4). Full details in "Completed this session
@@ -184,15 +208,91 @@
 ## Current objective
 
 The OCR lane, Phase 6 (Adjustment Grid, all four hardening rounds), and
-Phase 7 (AI narrative drafting) are all complete and live-tested. No new
-feature work is queued. Remaining decisions are Derek's: whether to spawn a
-round-5 Fable review of Phase 6, when to run the live-fire test on a real
-assignment, and when to begin live-testing Adobe Sign/Xero (P2, gated on
-delivery integrity first — see `PROJECT_STATE.md`). Meanwhile, keep treating
-this repo's git history as something to verify, not trust — this session's
-truncated-commit finding (see "Completed this session (Claude, git-integrity
-fix — 2026-07-13)" below) shows the known OneDrive/bash file-truncation bug
-can land inside an actual commit, not just a working-tree edit.
+Phase 7 (AI narrative drafting) are all complete and live-tested. Two new
+tracks were scoped with Derek on 2026-07-13 (planning only, nothing built
+yet — picking this up after a usage-limit reset) and are the next work,
+in this order:
+
+**Track 1 — Comp database: real data + visual reference (agreed priority,
+start here).**
+1. The real local comp database (`axiom.db`) doesn't exist on this machine
+   yet — every comp-ingest run so far (Codex, 2026-07-09) only went into a
+   *temporary* database for verification. Despite Phase 12/5.5 being fully
+   built, zero real comp rows exist locally. Run `comp-ingest` ->
+   `review-staged` -> `comp-commit` for real against Derek's actual
+   historical archive. Suggest starting with the highest-value subset
+   (sale/lease comps) rather than reviewing everything (rent-roll/expense
+   volume is large — one 5-folder batch alone produced 962 rent-roll rows).
+2. Add nullable `comp_id`/`lease_comp_id` link columns to the existing
+   `source_artifacts` table (small additive migration, same pattern as
+   `MIGRATION_COLUMNS` elsewhere in `db.py`). Confirmed by reading
+   `ingest.py`'s `commit_extraction_result`: today, every artifact
+   (photo/map/exhibit) gets tagged with the *subject* property's
+   `property_id` only — never a specific comp's — so there is currently no
+   way to link a comp to its own photo at all, automated or manual.
+3. Add a manual "attach photo" action to `comp_review.py`'s Browse tab —
+   upload an image, copy it into a local media folder, link it to that
+   specific comp via the new columns, no staging/review step needed since
+   Derek is asserting it himself. **Derek confirmed manual attach is fine
+   as the first pass** — no need to solve automated photo extraction to
+   get value here.
+4. Show a thumbnail per comp with an attached photo in the Browse tab.
+   (Also note for later: even artifact *metadata* review today never
+   renders the image itself — `comp_review.py`'s `_render_artifact` shows
+   title/kind/dimensions only, no `st.image()` call.)
+
+Automated photo-to-comp extraction is explicitly deferred, not abandoned:
+inspected one of Derek's real historical comp-sheet files (outside this
+repo) as a concrete example. It uses a column-per-comp table grid (each
+comp is one column, its photo sits in a fixed row of that same column) —
+genuinely a different, *easier* layout to parse reliably (same table, same
+column) than a page-proximity guess would have been. But it's also a
+**different layout than `extractor.py`'s existing "Axiom-format" comp
+parser** (`_is_axiom_comp_table`/`_is_axiom_cont_table`, ~line 799-905,
+which expects a 2-table-per-comp layout: 3-col left + 2-col right,
+"Improved Sale No. X" / "...(Cont.)"). Neither parser captures photos at
+all today, text fields only. Derek says he has many archive files "like
+this that can isolate sales comps" — before building a parser for the
+column-grid layout, worth scanning a batch of his archive to see how much
+layout variety actually exists (dominant vs. legacy format) — offered to
+do this read-only, not yet done.
+
+**Track 2 — UI/UX consolidation (agreed direction, sequenced after Track 1
+has something real to show).**
+Two Streamlit apps already exist and shouldn't be rebuilt from scratch:
+`axiom_ui.py` ("Command Center" — wraps `cmd_new`/`cmd_engage`/
+`cmd_deliver`/`cmd_dilmore`) and `comp_review.py` (staged review + comp
+library extract/review/browse). The real gap is they're separate apps, and
+neither surfaces `validate`, `contract`, or the `*-search` commands
+(`comp-search`, `financial-search`, `observation-search`,
+`artifact-search`) at all. Plan is to consolidate into one multipage
+Streamlit app covering the full lifecycle, not build a new framework —
+Phase 17's "Web Platform" is the bigger, explicitly long-term version of
+this and shouldn't be pulled forward.
+
+**Parked, not forgotten — Derek wants to think these through more before
+scoping:** three items from `docs/FEATURE_BACKLOG_PRIORITIZATION.md`'s
+Tier A list each have an open question attached: automatic fee suggestions
+(is the fee schedule simple enough for rules, or judgment-heavy?), bid-log
+integration (what does the bid log actually consist of today?), and the
+subject property one-pager (is county tax/parcel data already
+Intake-entered, or does it need a live external lookup?). The other four
+Tier A items — reconciliation cross-check, exhibit TOC/auto-numbering,
+comp-aging alert, HBU narrative drafting assistant — have no open
+questions and are ready to start whenever Track 1/2 wrap. Reconciliation
+cross-check is the highest-value/lowest-risk one to start with (both
+values it diffs already live in the same JSON export `fill_engine.py`
+reads).
+
+**Also still outstanding from before this session, both Derek's call:**
+whether to spawn a round-5 Fable review of Phase 6 hardening (usage-cost
+concern), and when to run the live-fire test on a real assignment.
+
+Separately: keep treating this repo's git history as something to verify,
+not trust — this session's truncated-commit finding (see "Completed this
+session (Claude, git-integrity fix — 2026-07-13)" below) shows the known
+OneDrive/bash file-truncation bug can land inside an actual commit, not
+just a working-tree edit.
 
 ## Completed
 
