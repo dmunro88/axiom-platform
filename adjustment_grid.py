@@ -26,6 +26,7 @@ inject_ownership_history. Can also be run standalone:
     python adjustment_grid.py <report_path> <workbook_path>
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -71,6 +72,16 @@ EXCEL_ERROR_TOKENS = {
 # Common non-ISO date strings a comp's Sale Date might be typed in as plain
 # text rather than a real Excel date (e.g. pasted from a source document).
 _TEXT_DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%B %d, %Y")
+
+# A looser match than the strict "Sale No." prefix check used to identify a
+# genuine comp row: catches a typo'd or malformed anchor (missing period,
+# extra/missing spacing, e.g. "Sale No 2" or "SaleNo.2") on an otherwise-real
+# comp row, so it can be flagged as a corrupted anchor (AdjustmentGridError)
+# rather than silently mistaken for an unrelated summary row like MEAN or
+# LAND VALUE CONCLUSION, which would never match this pattern at all (round-4
+# Fable adversarial review finding Q1 -- the round-3 fix only caught a fully
+# *blank* anchor, not a typo'd one).
+_SALE_NO_FUZZY = re.compile(r"^\s*sale\s*no\.?\s*\d+\s*$", re.IGNORECASE)
 
 
 class AdjustmentGridError(Exception):
@@ -135,8 +146,17 @@ def _format_value(header, value):
     return str(value).strip()
 
 
-def _read_header_map(ws):
-    """Build {header_text: column_index} from HEADER_ROW, skipping blanks."""
+def read_header_map(ws):
+    """Build {header_text: column_index} from HEADER_ROW, skipping blanks.
+
+    Public (not prefixed with `_`) because axiom.py's Dilmore write path
+    also needs header-driven column resolution for the adjustment-grid
+    tabs -- it used to hardcode column indices in `_DILMORE_TAB_LAYOUTS`,
+    which silently wrote to the wrong cells if a column was ever
+    hand-inserted (round-4 Fable adversarial review finding Q6). Reusing
+    this exact function keeps both readers/writers agreeing on where each
+    column actually is.
+    """
     header_map = {}
     for cell in ws[HEADER_ROW]:
         text = cell.value
@@ -180,7 +200,7 @@ def read_grid_rows(workbook_path, sheet_name):
         return [], []
 
     ws = wb[sheet_name]
-    header_map = _read_header_map(ws)
+    header_map = read_header_map(ws)
     headers = [h for h, _ in sorted(header_map.items(), key=lambda kv: kv[1])]
     anchor_col = header_map[ANCHOR_HEADER]
 
@@ -231,13 +251,27 @@ def read_grid_rows(workbook_path, sheet_name):
         has_orphan_label = (
             isinstance(orphan_label, str) and orphan_label.startswith("Sale No.")
         )
-        anchor_is_blank = orphan_label is None or orphan_label == ""
+        # Whitespace-only ("  ") used to slip past the old `== ""` check
+        # (fixed via .strip()); a typo'd/malformed variant that isn't blank
+        # but isn't a well-formed "Sale No. N" either (e.g. "Sale No 2",
+        # stray whitespace inside it) is caught separately below, since it
+        # would otherwise match neither the intact-anchor check above nor
+        # the blank-anchor check (Fable finding Q1).
+        anchor_is_blank = orphan_label is None or (
+            isinstance(orphan_label, str) and orphan_label.strip() == ""
+        )
+        looks_like_corrupted_anchor = (
+            isinstance(orphan_label, str)
+            and not has_orphan_label
+            and not anchor_is_blank
+            and _SALE_NO_FUZZY.match(orphan_label) is not None
+        )
         has_stray_data = anchor_is_blank and any(
             ws.cell(row=r, column=col_idx).value not in (None, "")
             for header, col_idx in header_map.items()
             if header != ANCHOR_HEADER
         )
-        if has_orphan_label or has_stray_data:
+        if has_orphan_label or looks_like_corrupted_anchor or has_stray_data:
             wb.close()
             raise AdjustmentGridError(
                 f"Sheet '{sheet_name}' has a comp row at row {r} that this "

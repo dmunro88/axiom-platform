@@ -485,6 +485,53 @@ class ComparablePipelineTests(unittest.TestCase):
             csv_text = csv_path.read_text(encoding="utf-8-sig")
             self.assertIn("Fictional Archive Way", csv_text)
 
+    def test_export_to_live_workbook_marks_formula_cache_stale(self):
+        """A comp-library export re-saves the workbook exactly like a real
+        Dilmore write does -- wiping every other cached formula result
+        workbook-wide, since openpyxl has no formula engine -- but until
+        round-4 hardening never set the same formula_cache_stale marker a
+        real Dilmore write sets, silently defeating round-3's stale-cache
+        delivery guard (round-4 Fable adversarial review finding Q2)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment = Path(temp_dir)
+            template = assignment / "template.xlsx"
+            _build_comp_export_workbook(template)
+            live_workbook = assignment / "workbook.xlsx"
+            state_path = assignment / ".axiom.json"
+            state_path.write_text(
+                json.dumps({"file_no": "TEST-777", "stage": "engaged"}),
+                encoding="utf-8",
+            )
+
+            export_sale_comps_to_workbook([], template, live_workbook)
+
+            final_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertTrue(final_state["formula_cache_stale"])
+            self.assertIn("formula_cache_stale_mtime", final_state)
+            # A prior unrelated state key must survive untouched.
+            self.assertEqual("engaged", final_state["stage"])
+
+    def test_export_to_non_workbook_filename_does_not_mark_stale(self):
+        """Exporting to some OTHER file inside an assignment folder (not
+        the live workbook.xlsx `deliver` actually reads) must not mark
+        that assignment's cache stale -- only an export that overwrites
+        the real live workbook.xlsx should."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assignment = Path(temp_dir)
+            template = assignment / "template.xlsx"
+            _build_comp_export_workbook(template)
+            other_output = assignment / "scratch_export.xlsx"
+            state_path = assignment / ".axiom.json"
+            state_path.write_text(
+                json.dumps({"file_no": "TEST-778", "stage": "new"}),
+                encoding="utf-8",
+            )
+
+            export_sale_comps_to_workbook([], template, other_output)
+
+            final_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertNotIn("formula_cache_stale", final_state)
+
     def test_unreviewed_batch_rolls_back_without_partial_rows(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

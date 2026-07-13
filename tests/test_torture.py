@@ -1,7 +1,11 @@
 import base64
+import io
 import json
+import re
 import tempfile
 import unittest
+import zipfile
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -46,6 +50,60 @@ def build_assignment(root, template_text, variables):
     document.add_paragraph(template_text)
     document.save(templates / "report.docx")
     return assignment, templates, {"documents": [{"template": "report.docx"}]}
+
+
+def _inject_cached_formula_value(workbook_path, sheet_name, cell_ref, cached_value):
+    """Simulate what a real Excel/LibreOffice recalculation leaves behind:
+    a formula cell whose XML also carries the last-computed <v> result.
+    openpyxl has no formula engine, so a formula written via `cell.value =
+    "=..."` never gets a cached value of its own -- this directly edits
+    the underlying worksheet XML the same way Excel would, so a test can
+    exercise a comp GBA that's a live formula with a real cached number,
+    not just the raw formula text a data_only=False read sees (round-4
+    Fable adversarial review finding Q7)."""
+    with zipfile.ZipFile(workbook_path, "r") as zin:
+        workbook_xml = zin.read("xl/workbook.xml").decode("utf-8")
+        rels_xml = zin.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+        contents = {name: zin.read(name) for name in zin.namelist()}
+
+    # Attribute order in these tags isn't guaranteed, so locate each whole
+    # tag first, then pull the specific attribute out of it -- rather than
+    # a single regex assuming a fixed attribute order.
+    sheet_tag_match = re.search(
+        rf'<sheet\b[^>]*\bname="{re.escape(sheet_name)}"[^>]*/?>',
+        workbook_xml,
+    )
+    rid = re.search(r'r:id="([^"]+)"', sheet_tag_match.group(0)).group(1)
+    rel_tag_match = re.search(
+        rf'<Relationship\b[^>]*\bId="{re.escape(rid)}"[^>]*/?>',
+        rels_xml,
+    )
+    target = re.search(r'Target="([^"]+)"', rel_tag_match.group(0)).group(1)
+    # openpyxl writes this as an absolute in-package path ("/xl/worksheets/
+    # sheetN.xml"), but the OOXML spec also allows a path relative to xl/
+    # ("worksheets/sheetN.xml") -- normalize either form to the zip member
+    # name actually used by ZipFile.namelist() (no leading slash).
+    target = target.lstrip("/")
+    sheet_path = target if target.startswith("xl/") else f"xl/{target}"
+
+    sheet_xml = contents[sheet_path].decode("utf-8")
+    # openpyxl already writes a formula cell with an empty <v></v> placeholder
+    # (e.g. "<c r=\"C7\"><f>T1</f><v></v></c>"), not just a bare <f>...</f> --
+    # the (?:...)? group below replaces that placeholder instead of trying to
+    # insert a second <v> after it, which would produce invalid XML with two
+    # value elements.
+    cell_pattern = re.compile(
+        rf'(<c r="{cell_ref}"[^>]*>)(<f>.*?</f>)(?:<v>.*?</v>)?(</c>)'
+    )
+    new_sheet_xml, count = cell_pattern.subn(
+        rf'\1\2<v>{cached_value}</v>\3', sheet_xml
+    )
+    assert count == 1, f"expected exactly one match for {cell_ref}, got {count}"
+    contents[sheet_path] = new_sheet_xml.encode("utf-8")
+
+    with zipfile.ZipFile(workbook_path, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name, data in contents.items():
+            zout.writestr(name, data)
 
 
 class TortureTests(unittest.TestCase):
@@ -775,6 +833,12 @@ class TortureTests(unittest.TestCase):
             intake.append(["GBA", 10000])
 
             size_adj = workbook.create_sheet("size_adj")
+            # Header row required by the header-driven column resolution
+            # added for round-4 Fable adversarial review finding Q6.
+            size_adj.cell(row=6, column=1).value = "Comp"
+            size_adj.cell(row=6, column=2).value = "Comp GBA (SF)"
+            size_adj.cell(row=6, column=4).value = "Size Factor"
+            size_adj.cell(row=6, column=5).value = "Adj %"
             size_adj["B3"] = 83  # not one of 80, 82.5, 85, 87.5, 90
             size_adj.cell(row=7, column=2).value = 20000
 
@@ -808,6 +872,12 @@ class TortureTests(unittest.TestCase):
             intake.append(["GBA", 10000])
 
             grid = workbook.create_sheet("sca_adjustment_grid")
+            # Header row required by the header-driven column resolution
+            # added for round-4 Fable adversarial review finding Q6.
+            grid.cell(row=6, column=1).value = "Comp"
+            grid.cell(row=6, column=3).value = "Comp GBA (SF)"
+            grid.cell(row=6, column=11).value = "Size Factor"
+            grid.cell(row=6, column=12).value = "Size Adj %"
             grid["B3"] = 85
             grid.cell(row=7, column=1).value = "Sale No. 1"
             # New layout: Comp GBA in column C (3), not B (2).
@@ -860,6 +930,12 @@ class TortureTests(unittest.TestCase):
             intake.append(["GBA", 10000])
 
             grid = workbook.create_sheet("sca_adjustment_grid")
+            # Header row required by the header-driven column resolution
+            # added for round-4 Fable adversarial review finding Q6.
+            grid.cell(row=6, column=1).value = "Comp"
+            grid.cell(row=6, column=3).value = "Comp GBA (SF)"
+            grid.cell(row=6, column=11).value = "Size Factor"
+            grid.cell(row=6, column=12).value = "Size Adj %"
             grid["B3"] = 85
             # The real template pre-labels every one of its built-in rows
             # 7-16 with "Sale No. 1".."Sale No. 10" regardless of whether
@@ -907,6 +983,12 @@ class TortureTests(unittest.TestCase):
             intake.append(["GBA", 10000])
 
             grid = workbook.create_sheet("sca_adjustment_grid")
+            # Header row required by the header-driven column resolution
+            # added for round-4 Fable adversarial review finding Q6.
+            grid.cell(row=6, column=1).value = "Comp"
+            grid.cell(row=6, column=3).value = "Comp GBA (SF)"
+            grid.cell(row=6, column=11).value = "Size Factor"
+            grid.cell(row=6, column=12).value = "Size Adj %"
             grid.cell(row=7, column=1).value = "Sale No. 1"
             grid.cell(row=7, column=3).value = 20000   # GBA entered
             # Size Factor (column 11) intentionally left blank -- stale.
@@ -955,6 +1037,12 @@ class TortureTests(unittest.TestCase):
             intake.append(["Field", "Value"])
             intake.append(["GBA", 10000])
             grid = workbook.create_sheet("sca_adjustment_grid")
+            # Header row required by the header-driven column resolution
+            # added for round-4 Fable adversarial review finding Q6.
+            grid.cell(row=6, column=1).value = "Comp"
+            grid.cell(row=6, column=3).value = "Comp GBA (SF)"
+            grid.cell(row=6, column=11).value = "Size Factor"
+            grid.cell(row=6, column=12).value = "Size Adj %"
             grid["B3"] = 85
             grid.cell(row=7, column=1).value = "Sale No. 1"
             grid.cell(row=7, column=3).value = 20000
@@ -1030,6 +1118,12 @@ class TortureTests(unittest.TestCase):
             intake.append(["Field", "Value"])
             intake.append(["GBA", 10000])
             grid = workbook.create_sheet("sca_adjustment_grid")
+            # Header row required by the header-driven column resolution
+            # added for round-4 Fable adversarial review finding Q6.
+            grid.cell(row=6, column=1).value = "Comp"
+            grid.cell(row=6, column=3).value = "Comp GBA (SF)"
+            grid.cell(row=6, column=11).value = "Size Factor"
+            grid.cell(row=6, column=12).value = "Size Adj %"
             grid["B3"] = 85
             grid.cell(row=7, column=1).value = "Sale No. 1"
             grid.cell(row=7, column=3).value = 20000
@@ -1144,6 +1238,313 @@ class TortureTests(unittest.TestCase):
             self.assertNotIn("formula_cache_stale", state)
             self.assertNotIn("formula_cache_stale_mtime", state)
             self.assertEqual("draft_generated", state["last_delivery_status"])
+
+    def test_draft_mode_preserves_prior_real_delivery_error(self):
+        """A prior REAL (non-draft) delivery attempt may have left a still-
+        true guidance message in last_delivery_error -- most importantly
+        P1's "open workbook.xlsx, let it recalculate, save, then re-run
+        deliver" instruction, which stays relevant until a real delivery
+        actually resolves it. A draft run used to silently erase that
+        message on its own success path even though the underlying
+        condition it describes was completely untouched by the draft
+        (round-4 Fable adversarial review finding Q4)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment, templates, _ = build_assignment(
+                root,
+                "[[VALUE]]",
+                {"VALUE": "safe"},
+            )
+            state_path = assignment / ".axiom.json"
+            prior_error = (
+                "Size adjustments in sca_adjustment_grid just changed. Open "
+                "workbook.xlsx, let it fully recalculate (e.g. press F9), "
+                "save, then re-run deliver."
+            )
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "file_no": "TEST-999",
+                        "stage": "new",
+                        "delivered": None,
+                        "last_delivery_status": "input_failed",
+                        "last_delivery_error": prior_error,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            stage = {
+                "deliver": {
+                    "documents": [
+                        {"template": "report.docx", "output": "Appraisal.docx"}
+                    ]
+                }
+            }
+
+            def fake_fill_document(_template, output, _variables, **_kwargs):
+                Document().save(output)
+                return {"missing": [], "blocks": [], "removed_sections": []}
+
+            with (
+                patch.object(axiom, "_find_assignment", return_value=assignment),
+                patch.object(
+                    axiom,
+                    "check_delivery_readiness",
+                    return_value={
+                        "ready": True,
+                        "errors": [],
+                        "missing": [],
+                        "unresolved_blocks": {},
+                    },
+                ),
+                patch.object(axiom, "STAGES", stage),
+                patch.object(axiom, "TEMPLATES_DIR", templates),
+                patch.object(axiom, "fill_document", side_effect=fake_fill_document),
+            ):
+                result = axiom.cmd_deliver(["TEST-999", "--draft"])
+
+            self.assertTrue(result)
+            state = axiom._load_state(assignment)
+            self.assertEqual("draft_generated", state["last_delivery_status"])
+            self.assertEqual(prior_error, state.get("last_delivery_error"))
+
+    def test_draft_mode_skip_message_is_specific_when_size_adjustments_pending(self):
+        """Draft mode's Dilmore skip line used to print a generic message
+        regardless of whether anything was actually pending, leaving Derek
+        unable to tell "routine skip, nothing to do" from "this draft's
+        Size Factor/Adj % are genuinely incomplete" without separately
+        running `dilmore` or `validate` (round-4 Fable adversarial review
+        finding Q5)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment, templates, _ = build_assignment(
+                root,
+                "[[VALUE]]",
+                {"VALUE": "safe"},
+            )
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook = openpyxl.load_workbook(workbook_path)
+            intake = workbook.create_sheet("Intake")
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+            grid = workbook.create_sheet("sca_adjustment_grid")
+            grid.cell(row=6, column=1).value = "Comp"
+            grid.cell(row=6, column=3).value = "Comp GBA (SF)"
+            grid.cell(row=6, column=11).value = "Size Factor"
+            grid.cell(row=6, column=12).value = "Size Adj %"
+            grid["B3"] = 85
+            grid.cell(row=7, column=1).value = "Sale No. 1"
+            grid.cell(row=7, column=3).value = 20000
+            workbook.save(workbook_path)
+            workbook.close()
+
+            stage = {
+                "deliver": {
+                    "documents": [
+                        {"template": "report.docx", "output": "Appraisal.docx"}
+                    ]
+                }
+            }
+
+            def fake_fill_document(_template, output, _variables, **_kwargs):
+                Document().save(output)
+                return {"missing": [], "blocks": [], "removed_sections": []}
+
+            buffer = io.StringIO()
+            with (
+                patch.object(axiom, "_find_assignment", return_value=assignment),
+                patch.object(
+                    axiom,
+                    "check_delivery_readiness",
+                    return_value={
+                        "ready": True,
+                        "errors": [],
+                        "missing": [],
+                        "unresolved_blocks": {},
+                    },
+                ),
+                patch.object(axiom, "STAGES", stage),
+                patch.object(axiom, "TEMPLATES_DIR", templates),
+                patch.object(axiom, "fill_document", side_effect=fake_fill_document),
+                redirect_stdout(buffer),
+            ):
+                axiom.cmd_deliver(["TEST-999", "--draft"])
+
+            output = buffer.getvalue()
+            self.assertIn("pending size adjustment(s) were NOT calculated", output)
+            self.assertIn("Comp 1", output)
+
+    def test_draft_mode_skip_message_is_generic_when_nothing_pending(self):
+        """The counterpart to the specific-message test above: with no
+        adjustment-grid tab at all (nothing for Dilmore to ever compute),
+        draft mode's skip line must stay the routine, generic message
+        rather than imply something is unresolved (round-4 Fable
+        adversarial review finding Q5)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment, templates, _ = build_assignment(
+                root,
+                "[[VALUE]]",
+                {"VALUE": "safe"},
+            )
+
+            stage = {
+                "deliver": {
+                    "documents": [
+                        {"template": "report.docx", "output": "Appraisal.docx"}
+                    ]
+                }
+            }
+
+            def fake_fill_document(_template, output, _variables, **_kwargs):
+                Document().save(output)
+                return {"missing": [], "blocks": [], "removed_sections": []}
+
+            buffer = io.StringIO()
+            with (
+                patch.object(axiom, "_find_assignment", return_value=assignment),
+                patch.object(
+                    axiom,
+                    "check_delivery_readiness",
+                    return_value={
+                        "ready": True,
+                        "errors": [],
+                        "missing": [],
+                        "unresolved_blocks": {},
+                    },
+                ),
+                patch.object(axiom, "STAGES", stage),
+                patch.object(axiom, "TEMPLATES_DIR", templates),
+                patch.object(axiom, "fill_document", side_effect=fake_fill_document),
+                redirect_stdout(buffer),
+            ):
+                axiom.cmd_deliver(["TEST-999", "--draft"])
+
+            output = buffer.getvalue()
+            self.assertIn("nothing pending", output)
+
+    def test_dilmore_reads_comp_gba_from_live_formula_cached_value(self):
+        """A comp GBA entered as a live Excel formula (e.g. referencing
+        another cell elsewhere in the workbook) used to be read only via
+        the data_only=False handle, which hands back the raw formula text
+        instead of its computed number; float() on that string always
+        raised, so the row was silently skipped with no Size Factor ever
+        written -- while the read-only staleness check (already
+        data_only=True) saw the correct cached value and kept warning that
+        Dilmore "runs automatically on delivery" even though it never
+        actually would (round-4 Fable adversarial review finding Q7)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignments = root / "assignments"
+            assignments.mkdir()
+            assignment = assignments / "TEST-504_Fictional_Client"
+            assignment.mkdir()
+
+            workbook = openpyxl.Workbook()
+            intake = workbook.active
+            intake.title = "Intake"
+            intake.append(["Field", "Value"])
+            intake.append(["GBA", 10000])
+
+            grid = workbook.create_sheet("sca_adjustment_grid")
+            grid.cell(row=6, column=1).value = "Comp"
+            grid.cell(row=6, column=3).value = "Comp GBA (SF)"
+            grid.cell(row=6, column=11).value = "Size Factor"
+            grid.cell(row=6, column=12).value = "Size Adj %"
+            grid["B3"] = 85
+            grid.cell(row=7, column=1).value = "Sale No. 1"
+            # A scratch cell elsewhere on the same sheet holding the real
+            # source number, referenced by the comp's GBA cell as a live
+            # formula -- the same shape as a GBA pulled in from a linked
+            # source-data tab.
+            grid.cell(row=1, column=20).value = 20000  # T1
+            grid.cell(row=7, column=3).value = "=T1"
+
+            workbook_path = assignment / "workbook.xlsx"
+            workbook.save(workbook_path)
+            workbook.close()
+            _inject_cached_formula_value(
+                workbook_path, "sca_adjustment_grid", "C7", 20000
+            )
+
+            with patch.object(axiom, "ASSIGNMENTS_DIR", assignments):
+                result = axiom.cmd_dilmore(["TEST-504"])
+
+            result_wb = openpyxl.load_workbook(workbook_path)
+            grid_result = result_wb["sca_adjustment_grid"]
+            expected_factor = round(dilmore_factor(20000 / 10000, 85), 4)
+            self.assertEqual(
+                expected_factor, grid_result.cell(row=7, column=11).value
+            )
+            result_wb.close()
+
+    def test_successful_delivery_clears_stale_formula_cache_flag(self):
+        """After a real (non-draft) delivery completes successfully, any
+        formula_cache_stale flag left over from an earlier real Dilmore
+        write must be cleared -- reaching a successful, non-draft delivery
+        at all means check_delivery_readiness/_dilmore_cache_still_stale
+        already confirmed the cache isn't stale (or has since been
+        recalculated), so leaving the flag set forever afterward would
+        permanently and incorrectly warn about a condition that's already
+        been resolved (round-4 Fable adversarial review finding Q8)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            assignment, templates, _ = build_assignment(
+                root,
+                "[[VALUE]]",
+                {"VALUE": "safe"},
+            )
+            state_path = assignment / ".axiom.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "file_no": "TEST-999",
+                        "stage": "new",
+                        "delivered": None,
+                        "formula_cache_stale": True,
+                        "formula_cache_stale_mtime": 12345.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            stage = {
+                "deliver": {
+                    "documents": [
+                        {"template": "report.docx", "output": "Appraisal.docx"}
+                    ]
+                }
+            }
+
+            def fake_fill_document(_template, output, _variables, **_kwargs):
+                Document().save(output)
+                return {"missing": [], "blocks": [], "removed_sections": []}
+
+            with (
+                patch.object(axiom, "_find_assignment", return_value=assignment),
+                patch.object(
+                    axiom,
+                    "check_delivery_readiness",
+                    return_value={
+                        "ready": True,
+                        "errors": [],
+                        "missing": [],
+                        "unresolved_blocks": {},
+                    },
+                ),
+                patch.object(axiom, "STAGES", stage),
+                patch.object(axiom, "TEMPLATES_DIR", templates),
+                patch.object(axiom, "fill_document", side_effect=fake_fill_document),
+            ):
+                result = axiom.cmd_deliver(["TEST-999"])
+
+            self.assertTrue(result)
+            state = axiom._load_state(assignment)
+            self.assertNotIn("formula_cache_stale", state)
+            self.assertNotIn("formula_cache_stale_mtime", state)
+            self.assertEqual("delivered", state["stage"])
 
 
 if __name__ == "__main__":

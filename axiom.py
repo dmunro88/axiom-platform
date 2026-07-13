@@ -42,6 +42,7 @@ from comp_builder import inject_comp_section
 from adjustment_grid import (
     MAX_DATA_ROW as GRID_MAX_DATA_ROW,
     inject_all_adjustment_grids,
+    read_header_map,
 )
 from dilmore import dilmore_factor, dilmore_adj_pct, dilmore_summary
 from media_blocks import create_media_directories, inject_media_blocks
@@ -117,8 +118,31 @@ def _load_state(adir):
 
 
 def _save_state(adir, state):
-    with open(adir / ".axiom.json", "w", encoding="utf-8") as f:
+    # Atomic write (write-to-temp then rename) so a process interrupted
+    # mid-write (crash, kill, disk full) can never leave .axiom.json half
+    # written -- a partial/corrupt JSON file used to fail-open every guard
+    # that reads this state (e.g. validation.py's stale-Dilmore-cache check),
+    # since _load_state would either raise or silently see a truncated dict
+    # missing the very flags meant to protect against a bad delivery (round-4
+    # Fable adversarial review finding Q8).
+    state_file = adir / ".axiom.json"
+    tmp_file = adir / ".axiom.json.tmp"
+    with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
+    try:
+        tmp_file.replace(state_file)
+    except OSError:
+        # The atomic rename itself can fail on some environments (a sync
+        # client or antivirus holding a lock, a locked-output scenario that
+        # also happens to affect the state file) -- this call is frequently
+        # made from inside an `except` block trying to record why some other
+        # operation just failed, so letting the rename's own failure escape
+        # uncaught would replace a clear error message with a raw traceback.
+        # Fall back to a direct (non-atomic) write rather than lose the
+        # state update entirely.
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+        tmp_file.unlink(missing_ok=True)
 
 
 def _find_json(adir):
@@ -457,11 +481,27 @@ def cmd_deliver(args):
         elif not dilmore_result["ok"]:
             print(f"  [Dilmore] skipped -- {dilmore_result['message']}")
     else:
-        print(
-            "  [Dilmore] skipped -- draft mode does not run the "
-            "size-adjustment auto-calc (would risk mutating workbook.xlsx "
-            "or delivery state)."
-        )
+        # A generic skip line used to print unconditionally here regardless
+        # of whether anything was actually pending -- Derek had no way to
+        # tell "routine skip, nothing to do" from "this draft's Size Factor/
+        # Adj % are genuinely incomplete" without separately running
+        # `dilmore` or `validate`. _dilmore_staleness_warnings is read-only
+        # (safe in draft mode) and is the same check `validate` already
+        # surfaces, so reuse it here to make the skip message specific when
+        # there's real pending work (round-4 Fable adversarial review
+        # finding Q5).
+        staleness_warnings = _dilmore_staleness_warnings(workbook_path)
+        if staleness_warnings:
+            print(
+                "  [Dilmore] skipped in draft mode -- pending size "
+                "adjustment(s) were NOT calculated, so this draft's Size "
+                "Factor/Adj % (and anything derived from them) may be "
+                "incomplete:"
+            )
+            for warning in staleness_warnings:
+                print(f"    [!] {warning}")
+        else:
+            print("  [Dilmore] skipped in draft mode -- nothing pending.")
 
     print(f"\n  Loading variables ...")
     try:
@@ -611,7 +651,14 @@ def cmd_deliver(args):
 
     if draft_mode:
         state["last_delivery_status"] = "draft_generated"
-        state.pop("last_delivery_error", None)
+        # Deliberately NOT clearing last_delivery_error here: a prior real
+        # (non-draft) delivery attempt may have left a genuinely still-true
+        # guidance message here -- most importantly P1's "open workbook.xlsx,
+        # let it recalculate, save, then re-run deliver" instruction, which
+        # stays relevant until a real delivery actually resolves it. A draft
+        # run used to silently erase that message even though the underlying
+        # formula_cache_stale condition it describes was untouched (round-4
+        # Fable adversarial review finding Q4).
         _save_state(adir, state)
         print(f"\n  Draft generated; assignment stage remains {state.get('stage', 'new')}.")
         print(f"  {count} document(s) ready for review in:")
@@ -642,6 +689,15 @@ def cmd_deliver(args):
     state["last_delivery_status"] = "completed"
     state["last_delivery_blocker_count"] = 0
     state.pop("last_delivery_error", None)
+    # A real (non-draft) delivery only ever reaches this point if
+    # check_delivery_readiness/_dilmore_cache_still_stale already let it
+    # through, meaning the cache was either never marked stale or was
+    # resaved/recalculated since -- so it's safe, and correct, to clear the
+    # marker now rather than leave it set forever after the condition it
+    # described has actually been resolved (round-4 Fable adversarial
+    # review finding Q8).
+    state.pop("formula_cache_stale", None)
+    state.pop("formula_cache_stale_mtime", None)
     _save_state(adir, state)
 
     print(f"\n  {count} document(s) ready in:")
@@ -654,10 +710,28 @@ def cmd_deliver(args):
 # is the older tab an assignment engaged before Phase 6 shipped may still
 # have (see docs/ADJUSTMENT_GRID_DESIGN.md, Open Question e -- graceful
 # skip/detection rather than a forced migration). Both use the same
-# 10-comp-row layout starting at row 7; only the column positions differ.
+# 10-comp-row layout starting at row 7; only the column positions and a
+# couple of header labels differ.
+#
+# Columns are identified by header text, resolved at runtime via
+# adjustment_grid.read_header_map, not by fixed index -- this used to be a
+# hardcoded {"comp_gba_col": 3, "factor_col": 11, "adj_pct_col": 12}-style
+# dict, which silently wrote Size Factor/Adj % into whatever now occupied
+# those column *positions* if a column was ever hand-inserted into the
+# sheet, with no error (round-4 Fable adversarial review finding Q6).
+# read_grid_rows (the report-reading side) was already header-driven by
+# design; this makes the write side agree with it.
 _DILMORE_TAB_LAYOUTS = {
-    "sca_adjustment_grid": {"comp_gba_col": 3, "factor_col": 11, "adj_pct_col": 12},
-    "size_adj":            {"comp_gba_col": 2, "factor_col": 4,  "adj_pct_col": 5},
+    "sca_adjustment_grid": {
+        "comp_gba_header": "Comp GBA (SF)",
+        "factor_header": "Size Factor",
+        "adj_pct_header": "Size Adj %",
+    },
+    "size_adj": {
+        "comp_gba_header": "Comp GBA (SF)",
+        "factor_header": "Size Factor",
+        "adj_pct_header": "Adj %",
+    },
 }
 
 
@@ -678,12 +752,29 @@ def _run_dilmore_calc(workbook_path):
        "subject_gba": ..., "curve": ..., "summary": [...]}     -- wrote N rows
     """
     import openpyxl
+    # Two handles on the same file: `wb` (data_only=False) is the only one
+    # ever written to or saved, preserving every other sheet's live formula
+    # objects. `wb_values` (data_only=True) is read-only and used for every
+    # value this function needs to read -- curve, subject GBA, and each
+    # comp's GBA. A comp's GBA entered as a live Excel formula (e.g.
+    # referencing another cell) used to be read from `wb` alone, which hands
+    # back the raw formula string, not its computed number; float() on that
+    # string always raised, so the row was silently skipped with no Size
+    # Factor ever written -- while the read-only staleness check in
+    # `_dilmore_staleness_warnings` (already data_only=True) saw the correct
+    # cached number and kept reporting "runs automatically on delivery" even
+    # though it never actually would (round-4 Fable adversarial review
+    # finding Q7). Reading every value through the same data_only=True view
+    # the rest of the platform uses closes that gap.
     wb = openpyxl.load_workbook(str(workbook_path))
+    wb_values = openpyxl.load_workbook(str(workbook_path), data_only=True)
 
     tab_name = next(
         (name for name in _DILMORE_TAB_LAYOUTS if name in wb.sheetnames), None
     )
     if tab_name is None:
+        wb.close()
+        wb_values.close()
         return {
             "ok": False,
             "message": (
@@ -693,8 +784,34 @@ def _run_dilmore_calc(workbook_path):
         }
 
     layout = _DILMORE_TAB_LAYOUTS[tab_name]
-    sa = wb[tab_name]
-    curve_val = sa["B3"].value
+    sa = wb[tab_name]              # write target
+    sa_values = wb_values[tab_name]  # read-only cached values
+
+    header_map = read_header_map(sa)
+    comp_gba_col = header_map.get(layout["comp_gba_header"])
+    factor_col = header_map.get(layout["factor_header"])
+    adj_pct_col = header_map.get(layout["adj_pct_header"])
+    missing_headers = [
+        name for name, col in (
+            (layout["comp_gba_header"], comp_gba_col),
+            (layout["factor_header"], factor_col),
+            (layout["adj_pct_header"], adj_pct_col),
+        )
+        if col is None
+    ]
+    if missing_headers:
+        wb.close()
+        wb_values.close()
+        return {
+            "ok": False,
+            "message": (
+                f"{tab_name} is missing expected column header(s): "
+                f"{', '.join(missing_headers)}. Check row {6} hasn't been "
+                "restructured."
+            ),
+        }
+
+    curve_val = sa_values["B3"].value
     try:
         curve = float(curve_val) if curve_val else 85.0
     except (ValueError, TypeError):
@@ -702,8 +819,8 @@ def _run_dilmore_calc(workbook_path):
 
     # Read subject GBA from Intake tab
     subject_gba = None
-    if "Intake" in wb.sheetnames:
-        intake = wb["Intake"]
+    if "Intake" in wb_values.sheetnames:
+        intake = wb_values["Intake"]
         for row in intake.iter_rows(min_row=2, values_only=True):
             if row[0] and str(row[0]).strip().upper() == "GBA":
                 try:
@@ -726,6 +843,8 @@ def _run_dilmore_calc(workbook_path):
                 pass
 
     if not subject_gba:
+        wb.close()
+        wb_values.close()
         return {
             "ok": False,
             "message": (
@@ -754,7 +873,7 @@ def _run_dilmore_calc(workbook_path):
     if tab_name == "sca_adjustment_grid":
         scan_rows = []
         for candidate_row in range(7, GRID_MAX_DATA_ROW + 1):
-            comp_label = sa.cell(row=candidate_row, column=1).value
+            comp_label = sa_values.cell(row=candidate_row, column=1).value
             if not (isinstance(comp_label, str) and comp_label.startswith("Sale No.")):
                 break
             scan_rows.append(candidate_row)
@@ -762,7 +881,7 @@ def _run_dilmore_calc(workbook_path):
         scan_rows = list(range(7, 17))
 
     for row_idx in scan_rows:
-        comp_gba_val = sa.cell(row=row_idx, column=layout["comp_gba_col"]).value
+        comp_gba_val = sa_values.cell(row=row_idx, column=comp_gba_col).value
         if not comp_gba_val:
             continue
         try:
@@ -773,6 +892,8 @@ def _run_dilmore_calc(workbook_path):
         comp_gbas.append(comp_gba)
 
     if not comp_gbas:
+        wb.close()
+        wb_values.close()
         return {
             "ok": True,
             "count": 0,
@@ -790,6 +911,8 @@ def _run_dilmore_calc(workbook_path):
     try:
         summary = dilmore_summary(subject_gba, comp_gbas, curve)
     except ValueError as exc:
+        wb.close()
+        wb_values.close()
         return {
             "ok": False,
             "message": (
@@ -810,15 +933,23 @@ def _run_dilmore_calc(workbook_path):
     for row_idx, row in zip(row_idxs, summary):
         new_factor = round(row["factor"], 4)
         new_adj_pct = round(row["factor"] - 1, 4)
-        factor_cell = sa.cell(row=row_idx, column=layout["factor_col"])
-        adj_pct_cell = sa.cell(row=row_idx, column=layout["adj_pct_col"])
-        if factor_cell.value != new_factor or adj_pct_cell.value != new_adj_pct:
+        # Compare against the CACHED value (data_only=True) rather than
+        # whatever `sa`'s data_only=False view happens to hold -- if these
+        # cells were ever formulas instead of plain numbers, data_only=False
+        # would show the formula string and always look "changed", forcing
+        # an unnecessary save (and cache wipe) every single run.
+        old_factor_cached = sa_values.cell(row=row_idx, column=factor_col).value
+        old_adj_pct_cached = sa_values.cell(row=row_idx, column=adj_pct_col).value
+        if old_factor_cached != new_factor or old_adj_pct_cached != new_adj_pct:
             changed = True
+        factor_cell = sa.cell(row=row_idx, column=factor_col)
+        adj_pct_cell = sa.cell(row=row_idx, column=adj_pct_col)
         factor_cell.value = new_factor
         adj_pct_cell.value = new_adj_pct
 
     if not changed:
         wb.close()
+        wb_values.close()
         return {
             "ok": True,
             "count": len(row_idxs),
@@ -857,6 +988,7 @@ def _run_dilmore_calc(workbook_path):
     state["formula_cache_stale"] = True
     state["formula_cache_stale_mtime"] = workbook_path.stat().st_mtime
     _save_state(workbook_path.parent, state)
+    wb_values.close()
 
     return {
         "ok": True,
@@ -1334,6 +1466,24 @@ def _dilmore_staleness_warnings(workbook_path):
 
     layout = _DILMORE_TAB_LAYOUTS[tab_name]
     sa = wb[tab_name]
+
+    # Header-driven column resolution, matching _run_dilmore_calc's write
+    # path -- both used to hardcode column indices, which could silently
+    # disagree about which column is which if a column was ever hand-
+    # inserted (round-4 Fable adversarial review finding Q6). If the
+    # expected headers aren't there, fail open (no warning) rather than
+    # raise: this function only ever produces a soft, informational
+    # warning, and _run_dilmore_calc's own "ok": False path is what
+    # actually surfaces a real header-mismatch error to Derek.
+    try:
+        header_map = read_header_map(sa)
+    except Exception:
+        return []
+    comp_gba_col = header_map.get(layout["comp_gba_header"])
+    factor_col = header_map.get(layout["factor_header"])
+    if comp_gba_col is None or factor_col is None:
+        return []
+
     stale_comps = []
     # Same anchor-checked window as _run_dilmore_calc's write path (see its
     # comment) -- this staleness check must cover exactly the rows Dilmore
@@ -1353,8 +1503,8 @@ def _dilmore_staleness_warnings(workbook_path):
         scan_rows = list(range(7, 17))
 
     for row_idx in scan_rows:
-        comp_gba = sa.cell(row=row_idx, column=layout["comp_gba_col"]).value
-        factor = sa.cell(row=row_idx, column=layout["factor_col"]).value
+        comp_gba = sa.cell(row=row_idx, column=comp_gba_col).value
+        factor = sa.cell(row=row_idx, column=factor_col).value
         if comp_gba and not factor:
             stale_comps.append(str(row_idx - 6))
 

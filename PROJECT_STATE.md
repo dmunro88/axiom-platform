@@ -1,16 +1,18 @@
 # Axiom Platform — Project State
 
-- Last verified: 2026-07-11
+- Last verified: 2026-07-13
 - Status: Functional prototype in active local use; production safeguards and
   repeatable tests are incomplete.
-- **Handing off to Codex as of 2026-07-11.** Phase 6 (Adjustment Grid)
-  shipped complete 2026-07-10 and has since been through four rounds of
-  Fable-model adversarial review; rounds 1-3 found real bugs and are fixed
-  and committed (`9d198a5`, `9026f2e`, `4db2456`). Round 4 found nine more
-  issues (Q1-Q9, medium/low severity) that Derek has **not yet decided**
-  whether to fix — see `HANDOFF.md`'s "Completed this session (Claude,
-  Phase 6 hardening rounds 1-4 — 2026-07-11)" for the full list before
-  touching any Dilmore/adjustment-grid code.
+- Phase 6 (Adjustment Grid) shipped complete 2026-07-10 and has since been
+  through four rounds of Fable-model adversarial review; all four rounds
+  found real bugs, and all are fixed and committed (`9d198a5`, `9026f2e`,
+  `4db2456`, plus round 4's Q1-Q9 fixes committed 2026-07-13). See
+  `HANDOFF.md`'s "Completed this session (Claude, Phase 6 hardening rounds
+  1-4 — 2026-07-11)" and its "Round 4 fixes — completed 2026-07-13" note
+  for details. No round-5 Fable review has been spawned — don't spawn one
+  without checking with Derek first (usage-consumption concern he's
+  raised previously). The live-fire test on a real assignment remains a
+  separate, unscheduled step.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.
@@ -130,10 +132,10 @@ Checks were performed without regenerating or modifying assignment outputs.
   found while running the full suite: the Intake sheet's `REPORT_TYPE` row
   was merged across all 4 columns like a section header, so it had no
   actual cell to type a value into.
-- **Phase 6 hardening, rounds 1-3 complete (2026-07-11), round 4 pending
-  triage.** An iterative Fable-model adversarial-review cycle (spawn a
+- **Phase 6 hardening, all four rounds complete (round 4 fixed
+  2026-07-13).** An iterative Fable-model adversarial-review cycle (spawn a
   review agent, fix real findings, re-spawn to verify, repeat) against
-  Phase 6 found and fixed real bugs across three rounds: round 1
+  Phase 6 found and fixed real bugs across four rounds: round 1
   (`9d198a5`, findings A1-A5), round 2 (`9026f2e`, finding N1 plus
   residual gaps in round 1's A1/A3/A5 fixes), round 3 (`4db2456`,
   findings P1-P4 — a false-positive stale-formula-cache deadlock that
@@ -141,15 +143,18 @@ Checks were performed without regenerating or modifying assignment outputs.
   that could silently drop a comp from a delivered report, a Dilmore/
   report-reader row-scan disagreement, and a `--draft` mode side effect
   that could mutate the workbook/delivery state despite promising not
-  to). A fourth review round (2026-07-11, review-only, no code changes)
-  independently re-verified all of rounds 1-3's fixes hold via its own
-  repro scripts and found nine further issues (Q1-Q9, all medium/low
-  severity — none corrupting a delivered report under default,
-  unmodified-template use). **Derek has not yet decided which of Q1-Q9 to
-  fix** ("stop here for now while we wait for a usage reset") — see
-  `HANDOFF.md` for the full list, severities, and repro details before
-  touching `adjustment_grid.py`, the Dilmore paths in `axiom.py`, or
-  `validation.py`'s `_dilmore_cache_still_stale`.
+  to), and round 4 (committed 2026-07-13, findings Q1-Q9 — comp-library
+  export not marking the formula cache stale like a real Dilmore write
+  does, Dilmore writing to hardcoded columns instead of header-resolved
+  ones, a live-formula comp GBA cell being read as raw formula text
+  instead of its cached value, draft mode erasing a still-relevant prior
+  delivery error message, an unhelpfully generic draft-mode skip message,
+  the stale-cache flag never being cleared after a successful delivery,
+  plus a bonus fix to `_save_state`'s atomic-write fallback found while
+  testing Q8). See `HANDOFF.md`'s "Round 4 fixes — completed 2026-07-13"
+  for the full list, severities, and which files/tests changed. No
+  round-5 Fable review has been spawned yet — don't spawn one without
+  checking with Derek first.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
 - The live assignment directory now contains one clearly labeled fictional
@@ -432,12 +437,4 @@ Checks were performed without regenerating or modifying assignment outputs.
 3. **Completed for adversarial structural behavior:** add temporary-assignment
    torture tests covering malformed, extreme, interrupted, and path-safety
    cases.
-4. **Completed:** add a metadata-normalized structural DOCX golden comparison.
-   Desktop Word visual comparison remains.
-
-### P1 — Data contract
-
-1. **Completed:** introduce a versioned field registry/schema independent of
-   Word templates.
-2. **Completed for six deterministic variants:** derive presentation variants
-   rather than entering duplicate facts. Semantically distinct s
+4. **Completed:** add a metadata-normalized structural 

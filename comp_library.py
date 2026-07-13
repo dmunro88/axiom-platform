@@ -1,6 +1,7 @@
 """Search and export services for reviewed canonical comparable sales."""
 
 import csv
+import json
 import shutil
 from pathlib import Path
 
@@ -70,6 +71,42 @@ def sale_comp_to_report_fields(record, comp_number):
     }
 
 
+def _mark_formula_cache_stale_if_live_workbook(output_workbook):
+    """If *output_workbook* is a live assignment's workbook.xlsx (an
+    `.axiom.json` state file lives next to it), record the same
+    formula_cache_stale marker axiom.py's `_run_dilmore_calc` writes after
+    any real save that touches that workbook.
+
+    This export re-saves the workbook exactly like a real Dilmore write
+    does -- wiping every OTHER cached formula result workbook-wide, since
+    openpyxl has no formula engine -- but until now didn't set the marker
+    that tells `validate`/`deliver` the cache needs a real Excel
+    recalculation before the next delivery. That silently defeated round-3
+    hardening's stale-cache guard (round-4 Fable adversarial review finding
+    Q2). Deliberately checks the exact filename "workbook.xlsx", not just
+    "an .axiom.json exists nearby" -- exporting to some OTHER file inside an
+    assignment folder (not the live workbook `deliver` actually reads) must
+    not mark that assignment's cache stale.
+    """
+    output_workbook = Path(output_workbook)
+    if output_workbook.name != "workbook.xlsx":
+        return
+    state_file = output_workbook.parent / ".axiom.json"
+    if not state_file.exists():
+        return
+    try:
+        with open(state_file, encoding="utf-8") as f:
+            state = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        state = {}
+    state["formula_cache_stale"] = True
+    state["formula_cache_stale_mtime"] = output_workbook.stat().st_mtime
+    tmp_file = output_workbook.parent / ".axiom.json.tmp"
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+    tmp_file.replace(state_file)
+
+
 def export_sale_comps_to_workbook(
     records,
     source_workbook,
@@ -105,6 +142,7 @@ def export_sale_comps_to_workbook(
         workbook.save(output_workbook)
     finally:
         workbook.close()
+    _mark_formula_cache_stale_if_live_workbook(output_workbook)
     return output_workbook
 
 

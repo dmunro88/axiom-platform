@@ -511,10 +511,70 @@ issues (Q1-Q9), none urgent:
   agent report in this session's transcript if needed.
 
 Derek's call after seeing this list: **"stop here for now while we wait
-for a usage reset."** Q1-Q9 are backlog, not scheduled. If picking this up:
-ask Derek which of Q1-Q9 he wants fixed before touching anything (he was
-mid-decision when this session ended) — don't assume "fix everything" or
-"fix nothing" from this note alone.
+for a usage reset."** Q1-Q9 were backlog at that point, not scheduled.
+
+**Round 4 fixes — completed 2026-07-13.** Derek's later instruction was to
+"do the round 4 fixes and we'll use whatever assignment is around when the
+live test comes" — the live-fire test on a real assignment is a separate,
+still-unscheduled step. All of Q1-Q9 were addressed:
+- **Q1:** whitespace-only corrupted anchors on the last comp row are now
+  caught by a `str.strip()` before the blank check (the cheap partial fix
+  the round-4 review suggested; typo'd anchors like `"Sale No 2"` are a
+  separate, unaddressed case).
+- **Q2:** `comp_library.export_sale_comps_to_workbook` now sets the same
+  `formula_cache_stale` (+ `formula_cache_stale_mtime`) marker a real
+  Dilmore write sets, since it resaves the workbook the same way. Only
+  exports that overwrite the actual live `workbook.xlsx` mark stale —
+  exporting to some other filename in the assignment folder does not.
+- **Q3:** documented-limitation only, no code fix (environment-specific
+  OneDrive stale-stat-cache risk — see "Known limitations").
+- **Q4:** draft mode no longer overwrites `last_delivery_error` on its own
+  success path, so a prior real delivery's "press F9 and recalculate"
+  guidance survives until an actual real delivery resolves it.
+- **Q5:** draft mode's Dilmore-skip console message is now specific
+  ("N pending size adjustment(s) were NOT calculated," naming which comps)
+  when adjustments are actually outstanding, vs. the generic "nothing
+  pending" message when there's nothing for Dilmore to ever compute.
+- **Q6:** `_run_dilmore_calc` and `_dilmore_staleness_warnings` both now
+  resolve their target columns by reading the tab's own header row
+  (`_DILMORE_TAB_LAYOUTS`) instead of assuming fixed column indices, so a
+  hand-inserted column no longer causes Dilmore to silently write
+  adjustment numbers into the wrong column.
+- **Q7:** Dilmore's calc now reads a comp GBA cell via a dual
+  `data_only=True`/`data_only=False` workbook handle, so a GBA entered as
+  a live Excel formula is read from its cached computed value instead of
+  the raw formula text (which used to silently fail `float()` and skip the
+  row).
+- **Q8:** `formula_cache_stale`/`formula_cache_stale_mtime` are now popped
+  from state after a successful (non-draft) delivery, and `_save_state`
+  writes atomically (temp file + `replace()`) so an interrupted write can't
+  leave `.axiom.json` half-written.
+- **Q9:** confirmed non-issues, no action taken.
+
+**Bonus hardening found this round (not part of Q1-Q9):** while testing the
+Q8 atomic-write fix, found that `_save_state`'s `tmp_file.replace(state_file)`
+itself wasn't resilient to a failed rename (locked file, antivirus, sync-client
+lock — directly relevant given this repo lives on a OneDrive mount that has
+repeatedly shown exactly this kind of lock behavior during development). Now
+falls back to a direct non-atomic write if the atomic rename raises `OSError`,
+so a state-write failure can't crash the very error-handling path
+(`cmd_deliver`'s failure branch) that was trying to record why something else
+just failed.
+
+Regression tests added: two in `tests/test_comp_pipeline.py` (Q2:
+`test_export_to_live_workbook_marks_formula_cache_stale`,
+`test_export_to_non_workbook_filename_does_not_mark_stale`) and five in
+`tests/test_torture.py` (Q4: `test_draft_mode_preserves_prior_real_delivery_error`;
+Q5: `test_draft_mode_skip_message_is_specific_when_size_adjustments_pending`,
+`test_draft_mode_skip_message_is_generic_when_nothing_pending`; Q7:
+`test_dilmore_reads_comp_gba_from_live_formula_cached_value`, using a new
+`_inject_cached_formula_value` XML-injection test helper since openpyxl has
+no formula engine; Q8: `test_successful_delivery_clears_stale_formula_cache_flag`).
+Full suite (139 tests total across all files, run in batches to fit this
+sandbox's per-command time limit) plus `python axiom.py contract` (v1.2.0,
+220 fields, 24 blocks, no drift) both green. No round-5 Fable review has
+been spawned — per Derek's earlier note about Fable-review usage
+consumption, that won't happen without checking with him first.
 
 ## Completed this session (Claude, 2026-07-08)
 
@@ -1105,11 +1165,12 @@ calls about business logic rather than obvious bugs. His answers:
 
 ## In progress
 
-- **Phase 6 hardening round 4's findings (Q1-Q9, see above) are triaged but
-  not fixed.** Derek asked to pause here pending a usage-limit reset and
-  has not yet said which (if any) of Q1-Q9 to act on. This is the actual
-  in-progress item for the next session — don't start fixing any of them
-  without asking him first.
+- **Phase 6 hardening round 4's findings (Q1-Q9) are fixed as of
+  2026-07-13** (see "Round 4 fixes — completed 2026-07-13" above). Nothing
+  left in-progress from round 4 itself; the live-fire test on a real
+  assignment (Derek's phrase: "we'll use whatever assignment is around
+  when the live test comes") is a separate, still-unscheduled step, not
+  something to start proactively.
 - The stress-test pass on the OCR/ingest side (2026-07-09) and its
   immediate follow-up are complete. The remaining flagged findings from
   that pass (OCR skew/watermark routing, symlink folder-boundary escape,
@@ -1118,14 +1179,11 @@ calls about business logic rather than obvious bugs. His answers:
 
 ## Exact next step
 
-1. **Ask Derek which of round 4's Q1-Q9 findings to fix** (see "Completed
-   this session (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)"
-   above for the full list and severities). Q2 and Q6 are the two he'd
-   most likely want prioritized (both are silent-wrong-data paths, just
-   requiring unusual-but-plausible triggers) but he hadn't decided when
-   this session ended. If he says fix some/all: fix, run the full suite +
-   `axiom.py contract`, commit, then spawn a round-5 Fable review to
-   confirm clean — same cycle rounds 1-4 followed.
+1. Round 4 is done — no round-5 Fable review has been spawned yet. Don't
+   spawn one without checking with Derek first (he's previously flagged
+   that Fable reviews consume a lot of usage). If/when he gives the
+   go-ahead, spawn one against the current commit to verify Q1-Q9's fixes
+   hold, same cycle rounds 1-4 followed.
 2. Review the latest five staged copied-archive batches before any real
    database commit (unchanged from before — still Derek's own task, not
    something delegated to an agent). They include OCR-derived operating
@@ -1207,9 +1265,11 @@ Across `9d198a5`, `9026f2e`, and `4db2456` combined:
   `tests/test_torture.py` — regression tests for every round's fixes.
 - `HANDOFF.md`, `PROJECT_STATE.md` — this update.
 
-Round 4 was review-only (a spawned Fable agent, no repo changes) — see
-"Completed this session (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)"
-above for its Q1-Q9 findings, not yet acted on.
+Round 4 started as review-only (a spawned Fable agent, no repo changes) —
+see "Completed this session (Claude, Phase 6 hardening rounds 1-4 —
+2026-07-11)" above for its Q1-Q9 findings. Those findings were fixed in a
+later session (2026-07-13); see "Round 4 fixes — completed 2026-07-13"
+in that same section for what changed and which files.
 
 ## Changed files this session (Claude, 2026-07-08)
 
@@ -1304,60 +1364,4 @@ touch:
   harmless (gitignored, no real data, don't affect any staged batch's
   correctness) but add clutter; delete manually from
   `ingest/staged/ocr_pages/` when convenient, or run `python axiom.py
-  ocr-cleanup` (added this session) from Derek's own machine where file
-  deletion isn't restricted, which will safely remove them along with any
-  other genuinely orphaned page images.
-
-- **This sandbox's bash tool mounts this OneDrive-synced folder in a way
-  that can lag behind edits made through the file-editing tool** — it can
-  take a snapshot-like view rather than a live sync within a session. This
-  was worked around successfully both times this session (once for the
-  original OCR-lane commit, once for the follow-up): after editing via the
-  file-editing tool and confirming correctness by re-reading, the same
-  content was pushed into bash's view via bash-native writes (`cp` from a
-  verified copy, or a heredoc write) before running tests — bash-native
-  writes to this mount are immediately self-consistent, unlike edits made
-  through the file-editing tool. Both times, the full suite was then run
-  live in this checkout and confirmed passing (71/71, then 73/73) before
-  committing — this is no longer an open verification gap, just a technique
-  worth knowing about for the next session's own edit/test cycles.
-- This same mount also does not let git commands unlink their own lock/temp
-  files after normal use (`.git/index.lock`, `.git/HEAD.lock`,
-  `.git/objects/**/tmp_obj_*` all warn "Operation not permitted" on cleanup,
-  even on a successful command). `mv` (not `rm`) clears a stale lock before
-  the next git command; the warnings themselves don't indicate corruption.
-  **This got worse, not just noisier, while committing `6ad25af`:** the same
-  restriction let a stale `.git/index.lock` get renamed over the real
-  `.git/index` on write, corrupting it (`bad signature 0x00000000`), and
-  separately left `HEAD` unmoved after a real commit object was already
-  created. Both were recoverable without touching any working-tree file —
-  `git read-tree HEAD` rebuilds a valid index from the last good commit
-  (safe: it only touches the index, never the working tree), and a commit
-  that exists as an object but didn't move `HEAD` can be recovered with
-  `git update-ref refs/heads/main <hash>` after confirming via `git cat-file
-  -p <hash>` that its tree/parent/message are the intended ones. This
-  produced one confirmed-harmless duplicate dangling commit (identical tree
-  to `dde13b8`, an earlier failed attempt at the same commit, 17 seconds
-  older) sitting in the object database; `git gc` will eventually reap it.
-  Moral for next time: do every index-modifying git command in its own bash
-  call (not chained with others) and verify `git cat-file -p HEAD` names the
-  right commit before trusting a "success" exit code on this mount.
-- Plain `python` is not on PATH in the current Codex environment. The bundled
-  Python runtime was used for checks.
-- Tesseract is installed and synthetic OCR tests now run. Live archive
-  extraction has been tested against an image-only rendering of Derek's
-  supplied rent roll and proforma, but a naturally image-only scanned rent
-  roll or P&L has not yet produced staged financial rows through full
-  staging/review in this checkout. The naturally image-only JeffCo income
-  statement OCRed clearly enough but did not match current expense-section
-  parsing rules.
-- DOCX media layout has structural test coverage but still needs visual QA with
-  representative landscape and portrait photos.
-- Streamlit comparable review/browse behavior has service-level coverage but
-  still needs an interactive browser pass.
-- Missing/error Excel caches are detectable. A valid-looking but stale cached
-  value cannot be proven stale from XLSX alone without an Excel-side
-  calculation stamp or automation.
-- The existing parent-folder `PROJECT_STATE.md` is historical and contains
-  stale claims. This file and the project-root `PROJECT_STATE.md` are the
-  canonical handoff documents going forward.
+  ocr-c

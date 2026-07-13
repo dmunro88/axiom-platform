@@ -286,6 +286,47 @@ class ReadGridRowsTests(unittest.TestCase):
             _, rows = read_grid_rows(workbook_path, "test_grid")
             self.assertEqual(2, len(rows))
 
+    def test_typo_or_whitespace_anchor_raises_loudly(self):
+        """Round-4 Fable adversarial review finding Q1: the round-3 fix
+        (test_last_comps_own_cleared_anchor_raises_loudly above) only
+        caught a fully *blank* corrupted anchor. A typo ("Sale No 2" --
+        missing the period) or a whitespace-only anchor (" ") isn't blank
+        and doesn't match the intact "Sale No." prefix either, so it used
+        to match neither check and silently drop that comp with no error
+        at all -- the worst outcome, worse than the original P2 gap."""
+        with _tmp_dir() as tmp_path:
+            workbook_path = _make_workbook(tmp_path)
+            wb = openpyxl.load_workbook(workbook_path)
+            ws = wb["test_grid"]
+            ws["A7"] = "Sale No. 1"
+            ws["B7"] = "123 Fictional Rd"
+            # Typo: missing period after "No" -- not blank, doesn't match
+            # the "Sale No." prefix either.
+            ws["A8"] = "Sale No 2"
+            ws["B8"] = "456 Typo Ave"
+            wb.save(workbook_path)
+            wb.close()
+
+            with self.assertRaises(AdjustmentGridError):
+                read_grid_rows(workbook_path, "test_grid")
+
+    def test_whitespace_only_anchor_raises_loudly(self):
+        """Same finding (Q1), whitespace-only variant: a single space
+        isn't caught by a strict `== ""` blank check."""
+        with _tmp_dir() as tmp_path:
+            workbook_path = _make_workbook(tmp_path)
+            wb = openpyxl.load_workbook(workbook_path)
+            ws = wb["test_grid"]
+            ws["A7"] = "Sale No. 1"
+            ws["B7"] = "123 Fictional Rd"
+            ws["A8"] = "  "
+            ws["B8"] = "456 Whitespace Ave"
+            wb.save(workbook_path)
+            wb.close()
+
+            with self.assertRaises(AdjustmentGridError):
+                read_grid_rows(workbook_path, "test_grid")
+
 
 class FormatValueTests(unittest.TestCase):
     def test_percentage_header_formats_as_percent(self):
