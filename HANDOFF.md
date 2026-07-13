@@ -1,21 +1,39 @@
 # Current Handoff
 
-- Last updated: 2026-07-11
+- Last updated: 2026-07-13
 - Current agent: Claude
-- **Handing off to Codex.** Three commits landed today closing out an
-  iterative Fable-model adversarial-review cycle on Phase 6 (the Adjustment
-  Grid feature shipped 2026-07-10): `9d198a5` (round 1, findings A1-A5),
+- **This session (2026-07-13) found and fixed a real defect that had been
+  sitting undetected in git history since 2026-07-09/07-10: `ingest.py` and
+  `narrative_generator.py` (plus `.gitignore`, this file, `PROJECT_STATE.md`,
+  and `docs/ADJUSTMENT_GRID_DESIGN.md`) were committed with content
+  truncated mid-statement — the same known bash/OneDrive large-file-truncation
+  bug documented elsewhere in this file, except this time it landed in a
+  commit instead of just a working-tree edit. `ingest.py`'s committed version
+  literally raised `SyntaxError` if compiled as-is (cut off mid multi-byte
+  comment character); it had been broken this way across several commits
+  with nobody catching it. Fixed by committing the working tree's
+  already-correct content — commit `a646c51`. Also added the
+  previously-untracked one-line `CLAUDE.md` (`@AGENTS.md` include, needed for
+  Claude Code to load project instructions) as `e476235`, and deleted 10
+  orphaned scratch/duplicate files left over from the round-4 fix session's
+  OneDrive edit-verify workaround (`axiom_fixed_r4.py`, `axiom_r4b.py`,
+  `adjustment_grid_fixed_r4.py`, `comp_library_fixed_r4.py`, and six
+  similarly-named test files) after confirming each was byte-identical to or
+  superseded by content already in the real tracked files. See "Completed
+  this session (Claude, git-integrity fix — 2026-07-13)" below for full
+  detail.**
+- Earlier the same day (2026-07-13), Phase 6 hardening round-4 findings
+  (Q1-Q9) were fixed and committed as `8f08aa6` — see "Completed this session
+  (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)" below, specifically
+  its "Round 4 fixes — completed 2026-07-13" note. No round-5 Fable review
+  has been spawned — don't spawn one without checking with Derek first
+  (usage-consumption concern he's raised previously).
+- Commits this session (2026-07-13): `8f08aa6` (round-4 Q1-Q9 fixes),
+  `a646c51` (git-integrity/truncation fix), `e476235` (add `CLAUDE.md`).
+- Commits from the 2026-07-11 session: `9d198a5` (round 1, findings A1-A5),
   `9026f2e` (round 2, findings N1 + residuals of A1/A3/A5), `4db2456`
   (round 3, findings P1-P4). Full details in "Completed this session
-  (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)" below. **A fourth
-  review round already ran and found nine more issues (Q1-Q9, all
-  medium/low severity, none corrupting a delivered report under default
-  use) — Derek has NOT yet decided which to fix; he said "stop here for
-  now" pending a usage-limit reset. Do not act on Q1-Q9 without asking him
-  first** — see that same section for the full list and severities.
-- Commits this session (2026-07-11): `9d198a5`, `9026f2e`, `4db2456` — see
-  above and "Completed this session (Claude, Phase 6 hardening rounds 1-4 —
-  2026-07-11)" below.
+  (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)" below.
 - Commits from the prior (2026-07-10) session: `2e124a1` — Phase 6 Adjustment Grid steps 5-6
   (`adjustment_grid.py` injector module, `field_registry.py` wiring, the 4
   new template markers, `axiom.py` deliver-stage wiring, and the unrelated
@@ -133,9 +151,16 @@
 
 ## Current objective
 
-Close the OCR lane Codex named as the exact next step (scanned/image-only
-rent-roll and P&L extraction), then maintain a safe Claude ↔ Codex handoff
-baseline before connecting external services.
+The OCR lane, Phase 6 (Adjustment Grid, all four hardening rounds), and
+Phase 7 (AI narrative drafting) are all complete and live-tested. No new
+feature work is queued. Remaining decisions are Derek's: whether to spawn a
+round-5 Fable review of Phase 6, when to run the live-fire test on a real
+assignment, and when to begin live-testing Adobe Sign/Xero (P2, gated on
+delivery integrity first — see `PROJECT_STATE.md`). Meanwhile, keep treating
+this repo's git history as something to verify, not trust — this session's
+truncated-commit finding (see "Completed this session (Claude, git-integrity
+fix — 2026-07-13)" below) shows the known OneDrive/bash file-truncation bug
+can land inside an actual commit, not just a working-tree edit.
 
 ## Completed
 
@@ -575,6 +600,80 @@ sandbox's per-command time limit) plus `python axiom.py contract` (v1.2.0,
 220 fields, 24 blocks, no drift) both green. No round-5 Fable review has
 been spawned — per Derek's earlier note about Fable-review usage
 consumption, that won't happen without checking with him first.
+
+## Completed this session (Claude, git-integrity fix — 2026-07-13)
+
+Asked to check current status against `HANDOFF.md`/`PROJECT_STATE.md` per the
+start-of-session protocol. `git status`/`git log` initially failed with a
+"dubious ownership" error (the repo's `.git` was owned by a different local
+Windows account, `CodexSandboxOffline`, than the current session's `derek`
+account) — Derek ran `git config --global --add safe.directory` himself
+after I explained I won't touch git config directly.
+
+With git working, `git status` showed a large amount of uncommitted work the
+docs never mentioned — a direct violation of this file's own handoff
+discipline. Investigated rather than assuming either the docs or the working
+tree were right, per `AGENTS.md`'s "if documentation and code disagree,
+trust neither automatically" rule:
+
+- **All `.docx`/`.xlsx` template files showed as modified with sizes
+  collapsing to ~130 bytes in `git diff --stat`.** Verified this was NOT
+  data loss: the real on-disk files are intact, genuine ZIP/Office binaries
+  (confirmed via direct byte inspection). The 130-byte figure is just how
+  `git diff` renders these files now that `.gitattributes` routes
+  `*.docx`/`*.xlsx` through the Git LFS clean filter while the actually
+  committed blobs are full binaries — the exact mismatch Codex flagged on
+  2026-07-09 ("do not stage these Office artifacts until the LFS
+  normalization decision is made deliberately"). Left untouched, as before.
+- **Real finding: six files were committed with content truncated
+  mid-statement.** `git diff` against `HEAD` showed `ingest.py`,
+  `narrative_generator.py`, `.gitignore`, this file, `PROJECT_STATE.md`, and
+  `docs/ADJUSTMENT_GRID_DESIGN.md` all had their *committed* version cut off
+  mid-sentence/mid-statement, with the complete, correct version already
+  sitting in the working tree. Confirmed via `git show HEAD:ingest.py` piped
+  through `py_compile`: the committed `ingest.py` (unchanged since `8400e01`,
+  2026-07-09 — broken across several subsequent commits with nobody
+  catching it) raised a real `SyntaxError`, cut off mid multi-byte
+  box-drawing comment character. `narrative_generator.py`'s committed
+  version (unchanged since `9b832a7`, 2026-07-10) happened to still parse
+  but was missing its actual CLI entry-point body. This is the same known
+  bash/OneDrive large-file-truncation bug documented multiple times
+  elsewhere in this file — except this time it made it into `git commit`
+  instead of just a working-tree edit that got caught before committing.
+  Fixed by staging and committing the working tree's already-correct
+  content for all six files as `a646c51`, then re-verified `git show
+  HEAD:ingest.py` now compiles cleanly.
+- Hit the documented stale-lock issue twice while doing this
+  (`.git/index.lock` then `.git/HEAD.lock`, both "File exists" on a lock
+  git itself couldn't clean up after a prior command on this mount) — used
+  the already-documented `mv <lock> <lock>.stale.<ts>` workaround both
+  times, ran the git-modifying command as its own isolated call afterward
+  each time, and verified the result with `git cat-file -p HEAD` before
+  trusting it, per this file's own prior "moral for next time" note.
+- **Also found 10 untracked, orphaned scratch/duplicate files**:
+  `axiom_fixed_r4.py`, `axiom_r4b.py`, `adjustment_grid_fixed_r4.py`,
+  `comp_library_fixed_r4.py`, `tests/test_adj_grid_fixed_r4.py`,
+  `tests/test_comp_pipeline_r4.py`, `tests/test_torture_fixed_r4.py`,
+  `tests/test_torture_r4b.py`, `tests/test_torture_r4c.py`,
+  `tests/test_torture_r4d.py`. These are leftover intermediate snapshots
+  from the round-4 fix session's OneDrive edit-verify workaround technique
+  (write to a duplicate filename, verify, then sync into the real file).
+  Confirmed each was either byte-identical to (`axiom_r4b.py` vs. `axiom.py`;
+  `adjustment_grid_fixed_r4.py` vs. `adjustment_grid.py`;
+  `comp_library_fixed_r4.py` vs. `comp_library.py`; `test_torture_r4c.py`/
+  `test_torture_r4d.py` vs. `tests/test_torture.py`) or a superseded earlier
+  draft of (`axiom_fixed_r4.py`, `test_torture_fixed_r4.py`,
+  `test_torture_r4b.py`) content already correctly in the real tracked
+  files, then deleted all 10 — nothing was lost.
+- Found one more untracked, harmless file: `CLAUDE.md` (one line,
+  `@AGENTS.md`) — the include Claude Code reads for project instructions.
+  Never committed. Added it as `e476235`.
+- Working tree is now clean except for the known, deliberately-untouched
+  LFS/binary mismatch on `.docx`/`.xlsx` files described above.
+
+No test suite changes were needed for this fix (it restores content, not
+new behavior), but re-verified `python axiom.py contract` and a compile pass
+across all changed `.py` files stayed green.
 
 ## Completed this session (Claude, 2026-07-08)
 
