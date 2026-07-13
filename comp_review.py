@@ -148,6 +148,188 @@ def _run_captured(fn, *args, **kwargs):
     return ok, buf.getvalue()
 
 
+def _manual_text(label, key, placeholder=None):
+    value = st.text_input(label, key=key, placeholder=placeholder or "")
+    value = value.strip()
+    return value or None
+
+
+def _manual_common_fields(prefix):
+    left, middle, right = st.columns(3)
+    with left:
+        address_street = _manual_text("Address", f"{prefix}_address_street")
+        address_city = _manual_text("City", f"{prefix}_address_city")
+        address_state = _manual_text(
+            "State",
+            f"{prefix}_address_state",
+            placeholder="AL",
+        ) or "AL"
+        address_zip = _manual_text("ZIP", f"{prefix}_address_zip")
+    with middle:
+        property_type = _manual_text("Property Type", f"{prefix}_property_type")
+        property_subtype = _manual_text(
+            "Property Subtype",
+            f"{prefix}_property_subtype",
+        )
+        submarket = _manual_text("Submarket", f"{prefix}_submarket")
+        condition = _manual_text("Condition", f"{prefix}_condition")
+    with right:
+        gba_sf = _manual_text("GBA (SF)", f"{prefix}_gba_sf")
+        nla_sf = _manual_text("NLA (SF)", f"{prefix}_nla_sf")
+        site_area_sf = _manual_text("Site Area (SF)", f"{prefix}_site_area_sf")
+        year_built = _manual_text("Year Built", f"{prefix}_year_built")
+    return {
+        "address_street": address_street,
+        "address_city": address_city,
+        "address_state": address_state,
+        "address_zip": address_zip,
+        "property_type": property_type,
+        "property_subtype": property_subtype,
+        "submarket": submarket,
+        "condition": condition,
+        "gba_sf": gba_sf,
+        "nla_sf": nla_sf,
+        "site_area_sf": site_area_sf,
+        "year_built": year_built,
+    }
+
+
+def _render_manual_entry():
+    record_label = st.radio(
+        "Comp type",
+        ["Sale Comp", "Lease Comp"],
+        horizontal=True,
+        key="manual_comp_type",
+    )
+    record_kind = "sale" if record_label == "Sale Comp" else "lease"
+    prefix = f"manual_{record_kind}"
+
+    with st.form(f"{prefix}_form", clear_on_submit=False):
+        data = _manual_common_fields(prefix)
+
+        if record_kind == "sale":
+            st.markdown("##### Sale")
+            left, middle, right = st.columns(3)
+            with left:
+                data["sale_price"] = _manual_text(
+                    "Sale Price",
+                    f"{prefix}_sale_price",
+                    placeholder="$1,000,000",
+                )
+                data["sale_date"] = _manual_text(
+                    "Sale Date",
+                    f"{prefix}_sale_date",
+                    placeholder="2025-01-15",
+                )
+                data["price_per_sf"] = _manual_text(
+                    "Price/SF",
+                    f"{prefix}_price_per_sf",
+                )
+            with middle:
+                data["cap_rate"] = _manual_text(
+                    "Cap Rate",
+                    f"{prefix}_cap_rate",
+                    placeholder="8.5%",
+                )
+                data["noi"] = _manual_text("NOI", f"{prefix}_noi")
+                data["noi_per_sf"] = _manual_text(
+                    "NOI/SF",
+                    f"{prefix}_noi_per_sf",
+                )
+            with right:
+                data["grantor"] = _manual_text("Grantor", f"{prefix}_grantor")
+                data["grantee"] = _manual_text("Grantee", f"{prefix}_grantee")
+                data["deed_ref"] = _manual_text("Deed Ref", f"{prefix}_deed_ref")
+            data["verification_source"] = _manual_text(
+                "Verification Source",
+                f"{prefix}_verification_source",
+            )
+        else:
+            st.markdown("##### Lease")
+            left, middle, right = st.columns(3)
+            with left:
+                data["tenant_name"] = _manual_text(
+                    "Tenant",
+                    f"{prefix}_tenant_name",
+                )
+                data["tenant_use"] = _manual_text(
+                    "Tenant Use",
+                    f"{prefix}_tenant_use",
+                )
+                data["sf_leased"] = _manual_text(
+                    "SF Leased",
+                    f"{prefix}_sf_leased",
+                )
+            with middle:
+                data["base_rent_psf"] = _manual_text(
+                    "Base Rent/SF",
+                    f"{prefix}_base_rent_psf",
+                    placeholder="$21.50",
+                )
+                data["base_rent_monthly"] = _manual_text(
+                    "Monthly Rent",
+                    f"{prefix}_base_rent_monthly",
+                )
+                data["rent_structure"] = _manual_text(
+                    "Rent Structure",
+                    f"{prefix}_rent_structure",
+                )
+            with right:
+                data["lease_date"] = _manual_text(
+                    "Lease Date",
+                    f"{prefix}_lease_date",
+                    placeholder="2025-03-01",
+                )
+                data["lease_expiration"] = _manual_text(
+                    "Lease Expiration",
+                    f"{prefix}_lease_expiration",
+                )
+                data["term_years"] = _manual_text(
+                    "Term (Years)",
+                    f"{prefix}_term_years",
+                )
+            lower = st.columns(4)
+            with lower[0]:
+                data["expense_stop_psf"] = _manual_text(
+                    "Expense Stop/SF",
+                    f"{prefix}_expense_stop_psf",
+                )
+            with lower[1]:
+                data["ti_allowance_psf"] = _manual_text(
+                    "TI Allowance/SF",
+                    f"{prefix}_ti_allowance_psf",
+                )
+            with lower[2]:
+                data["free_rent_months"] = _manual_text(
+                    "Free Rent Months",
+                    f"{prefix}_free_rent_months",
+                )
+            with lower[3]:
+                data["escalations"] = _manual_text(
+                    "Escalations",
+                    f"{prefix}_escalations",
+                )
+            data["renewal_options"] = _manual_text(
+                "Renewal Options",
+                f"{prefix}_renewal_options",
+            )
+
+        data = {key: value for key, value in data.items() if value not in (None, "")}
+        submitted = st.form_submit_button("Add Comp", type="primary")
+
+    if submitted:
+        try:
+            result = db_module.insert_manual_comparable(record_kind, data)
+        except Exception as exc:
+            st.error(f"Could not add comp: {exc}")
+        else:
+            label = "sale" if record_kind == "sale" else "lease"
+            if result["created"]:
+                st.success(f"Added {label} comp #{result['id']}.")
+            else:
+                st.info(f"Matching {label} comp already exists as #{result['id']}.")
+
+
 def _staged_files():
     return sorted(STAGED_DIR.glob("*.json"))
 
@@ -583,10 +765,19 @@ def render_comp_library():
     st.subheader("Comp Library")
     st.caption("Pull comp data out of old reports and build a searchable database over time.")
 
-    tabs = st.tabs(["1. Extract", "2. Review", "3. Database", "4. Browse"])
+    tabs = st.tabs([
+        "1. Manual Entry",
+        "2. Extract",
+        "3. Review",
+        "4. Database",
+        "5. Browse",
+    ])
+
+    with tabs[0]:
+        _render_manual_entry()
 
     # ── Tab 1: Extract ──────────────────────────────────────────────────────
-    with tabs[0]:
+    with tabs[1]:
         st.write(
             "Point at a folder of old assignment folders (each one a completed "
             "report). This scans them and stages whatever comp data it can find "
@@ -610,7 +801,7 @@ def render_comp_library():
         st.caption(f"{len(_staged_files())} assignment(s) currently staged for review.")
 
     # ── Tab 2: Review ────────────────────────────────────────────────────────
-    with tabs[1]:
+    with tabs[2]:
         staged = _staged_files()
         if not staged:
             st.info("Nothing staged yet. Run a scan in the Extract tab first.")
@@ -788,7 +979,7 @@ def render_comp_library():
             st.success(st.session_state.pop('review_flash'))
 
     # ── Tab 3: Database ─────────────────────────────────────────────────────
-    with tabs[2]:
+    with tabs[3]:
         confirmed_files = list(CONFIRMED_DIR.glob("*.json"))
         st.caption(f"{len(confirmed_files)} confirmed assignment(s) ready to commit.")
         if st.button("Commit to Database", disabled=not confirmed_files):
@@ -849,7 +1040,7 @@ def render_comp_library():
             st.caption("No database yet — commit your first confirmed assignment to create one.")
 
     # ── Tab 4: Browse ───────────────────────────────────────────────────────
-    with tabs[3]:
+    with tabs[4]:
         db_path = db_module.DB_PATH
         if not db_path.exists():
             st.caption("No database yet — commit your first confirmed assignment to create one.")

@@ -752,6 +752,118 @@ def insert_lease_comp(
     return cur.lastrowid
 
 
+def _upsert_property_by_address(data, conn):
+    street = (data.get("address_street") or "").strip().lower()
+    city = (data.get("address_city") or "").strip().lower()
+    if street:
+        row = conn.execute(
+            """
+            SELECT property_id
+            FROM properties
+            WHERE lower(address_street) = ?
+              AND lower(coalesce(address_city, '')) = ?
+            """,
+            (street, city),
+        ).fetchone()
+        if row:
+            return row["property_id"]
+    return insert_property(data, conn)
+
+
+def insert_manual_comparable(record_kind, data, db_path=None, conn=None):
+    """Insert a user-entered sale or lease comparable as a confirmed record."""
+    from comparable_contract import (
+        comparable_identity,
+        normalize_data,
+        validate_record,
+    )
+
+    if record_kind not in {"sale", "lease"}:
+        raise ValueError("record_kind must be 'sale' or 'lease'.")
+
+    close_after = conn is None
+    if conn is None:
+        init_db(db_path, quiet=True)
+        conn = get_conn(db_path)
+
+    try:
+        normalized = normalize_data(data or {})
+        confidence = {
+            key: "high"
+            for key, value in normalized.items()
+            if value not in (None, "")
+        }
+        reviewed_at = (
+            datetime.datetime.now(datetime.timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        review = {
+            "status": "confirmed",
+            "reviewed_at": reviewed_at,
+        }
+        source_record = {
+            "contract_id": "axiom.comparable.record",
+            "schema_version": "1.0.0",
+            "record_kind": record_kind,
+            "data": normalized,
+            "confidence": confidence,
+            "review": review,
+            "provenance": {
+                "source_path": "manual-entry",
+                "source_sha256": "manual-entry",
+            },
+            "source": {
+                "type": "manual_entry",
+            },
+        }
+        findings = validate_record(source_record)
+        if findings["errors"]:
+            raise ValueError("; ".join(findings["errors"]))
+
+        identity_key = comparable_identity(record_kind, normalized)
+        with conn:
+            existing_id = comparable_id_by_identity(record_kind, identity_key, conn)
+            if existing_id:
+                return {
+                    "created": False,
+                    "id": existing_id,
+                    "identity_key": identity_key,
+                }
+            property_id = _upsert_property_by_address(normalized, conn)
+            if record_kind == "sale":
+                record_id = insert_comp(
+                    normalized,
+                    property_id,
+                    None,
+                    confidence,
+                    conn,
+                    identity_key=identity_key,
+                    review=review,
+                    source_record=source_record,
+                )
+            else:
+                record_id = insert_lease_comp(
+                    normalized,
+                    property_id,
+                    None,
+                    confidence,
+                    conn,
+                    identity_key=identity_key,
+                    review=review,
+                    source_record=source_record,
+                )
+            return {
+                "created": True,
+                "id": record_id,
+                "identity_key": identity_key,
+            }
+    finally:
+        if close_after:
+            conn.close()
+
+
 def insert_assignment(
     data,
     property_id,

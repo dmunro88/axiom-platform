@@ -62,6 +62,11 @@
   dependency manifest. Syntax and contract checks pass; live browser QA is
   still pending because the bundled Codex Python used here does not have
   Streamlit installed.
+- **Manual comp entry was added to the Comp Library UI on 2026-07-13.**
+  `comp_review.py` now has a Manual Entry tab for sale and lease comps, and
+  `db.py` inserts those typed-in records through the same normalization,
+  validation, confirmed-review status, identity key, duplicate detection, and
+  reviewed search path used by extracted historical comps.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.
@@ -527,6 +532,10 @@ Checks were performed without regenerating or modifying assignment outputs.
    packet builder and run a current-code staging pass against the copied
    archive folders under `scratch/`, producing a latest-batch sale/lease CSV
    for human review before any real database commit.
+10. **Completed for direct manual entry:** add sale/lease comp forms in the
+    Streamlit Comp Library and a backend manual insert helper that normalizes,
+    validates, marks confirmed, deduplicates by comparable identity, and feeds
+    reviewed comp search.
 
 ### P2 — Integrations
 

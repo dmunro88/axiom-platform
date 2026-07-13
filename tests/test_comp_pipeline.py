@@ -25,6 +25,7 @@ from db import (
     backfill_legacy_identities,
     get_conn,
     init_db,
+    insert_manual_comparable,
     search_lease_comps,
     search_sale_comps,
 )
@@ -312,6 +313,69 @@ class ComparablePipelineTests(unittest.TestCase):
 
         self.assertIsNone(record["data"]["lease_expiration"])
         self.assertEqual([], record["validation"]["errors"])
+
+    def test_manual_comparable_entry_normalizes_searches_and_dedupes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual-comps.db"
+            sale = {
+                "address_street": "400 Manual Sale Road",
+                "address_city": "Demo City",
+                "property_type": "Office",
+                "sale_price": "$1,250,000",
+                "sale_date": "01/15/2025",
+                "gba_sf": "10,000 SF",
+                "price_per_sf": "$125.00",
+                "cap_rate": "8.5%",
+                "verification_source": "Broker confirmation",
+            }
+            first = insert_manual_comparable("sale", sale, db_path=db_path)
+            self.assertTrue(first["created"])
+            second = insert_manual_comparable("sale", sale, db_path=db_path)
+            self.assertFalse(second["created"])
+            self.assertEqual(first["id"], second["id"])
+
+            sale_records = search_sale_comps(
+                db_path,
+                city="Demo City",
+                property_type="Office",
+            )
+            self.assertEqual(1, len(sale_records))
+            self.assertEqual(1250000.0, sale_records[0]["sale_price"])
+            self.assertEqual(0.085, sale_records[0]["cap_rate"])
+            self.assertEqual("confirmed", sale_records[0]["review_status"])
+
+            lease = {
+                "address_street": "500 Manual Lease Lane",
+                "address_city": "Demo City",
+                "property_type": "Office",
+                "tenant_name": "Manual Tenant LLC",
+                "lease_date": "03/01/2025",
+                "sf_leased": "2,500 SF",
+                "base_rent_psf": "$21.50",
+                "rent_structure": "Modified Gross",
+            }
+            lease_result = insert_manual_comparable(
+                "lease",
+                lease,
+                db_path=db_path,
+            )
+            self.assertTrue(lease_result["created"])
+            lease_records = search_lease_comps(
+                db_path,
+                city="Demo City",
+                property_type="Office",
+            )
+            self.assertEqual(1, len(lease_records))
+            self.assertEqual("Manual Tenant LLC", lease_records[0]["tenant_name"])
+            self.assertEqual(21.5, lease_records[0]["base_rent_psf"])
+            self.assertEqual("confirmed", lease_records[0]["review_status"])
+
+            with self.assertRaisesRegex(ValueError, "sale_price is required"):
+                insert_manual_comparable(
+                    "sale",
+                    {"address_street": "Missing Price Road"},
+                    db_path=db_path,
+                )
 
     def test_fictional_extract_review_commit_search_and_export(self):
         with tempfile.TemporaryDirectory() as temp_dir:

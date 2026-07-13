@@ -48,6 +48,15 @@
   `axiom_ui.py`/`comp_review.py`, `axiom.py contract`, and `git diff --check`.
   Live Streamlit/browser QA is pending because the bundled Codex Python used
   in this session does not have Streamlit installed.
+- **Manual sale/lease comp entry added to Comp Library (2026-07-13).**
+  `comp_review.py` now has a Manual Entry tab ahead of Extract/Review, with
+  sale and lease forms for direct typed-in comps. `db.py` inserts those
+  records as confirmed manual comparables after canonical normalization,
+  required-field validation, identity-key generation, and duplicate detection,
+  so they immediately appear in the existing reviewed comp Browse/Search
+  paths. Verified with bundled Python `py_compile`, `unittest
+  tests.test_comp_pipeline` (12 tests), `axiom.py contract`, and
+  `git diff --check`.
 - **This session (2026-07-13) found and fixed a real defect that had been
   sitting undetected in git history since 2026-07-09/07-10: `ingest.py` and
   `narrative_generator.py` (plus `.gitignore`, this file, `PROJECT_STATE.md`,
