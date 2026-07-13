@@ -13,6 +13,19 @@
   without checking with Derek first (usage-consumption concern he's
   raised previously). The live-fire test on a real assignment remains a
   separate, unscheduled step.
+- **A git-integrity gap was found and fixed 2026-07-13:** `ingest.py` and
+  `narrative_generator.py` (plus `.gitignore`, `HANDOFF.md`, this file, and
+  `docs/ADJUSTMENT_GRID_DESIGN.md`) had been *committed* with content
+  truncated mid-statement — the known bash/OneDrive large-file-truncation
+  bug (see "Known limitations" below) had, this one time, landed inside a
+  commit rather than being caught before one. `ingest.py`'s committed
+  version (unchanged since `8400e01`, 2026-07-09) actually raised
+  `SyntaxError` if compiled as committed. Fixed by committing the working
+  tree's already-correct content (`a646c51`). No functional behavior
+  changed — this restores content, it doesn't add it. See `HANDOFF.md`'s
+  "Completed this session (Claude, git-integrity fix — 2026-07-13)" for the
+  full account, including the stale git-lock workaround needed to commit on
+  this mount and 10 orphaned scratch files cleaned up in the same pass.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.
@@ -157,6 +170,12 @@ Checks were performed without regenerating or modifying assignment outputs.
   checking with Derek first.
 - The platform folder arrived without dedicated Git history. A dedicated
   repository is initialized with a safe baseline commit.
+- As of 2026-07-13, `HEAD` for `ingest.py` and `narrative_generator.py`
+  compiles cleanly and contains their complete, intended content — verified
+  directly via `git show HEAD:<path>` piped through `py_compile`, not just
+  by reading the working tree. Prior commits back to 2026-07-09 had silently
+  carried truncated versions of these files (see the git-integrity note
+  above).
 - The live assignment directory now contains one clearly labeled fictional
   assignment: `DEMO-001_Northstar_Example_Holdings`.
 - `tests/fixtures/DEMO-001` is the approved source-controlled regression
