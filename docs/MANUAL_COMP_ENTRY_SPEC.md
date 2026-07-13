@@ -61,6 +61,424 @@ That is better than overthinking the structure.
 - Database fields, UI fields, search fields, exports, and report fields should
   be mapped intentionally instead of drifting apart.
 
+## Working Baseline Target
+
+This is the baseline to build against first. It is intentionally broad enough
+to support real work, but not intended to solve every edge case before v1.
+
+Every manual comp should have:
+
+- property identity;
+- controlled property type/profile;
+- physical/site facts;
+- transaction or lease facts;
+- income/economic facts where applicable;
+- calculated indicators;
+- verification/source notes;
+- attachments;
+- review status.
+
+### Baseline UI Sections
+
+Manual entry should be organized into these sections:
+
+1. Property Type
+2. Property Identity
+3. Site / Land
+4. Physical Improvements
+5. Sale or Lease Details
+6. Income / Economics
+7. Calculated Indicators
+8. Verification
+9. Attachments
+10. Review Status
+
+UI behavior:
+
+- UI: Property type should control which fields are prominent, optional,
+  hidden, or required.
+- UI: Land should not show building-system fields such as HVAC, roof, or
+  foundation by default.
+- UI: Multifamily, self-storage, hospitality, and religious facilities should
+  show their unit/room/seat indicators prominently.
+- UI: A calculated summary panel should update before save/confirm.
+- UI: Save Draft and Confirm should be separate actions.
+
+### Baseline Dropdowns
+
+Property type:
+
+- Office
+- Retail
+- Retail-Service
+- Medical Office
+- Industrial
+- Multifamily
+- Hospitality
+- Self-Storage
+- Land
+- Religious Facility
+- Special Purpose
+
+Condition:
+
+- Excellent
+- Good
+- Average
+- Fair
+- Poor
+- Shell
+- Proposed / Under Construction
+- Other
+
+Quality:
+
+- Class A
+- Class B
+- Class C
+- Economy
+- Special Purpose
+- Other
+
+Verification source:
+
+- Buyer
+- Seller
+- Broker
+- Appraiser Files
+- Public Records
+- Deed / Recorded Instrument
+- Costar / Third-Party Database
+- MLS / Listing
+- Property Manager
+- Owner
+- Confidential Source
+- Other
+
+Sale status:
+
+- Closed
+- Under Contract
+- Listing
+- Pending
+- Expired Listing
+- Withdrawn
+- Not Applicable
+
+Property rights:
+
+- Fee Simple
+- Leased Fee
+- Leasehold
+- Partial Interest
+- Easement / Encumbered
+- Other
+
+Conditions of sale:
+
+- Arm's Length
+- REO / Distressed
+- Related Party
+- Portfolio Sale
+- Court Ordered
+- 1031 Exchange
+- Sale-Leaseback
+- Assemblage
+- Partial Interest
+- Other
+
+Financing terms:
+
+- Cash Equivalent
+- Conventional
+- Seller Financing
+- Assumed Debt
+- Below-Market Financing
+- Above-Market Financing
+- Unknown
+- Other
+
+Rent structure:
+
+- NNN
+- Modified Gross
+- Full Service
+- Gross
+- Industrial Gross
+- Percentage Rent
+- Ground Lease
+- Other
+
+Tenant use:
+
+- Office
+- Medical
+- Retail
+- Restaurant
+- Service Retail
+- Warehouse
+- Manufacturing
+- Flex
+- Residential
+- Storage
+- Hospitality
+- Religious / Assembly
+- Other
+
+### Baseline Sale Comp Fields
+
+Property identity:
+
+- comp ID / human comp number;
+- property name;
+- property type;
+- property subtype;
+- street address;
+- city;
+- county;
+- state;
+- ZIP;
+- parcel number(s);
+- latitude / longitude;
+- market area / submarket.
+
+Site / land:
+
+- land size SF;
+- land size acres;
+- zoning;
+- topography;
+- shape;
+- utilities;
+- flood hazard;
+- access;
+- visibility;
+- frontage;
+- excess land / surplus land notes.
+
+Physical:
+
+- building type;
+- GBA;
+- NLA / rentable SF;
+- year built;
+- year renovated;
+- effective age;
+- stories;
+- construction type;
+- roof type;
+- foundation;
+- HVAC;
+- electrical;
+- condition;
+- quality;
+- parking spaces;
+- parking ratio;
+- occupancy at sale;
+- single-tenant / multi-tenant.
+
+Sale transaction:
+
+- sale price;
+- cash equivalent price;
+- adjusted sale price;
+- sale date;
+- recording date;
+- deed book/page;
+- instrument number;
+- grantor;
+- grantee;
+- buyer type;
+- seller type;
+- property rights conveyed;
+- financing terms;
+- conditions of sale;
+- verification source;
+- verification date;
+- verification notes.
+
+Income:
+
+- potential gross income;
+- vacancy;
+- effective gross income;
+- expenses;
+- NOI;
+- NOI source;
+- NOI period;
+- occupancy at sale;
+- expense ratio.
+
+Calculated sale indicators:
+
+- sale price/SF;
+- sale price/NLA;
+- sale price/acre;
+- sale price/unit;
+- land-to-building ratio;
+- floor area ratio;
+- average unit size;
+- PGIM;
+- EGIM;
+- expenses/SF;
+- expenses/unit;
+- expenses as % of PGI;
+- expenses as % of EGI;
+- cap rate;
+- NOI/SF;
+- NOI/unit;
+- months since sale.
+
+### Baseline Lease Comp Fields
+
+Property / suite:
+
+- property name;
+- property type;
+- property subtype;
+- address;
+- city/county/state;
+- submarket;
+- suite;
+- floor;
+- space type;
+- tenant name;
+- tenant use.
+
+Lease terms:
+
+- lease date;
+- commencement date;
+- expiration date;
+- term months;
+- term years;
+- SF leased;
+- base rent/SF;
+- monthly rent;
+- annual rent;
+- rent structure;
+- lease type;
+- reimbursement structure;
+- expense stop;
+- escalations;
+- renewal options;
+- free rent;
+- TI allowance;
+- landlord work;
+- tenant improvement notes.
+
+Calculated lease indicators:
+
+- annual rent;
+- monthly rent;
+- rent/SF/year;
+- rent/SF/month;
+- term years;
+- free rent value;
+- TI allowance total;
+- effective rent/SF;
+- expense-adjusted rent/SF;
+- occupancy cost, if available.
+
+### Baseline Property-Type-Specific Fields
+
+Multifamily:
+
+- unit count;
+- unit mix;
+- average unit size;
+- rent/unit;
+- sale price/unit;
+- NOI/unit;
+- occupancy;
+- amenities;
+- utility responsibility.
+
+Hospitality:
+
+- room count;
+- ADR;
+- occupancy;
+- RevPAR;
+- room revenue;
+- sale price/room;
+- franchise/flag;
+- corridor type;
+- food/beverage component.
+
+Self-storage:
+
+- number of units;
+- rentable SF;
+- climate-controlled SF;
+- non-climate SF;
+- physical occupancy;
+- economic occupancy;
+- rent/SF;
+- sale price/unit;
+- sale price/rentable SF.
+
+Land:
+
+- acres;
+- SF;
+- zoning;
+- entitlements;
+- utilities;
+- topography;
+- shape;
+- flood hazard;
+- access;
+- visibility;
+- frontage;
+- usable land area;
+- price/acre;
+- price/SF.
+
+Religious facility:
+
+- seating capacity;
+- sanctuary SF;
+- fellowship/classroom SF;
+- parking spaces;
+- parking ratio;
+- site size;
+- special-use features;
+- conversion potential.
+
+Retail-service:
+
+- service bays/rooms, if applicable;
+- showroom/customer area;
+- traffic count;
+- visibility;
+- access;
+- parking;
+- drive-thru;
+- auto-service or personal-service subtype.
+
+### Baseline Validation
+
+Hard requirements before confirming a sale comp:
+
+- property type;
+- address or usable location identifier;
+- sale price;
+- sale date or sale status;
+- verification source;
+- at least one usable comparison denominator: SF, acre, unit, room, seat, or
+  another property-type-appropriate unit.
+
+Warnings:
+
+- no verification notes;
+- no source attachment;
+- no usable area/unit denominator;
+- cap rate outside a normal range;
+- sale price/SF unusually high or low;
+- missing occupancy when income is present;
+- calculated value disagrees with entered or source-reported value.
+
 ## Starter Field Inventory From `db fields.docx`
 
 Derek provided this as an initial field inventory. It should be treated as a
