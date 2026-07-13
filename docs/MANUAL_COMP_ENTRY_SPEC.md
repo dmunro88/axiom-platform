@@ -67,6 +67,46 @@ Derek provided this as an initial field inventory. It should be treated as a
 starter checklist for schema/UI planning, not a final list. Some fields apply
 only to certain property types.
 
+### Initial Property Types
+
+Use these as the starting controlled property-type list:
+
+- `office`
+- `retail`
+- `medical_office`
+- `industrial`
+- `multifamily`
+- `hospitality`
+- `land`
+- `special_purpose`
+
+UI labels:
+
+- Office
+- Retail
+- Medical Office
+- Industrial
+- Multifamily
+- Hospitality
+- Land
+- Special Purpose
+
+Implementation notes:
+
+- FIELD: Property type should be selected from a controlled list first, with
+  room for future expansion.
+- UI: Property type should drive which sections and fields are shown, required,
+  optional, or hidden.
+- VALIDATION: Required-field rules should be property-type-specific. For
+  example, multifamily can require unit metrics, land can require site/utility
+  fields, and office/retail/industrial can emphasize building area, tenancy,
+  income, and physical characteristics.
+- QUESTION: Should Medical Office be stored as its own top-level property type,
+  or as `office` with `property_subtype = Medical Office`? Derek's starter list
+  treats it as top-level for now.
+- QUESTION: Should mixed-use be added now, or handled as Special Purpose/Other
+  until the schema is more mature?
+
 ### Property Identification
 
 - `record_id`
