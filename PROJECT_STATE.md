@@ -3,6 +3,35 @@
 - Last verified: 2026-07-13
 - Status: Functional prototype in active local use; production safeguards and
   repeatable tests are incomplete.
+- **Live-fire pipeline test run 2026-07-13 (see `HANDOFF.md` for full
+  detail).** Found and fixed two real, previously-undetected bugs in
+  `templates/workbook.xlsx`: (1) 14 `outputs`/`cost` formulas still
+  referenced the `land` sheet Phase 6 deleted, uncaught because
+  `CA_DEVELOPED="No"` strips the section that uses them; (2) a "Notes"
+  cell (`outputs!E112`) mistyped with a leading `=`, silently auto-repaired
+  by interactive Excel but fatal to headless COM automation. Both fixed in
+  the master template only (not the committed `tests/fixtures/DEMO-001`
+  fixture, to avoid an `openpyxl.save()` side effect — wiping all cached
+  formula values — that broke the golden DOCX structural test). Built
+  `scripts/recalc_workbook.py` (new `pywin32` dependency) to force a real
+  Excel recalculation programmatically, closing a gap where openpyxl-only
+  writes left formula cells uncomputed. A new local, gitignored test
+  assignment (`LFT-001_Fictional_Testbed_Holdings_LLC`) now validates
+  completely clean except for the narrative blocks, which need
+  `ANTHROPIC_API_KEY` (not set in this environment) to be classified as
+  resolved at all — not just to produce real prose. Full suite: 164 passed
+  (up from 155), contract clean at v1.2.0/220/24.
+- **Per Derek's explicit direction, Excel is no longer considered the right
+  long-term calculation engine for this platform.** The rest of the stack
+  (comps, financials, observations) already runs on SQLite + Python +
+  Streamlit; the sales-comparison/income/cost-approach math is the one
+  piece still fully dependent on Excel's own formula engine, and today's
+  test surfaced concrete friction from that (COM automation fragility, a
+  years-old latent formula bug only findable by trying real automation, and
+  the pre-existing "sales tab vs sca_adjustment_grid not reconciled" data
+  split). The next planned work is a dedicated planning session to scope a
+  calculation-engine rebuild in Python (extending the pattern `dilmore.py`
+  already established for size-adjustment) — not yet started.
 - Phase 6 (Adjustment Grid) shipped complete 2026-07-10 and has since been
   through four rounds of Fable-model adversarial review; all four rounds
   found real bugs, and all are fixed and committed (`9d198a5`, `9026f2e`,

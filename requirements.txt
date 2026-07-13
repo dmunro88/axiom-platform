@@ -20,3 +20,8 @@ Pillow==12.2.0
 # Test-only: build synthetic PDF/image fixtures in tests/test_financial_harvest.py
 reportlab==5.0.0
 numpy==2.4.4
+
+# Windows-only: real Excel recalculation via COM (scripts/recalc_workbook.py).
+# Formula-driven workbook tabs only have real cached values after Excel
+# itself recalculates and saves; openpyxl cannot compute formulas.
+pywin32==312

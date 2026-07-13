@@ -1,7 +1,81 @@
 # Current Handoff
 
 - Last updated: 2026-07-13
-- Current agent: Codex
+- Current agent: Claude
+- **Claude, live-fire test + Excel-COM findings — 2026-07-13.** Derek asked
+  for the quickest path to a genuinely operational platform; agreed plan was
+  a full live-fire pipeline test against a new, conspicuously fictional
+  assignment (not `tests/fixtures/DEMO-001`, not the existing
+  `assignments/DEMO-001_Northstar_Example_Holdings`). Along the way this
+  surfaced enough about Excel's role in the platform that Derek made a
+  bigger call — see the last bullet below.
+  - **Fixed a real bug**: `templates/workbook.xlsx`'s `outputs`/`cost`
+    sheets had 14 formulas referencing the `land` sheet Phase 6 deleted
+    (replaced by `land_adjustment_grid`, `9b832a7`) but never repointed —
+    every fresh workbook cached `#NAME?` for those cells. Never surfaced
+    because `CA_DEVELOPED="No"` (as DEMO-001 always sets) strips the entire
+    Cost-Approach section — where every one of those keys lives — before
+    substitution. Repointed all 14 to `land_adjustment_grid`'s real cells
+    (confirmed via `git show 9b832a7^:templates/workbook.xlsx` to see the
+    deleted tab's original layout). Full suite + contract green after.
+  - **Found and fixed a second, independent bug in the same template**:
+    `outputs!E112` (a "Notes" column entry) was typed with a leading `=`,
+    so Excel parses a plain-English note as a broken formula referencing an
+    invalid `"c above"` cell reference. Interactive Excel silently
+    auto-repairs this on open; Excel COM automation (`Workbooks.Open`)
+    refuses the file outright with an opaque generic error (`0x800A03EC`).
+    Found by bisecting (by sheet, then by row) why the new recalc script
+    couldn't open *any* Axiom workbook. Fixed in `templates/workbook.xlsx`
+    only — the same bug also exists in the committed
+    `tests/fixtures/DEMO-001/workbook.xlsx` and the local (never-committed)
+    `assignments/DEMO-001_Northstar_Example_Holdings/workbook.xlsx`, but
+    fixing the fixture wiped all its cached formula values (a plain
+    `openpyxl.save()` side effect, same class of issue documented elsewhere
+    in this file) and broke `test_docx_golden.py`'s structural fingerprint
+    test — reverted that one to keep the fixture's golden-tested state
+    stable, per Derek's explicit call. Only the master template carries
+    this fix, so every future `new` assignment gets it; the fixture and the
+    stale live DEMO-001 folder do not.
+  - **Built `scripts/recalc_workbook.py`** (`pywin32`/COM,
+    `requirements.txt` now pins `pywin32==312`) to force a real Excel
+    recalculation programmatically — openpyxl cannot compute formulas, and
+    manual F9+save was the only prior path (no COM automation existed
+    anywhere in this repo before today). Verified working once the two bugs
+    above were fixed.
+  - **Surfaced, concretely, the "sales tab vs sca_adjustment_grid not
+    reconciled" gap**: the legacy `sales` tab (which `outputs!SCA_VALUE` and
+    its supporting stats actually depend on, not the newer grid) had never
+    had its 7 comp rows filled in, even in the reference fixture — a real
+    recalculation produced genuine `#DIV/0!` cascading into `outputs`. Not
+    fixed platform-wide (out of scope today) — only worked around in the
+    new test assignment by filling `sales!C9:F15` and `sales!B56/C56` with
+    values consistent with `sca_adjustment_grid`'s 3 real comps.
+  - Created `assignments/LFT-001_Fictional_Testbed_Holdings_LLC`
+    (gitignored, never committed), populated from
+    `tests/fixtures/DEMO-001`'s already-consistent data with identity
+    fields overridden (`FILE_NO`, `CLIENT_NAME`, `INVOICE_NO`).
+    `python axiom.py validate LFT-001` now reports **completely clean**
+    except the one gap unavoidable in this session: all 8 narrative blocks
+    unresolved because `ANTHROPIC_API_KEY` isn't set here. Every other
+    check (Intake/JSON freshness, formula-cache errors, comp/media/
+    ownership-history blocks) passes. Real (non-draft) `deliver` needs Derek
+    to supply the key himself (a secret, never set by the agent) — see
+    "Current objective" below.
+  - Full suite (164 tests, up from 155) and `axiom.py contract`
+    (v1.2.0/220/24) both green after all fixes, with the fixture reverted.
+  - **Derek's explicit call, prompted by the E112 find and the
+    already-known reconciliation gap**: Excel as the platform's calculation
+    engine is now considered the wrong long-term foundation, not just a
+    rough edge. Comps/financials/observations already run on
+    SQLite + Python + Streamlit; the sales-comparison/income/cost-approach
+    math is the one piece still 100% trapped in Excel's own formula engine.
+    Next step — its own dedicated, thorough planning session, not folded
+    into this one: **plan the calculation-engine rebuild** — port the
+    adjustment-grid, income-approach, cost-approach, and reconciliation math
+    into tested Python (matching how `dilmore.py` already ported just the
+    size-adjustment piece), decide what (if anything) survives as an
+    Excel-based data-entry surface, and decide how correctness gets verified
+    against the existing Excel model before anything real depends on it.
 - **Codex progress after the planning handoff (2026-07-13): Track 1's
   manual comp-photo foundation is built.**
   `source_artifacts` has nullable `comp_id`/`lease_comp_id` link columns and
@@ -276,7 +350,25 @@
 
 ## Current objective
 
-Update from Codex, 2026-07-13: Track 1 items 2-4 below are now built, and the
+**Update from Claude, 2026-07-13 (supersedes the priority order below, per
+Derek's explicit direction): the next work is a dedicated, thorough planning
+session for a calculation-engine rebuild** — replacing Excel's own formula
+engine (sales-comparison adjustment grid, income approach, cost approach,
+reconciliation) with tested Python, the way `dilmore.py` already did for
+just the size-adjustment piece. This was prompted by today's live-fire test
+(see the top of this file): Excel COM automation works but is fragile
+(opaque generic errors, a years-old malformed-formula bug only findable by
+literally trying to open the file), and the "sales tab vs
+sca_adjustment_grid not reconciled" gap means the platform's actual valuation
+math already lives in two disconnected places. Derek is not currently relying
+on the Excel-based workflow for a live deliverable, so there's no reason to
+keep building around Excel's limitations rather than replacing it. Scope the
+plan around: what gets ported first, what (if anything) survives as an
+Excel-based data-entry surface, and how correctness gets verified against
+the existing Excel model before anything real depends on the new engine.
+Track 1/2 below remain valid future work, just no longer next-in-line.
+
+Prior update from Codex, 2026-07-13: Track 1 items 2-4 below are now built, and the
 real local `axiom.db` now exists as a schema-only database with zero rows. Per
 Derek's direction, copied/test/build data was not committed to it. The copied
 archive staged queue has also been refreshed with current code and summarized
