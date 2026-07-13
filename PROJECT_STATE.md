@@ -437,4 +437,55 @@ Checks were performed without regenerating or modifying assignment outputs.
 3. **Completed for adversarial structural behavior:** add temporary-assignment
    torture tests covering malformed, extreme, interrupted, and path-safety
    cases.
-4. **Completed:** add a metadata-normalized structural 
+4. **Completed:** add a metadata-normalized structural DOCX golden comparison.
+   Desktop Word visual comparison remains.
+
+### P1 — Data contract
+
+1. **Completed:** introduce a versioned field registry/schema independent of
+   Word templates.
+2. **Completed for six deterministic variants:** derive presentation variants
+   rather than entering duplicate facts. Semantically distinct short/full
+   labels remain explicit.
+3. **Completed for canonical Intake drift and missing/error caches:** detect
+   stale JSON and scope cache checks to active workbook-owned report fields.
+   Valid-but-stale cache proof still requires an Excel-side calculation stamp.
+4. **Completed for new assignments and delivery attempts:** record template,
+   schema, and application versions per assignment.
+
+### P1 — Comparable intelligence
+
+1. **Completed:** define canonical sale/lease record contract, provenance,
+   review status, identity, and database idempotency.
+2. **Completed:** verify fictional extract → stage → review → commit → search →
+   CSV/workbook export.
+3. **Completed:** extend provenance/review to assignment conclusions and
+   compact income snapshots.
+4. **Completed:** extend the model to row-level rent rolls, specialty Excel
+   rent-roll layouts, native PDF rent-roll tables, native text-position PDF
+   expenses, normalized operating expenses, and basic wide multi-year
+   operating statements.
+5. **Completed:** extend the model to bounded reusable market observations.
+6. **Completed:** extend the model to external and Office-embedded charts,
+   maps, photos, sketches, and archived exhibits.
+7. **Completed:** add database migrations/backfills for any legacy local
+   comp rows before importing a real historical archive
+   (`backfill_legacy_identities` in `db.py`, run automatically by
+   `init_db()`).
+
+### P2 — Integrations
+
+Live-test Adobe Sign and Xero only after the core workflow has delivery
+integrity. External actions must be idempotent and retain provider IDs,
+timestamps, and failure states.
+
+## Known external blockers
+
+- Adobe Sign requires a usable API application and local credentials.
+- Xero requires a configured custom connection and local credentials.
+- AI narrative generation requires the Anthropic package, network access, and
+  `ANTHROPIC_API_KEY` — confirmed working end to end on 2026-07-10 (see
+  "Verified baseline" above). Note: this cloud sandbox's own network routes
+  through an intercepting proxy that blocks/misrepresents calls to
+  `api.anthropic.com`, so live AI narrative testing must happen on Derek's
+  own machine, not in this sandbox.

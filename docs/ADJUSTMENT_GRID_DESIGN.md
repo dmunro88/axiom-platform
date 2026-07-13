@@ -363,4 +363,22 @@ f. **Two qualitative-grid conventions living side by side.** After this
    text/narrative-driven an intentional, permanent difference? No action
    needed for v1 either way, but this shouldn't be an accidental
    inconsistency Derek discovers later.
-g. **Excel-for
+g. **Excel-formula vs. Python-computed grids — confirm the recommended
+   default.** Pipeline step 6 recommends keeping Size/Time/Net
+   Adjustment/Indicated Value as Excel formulas (matching `size_adj`/
+   `dilmore` today) with `adjustment_grid.py` reading computed results via
+   `data_only=True`, rather than moving that math into Python. This affects
+   how test fixtures must be built (a real calculation pass is required,
+   not just cell values written via openpyxl) — flagging so this default
+   gets explicit sign-off rather than being assumed.
+   **Resolved, partially against the recommendation:** per Derek's explicit
+   choice (2026-07-10), Dilmore's Size Factor/Adj % specifically stay a
+   *tested Python calculation* (`_run_dilmore_calc` in `axiom.py`), not a
+   live Excel formula — Time Adj %/Net Adjustment/Indicated Value remain
+   Excel formulas as originally recommended. The tradeoff this creates
+   (openpyxl's `wb.save()` after any real Python write silently discards
+   every OTHER cached formula result workbook-wide, requiring Derek to
+   manually recalculate/save in Excel before the next delivery) was the
+   subject of round-3 hardening finding P1 — see `HANDOFF.md`, "Completed
+   this session (Claude, Phase 6 hardening rounds 1-4 — 2026-07-11)" — and
+   is a direct, foreseeable consequence of this choice, not a separate bug.

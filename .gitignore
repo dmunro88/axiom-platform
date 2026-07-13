@@ -29,4 +29,7 @@ node_modules
 .local/
 scratch/
 
-# Office and operating-system temp
+# Office and operating-system temporary files
+~$*
+Thumbs.db
+.DS_Store

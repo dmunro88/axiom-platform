@@ -975,4 +975,33 @@ def commit_confirmed(confirmed_dir=None, db_path=None):
     }
 
 
-# ─── Entry point ──�
+# ─── Entry point ──────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+
+    cmd = sys.argv[1]
+
+    if cmd == "scan" and len(sys.argv) >= 3:
+        scans = scan_projects_root(sys.argv[2])
+        for s in scans:
+            meta = s["folder_meta"]
+            print(f"  {s['name'][:55]:<55} "
+                  f"reports:{len(s['reports'])} "
+                  f"exhibits:{len(s['exhibits'])} "
+                  f"cap_rate_xl:{len(s['cap_rate_xls'])} "
+                  f"rental_xl:{len(s['rental_comp_xls'])}")
+
+    elif cmd == "run" and len(sys.argv) >= 3:
+        run_extraction(sys.argv[2])
+
+    elif cmd == "review":
+        review_staged()
+
+    elif cmd == "commit":
+        commit_confirmed()
+
+    else:
+        print(__doc__)

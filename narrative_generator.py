@@ -686,4 +686,13 @@ if __name__ == "__main__":
         print("Usage: python narrative_generator.py <path/to/workbook.xlsx> [variables.json]")
         sys.exit(1)
 
-    vars_path
+    vars_path = sys.argv[2] if len(sys.argv) > 2 else None
+    v = {}
+    if vars_path and Path(vars_path).exists():
+        with open(vars_path) as f:
+            v = json.load(f)
+
+    result = generate_adjustment_narrative(sys.argv[1], v)
+    if result:
+        print("\n── Generated Narrative ──")
+        print(result)

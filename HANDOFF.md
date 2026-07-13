@@ -1364,4 +1364,60 @@ touch:
   harmless (gitignored, no real data, don't affect any staged batch's
   correctness) but add clutter; delete manually from
   `ingest/staged/ocr_pages/` when convenient, or run `python axiom.py
-  ocr-c
+  ocr-cleanup` (added this session) from Derek's own machine where file
+  deletion isn't restricted, which will safely remove them along with any
+  other genuinely orphaned page images.
+
+- **This sandbox's bash tool mounts this OneDrive-synced folder in a way
+  that can lag behind edits made through the file-editing tool** — it can
+  take a snapshot-like view rather than a live sync within a session. This
+  was worked around successfully both times this session (once for the
+  original OCR-lane commit, once for the follow-up): after editing via the
+  file-editing tool and confirming correctness by re-reading, the same
+  content was pushed into bash's view via bash-native writes (`cp` from a
+  verified copy, or a heredoc write) before running tests — bash-native
+  writes to this mount are immediately self-consistent, unlike edits made
+  through the file-editing tool. Both times, the full suite was then run
+  live in this checkout and confirmed passing (71/71, then 73/73) before
+  committing — this is no longer an open verification gap, just a technique
+  worth knowing about for the next session's own edit/test cycles.
+- This same mount also does not let git commands unlink their own lock/temp
+  files after normal use (`.git/index.lock`, `.git/HEAD.lock`,
+  `.git/objects/**/tmp_obj_*` all warn "Operation not permitted" on cleanup,
+  even on a successful command). `mv` (not `rm`) clears a stale lock before
+  the next git command; the warnings themselves don't indicate corruption.
+  **This got worse, not just noisier, while committing `6ad25af`:** the same
+  restriction let a stale `.git/index.lock` get renamed over the real
+  `.git/index` on write, corrupting it (`bad signature 0x00000000`), and
+  separately left `HEAD` unmoved after a real commit object was already
+  created. Both were recoverable without touching any working-tree file —
+  `git read-tree HEAD` rebuilds a valid index from the last good commit
+  (safe: it only touches the index, never the working tree), and a commit
+  that exists as an object but didn't move `HEAD` can be recovered with
+  `git update-ref refs/heads/main <hash>` after confirming via `git cat-file
+  -p <hash>` that its tree/parent/message are the intended ones. This
+  produced one confirmed-harmless duplicate dangling commit (identical tree
+  to `dde13b8`, an earlier failed attempt at the same commit, 17 seconds
+  older) sitting in the object database; `git gc` will eventually reap it.
+  Moral for next time: do every index-modifying git command in its own bash
+  call (not chained with others) and verify `git cat-file -p HEAD` names the
+  right commit before trusting a "success" exit code on this mount.
+- Plain `python` is not on PATH in the current Codex environment. The bundled
+  Python runtime was used for checks.
+- Tesseract is installed and synthetic OCR tests now run. Live archive
+  extraction has been tested against an image-only rendering of Derek's
+  supplied rent roll and proforma, but a naturally image-only scanned rent
+  roll or P&L has not yet produced staged financial rows through full
+  staging/review in this checkout. The naturally image-only JeffCo income
+  statement OCRed clearly enough but did not match current expense-section
+  parsing rules.
+- DOCX media layout has structural test coverage but still needs visual QA with
+  representative landscape and portrait photos.
+- Streamlit comparable review/browse behavior has service-level coverage but
+  still needs an interactive browser pass.
+- Missing/error Excel caches are detectable. A valid-looking but stale cached
+  value cannot be proven stale from XLSX alone without an Excel-side
+  calculation stamp or automation.
+- The existing parent-folder `PROJECT_STATE.md` is historical and contains
+  stale claims. This file and the project-root `PROJECT_STATE.md` are the
+  canonical handoff documents going forward.
