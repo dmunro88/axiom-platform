@@ -72,8 +72,9 @@
   `manual_comp_model.py` defines the starter controlled dropdown/property-type
   lists, richer manual comp normalization, sale and lease calculated indicators,
   and draft/confirmed validation results for the future UI to call before save
-  or confirmation. It is intentionally a pure backend layer; the Streamlit form
-  has not yet been redesigned around it.
+  or confirmation. The Manual Comp Entry Streamlit view now consumes this layer
+  for controlled selectors, calculated summary values, warning display, and
+  confirmed-save blockers.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.

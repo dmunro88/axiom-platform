@@ -66,8 +66,11 @@
   rent), and draft/confirmed validation for hard requirements versus warnings.
   Added `tests/test_manual_comp_model.py`; verified with bundled Python
   `py_compile`, `unittest tests.test_comp_pipeline tests.test_manual_comp_model`
-  (18 tests), `axiom.py contract`, and `git diff --check`. The Streamlit UI has
-  not yet been redesigned to consume this layer.
+  (18 tests), `axiom.py contract`, and `git diff --check`. Follow-up UI wiring
+  now has Manual Comp Entry call this layer for controlled dropdowns,
+  calculated summaries, warning display, and disabled confirmed-save until hard
+  blockers are fixed. Full browse/edit/detail redesign and draft persistence
+  remain future slices.
 - **This session (2026-07-13) found and fixed a real defect that had been
   sitting undetected in git history since 2026-07-09/07-10: `ingest.py` and
   `narrative_generator.py` (plus `.gitignore`, this file, `PROJECT_STATE.md`,

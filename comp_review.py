@@ -29,12 +29,18 @@ import streamlit as st
 from ingest import STAGED_DIR, run_extraction, commit_confirmed
 from extractor import _coerce as _extractor_coerce
 from comparable_contract import confirm_extraction_result
+from manual_comp_model import (
+    DROPDOWNS,
+    PROPERTY_TYPES,
+    evaluate_manual_comp,
+)
 import db as db_module
 
 CONFIRMED_DIR = STAGED_DIR.parent / "confirmed"
 CONFIRMED_DIR.mkdir(exist_ok=True)
 LOCAL_MEDIA_DIR = Path(__file__).parent / ".local" / "comp_media"
 PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+PROPERTY_TYPE_BY_LABEL = {label: value for value, label in PROPERTY_TYPES}
 
 _SALE_EDIT_FIELDS = [
     ("address_street", "Address"), ("address_city", "City"),
@@ -154,6 +160,18 @@ def _manual_text(label, key, placeholder=None):
     return value or None
 
 
+def _manual_select(label, key, options):
+    choices = [""] + list(options)
+    selected = st.selectbox(label, choices, key=key)
+    return selected or None
+
+
+def _manual_property_type(key):
+    labels = [""] + [label for _value, label in PROPERTY_TYPES]
+    selected = st.selectbox("Property Type", labels, key=key)
+    return PROPERTY_TYPE_BY_LABEL.get(selected)
+
+
 def _manual_common_fields(prefix):
     left, middle, right = st.columns(3)
     with left:
@@ -166,13 +184,17 @@ def _manual_common_fields(prefix):
         ) or "AL"
         address_zip = _manual_text("ZIP", f"{prefix}_address_zip")
     with middle:
-        property_type = _manual_text("Property Type", f"{prefix}_property_type")
+        property_type = _manual_property_type(f"{prefix}_property_type")
         property_subtype = _manual_text(
             "Property Subtype",
             f"{prefix}_property_subtype",
         )
         submarket = _manual_text("Submarket", f"{prefix}_submarket")
-        condition = _manual_text("Condition", f"{prefix}_condition")
+        condition = _manual_select(
+            "Condition",
+            f"{prefix}_condition",
+            DROPDOWNS["condition"],
+        )
     with right:
         gba_sf = _manual_text("GBA (SF)", f"{prefix}_gba_sf")
         nla_sf = _manual_text("NLA (SF)", f"{prefix}_nla_sf")
@@ -194,6 +216,121 @@ def _manual_common_fields(prefix):
     }
 
 
+def _manual_has_input(data):
+    meaningful = {
+        key: value
+        for key, value in data.items()
+        if key != "address_state" and value not in (None, "")
+    }
+    return bool(meaningful)
+
+
+def _manual_calc_label(field):
+    labels = {
+        "base_rent_annual": "Annual Rent",
+        "base_rent_monthly": "Monthly Rent",
+        "base_rent_psf": "Rent/SF",
+        "cap_rate": "Cap Rate",
+        "effective_rent_psf": "Effective Rent/SF",
+        "egim": "EGIM",
+        "floor_area_ratio": "FAR",
+        "free_rent_value": "Free Rent Value",
+        "land_to_building_ratio": "Land:Building",
+        "months_since_sale": "Months Since Sale",
+        "noi_per_sf": "NOI/SF",
+        "noi_per_unit": "NOI/Unit",
+        "pgim": "PGIM",
+        "price_per_acre": "Price/Acre",
+        "price_per_sf": "Price/SF",
+        "rent_psf_year": "Rent/SF/Yr",
+        "sale_price_per_unit": "Price/Unit",
+        "term_years": "Term Years",
+        "ti_allowance_total": "TI Total",
+    }
+    return labels.get(field, field.replace("_", " ").title())
+
+
+def _manual_calc_value(field, value):
+    if value is None:
+        return "-"
+    if field in {
+        "base_rent_annual",
+        "base_rent_monthly",
+        "effective_rent_psf",
+        "free_rent_value",
+        "noi_per_sf",
+        "noi_per_unit",
+        "price_per_acre",
+        "price_per_sf",
+        "rent_psf_year",
+        "sale_price_per_unit",
+        "ti_allowance_total",
+    }:
+        return f"${value:,.2f}"
+    if field in {"cap_rate", "expense_ratio", "expenses_as_pct_of_egi", "expenses_as_pct_of_pgi"}:
+        return f"{value:.2%}"
+    if isinstance(value, float):
+        return f"{value:,.4f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def _render_manual_model_feedback(record_kind, evaluation):
+    calculations = evaluation.get("calculations", {})
+    errors = evaluation.get("errors", [])
+    warnings = evaluation.get("warnings", [])
+
+    if calculations:
+        st.markdown("##### Calculated Summary")
+        priority = (
+            [
+                "price_per_sf",
+                "price_per_acre",
+                "sale_price_per_unit",
+                "cap_rate",
+                "noi_per_sf",
+                "pgim",
+                "egim",
+                "months_since_sale",
+            ]
+            if record_kind == "sale"
+            else [
+                "base_rent_annual",
+                "base_rent_monthly",
+                "rent_psf_year",
+                "term_years",
+                "free_rent_value",
+                "ti_allowance_total",
+                "effective_rent_psf",
+            ]
+        )
+        visible = [field for field in priority if field in calculations][:4]
+        if visible:
+            columns = st.columns(len(visible))
+            for index, field in enumerate(visible):
+                columns[index].metric(
+                    _manual_calc_label(field),
+                    _manual_calc_value(field, calculations[field]),
+                )
+        with st.expander("All calculated values"):
+            rows = [
+                {
+                    "Indicator": _manual_calc_label(field),
+                    "Value": _manual_calc_value(field, value),
+                }
+                for field, value in sorted(calculations.items())
+            ]
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+
+    if errors:
+        st.error("Fix confirmed-save blockers before adding this comp.")
+        for message in errors:
+            st.caption(f"- {message}")
+    if warnings:
+        with st.expander("Review warnings", expanded=not errors):
+            for message in warnings:
+                st.warning(message)
+
+
 def _render_manual_entry():
     record_label = st.radio(
         "Comp type",
@@ -204,122 +341,174 @@ def _render_manual_entry():
     record_kind = "sale" if record_label == "Sale Comp" else "lease"
     prefix = f"manual_{record_kind}"
 
-    with st.form(f"{prefix}_form", clear_on_submit=False):
-        data = _manual_common_fields(prefix)
+    data = _manual_common_fields(prefix)
 
-        if record_kind == "sale":
-            st.markdown("##### Sale")
-            left, middle, right = st.columns(3)
-            with left:
-                data["sale_price"] = _manual_text(
-                    "Sale Price",
-                    f"{prefix}_sale_price",
-                    placeholder="$1,000,000",
-                )
-                data["sale_date"] = _manual_text(
-                    "Sale Date",
-                    f"{prefix}_sale_date",
-                    placeholder="2025-01-15",
-                )
-                data["price_per_sf"] = _manual_text(
-                    "Price/SF",
-                    f"{prefix}_price_per_sf",
-                )
-            with middle:
-                data["cap_rate"] = _manual_text(
-                    "Cap Rate",
-                    f"{prefix}_cap_rate",
-                    placeholder="8.5%",
-                )
-                data["noi"] = _manual_text("NOI", f"{prefix}_noi")
-                data["noi_per_sf"] = _manual_text(
-                    "NOI/SF",
-                    f"{prefix}_noi_per_sf",
-                )
-            with right:
-                data["grantor"] = _manual_text("Grantor", f"{prefix}_grantor")
-                data["grantee"] = _manual_text("Grantee", f"{prefix}_grantee")
-                data["deed_ref"] = _manual_text("Deed Ref", f"{prefix}_deed_ref")
-            data["verification_source"] = _manual_text(
-                "Verification Source",
-                f"{prefix}_verification_source",
+    if record_kind == "sale":
+        st.markdown("##### Sale")
+        left, middle, right = st.columns(3)
+        with left:
+            data["sale_price"] = _manual_text(
+                "Sale Price",
+                f"{prefix}_sale_price",
+                placeholder="$1,000,000",
             )
-        else:
-            st.markdown("##### Lease")
-            left, middle, right = st.columns(3)
-            with left:
-                data["tenant_name"] = _manual_text(
-                    "Tenant",
-                    f"{prefix}_tenant_name",
-                )
-                data["tenant_use"] = _manual_text(
-                    "Tenant Use",
-                    f"{prefix}_tenant_use",
-                )
-                data["sf_leased"] = _manual_text(
-                    "SF Leased",
-                    f"{prefix}_sf_leased",
-                )
-            with middle:
-                data["base_rent_psf"] = _manual_text(
-                    "Base Rent/SF",
-                    f"{prefix}_base_rent_psf",
-                    placeholder="$21.50",
-                )
-                data["base_rent_monthly"] = _manual_text(
-                    "Monthly Rent",
-                    f"{prefix}_base_rent_monthly",
-                )
-                data["rent_structure"] = _manual_text(
-                    "Rent Structure",
-                    f"{prefix}_rent_structure",
-                )
-            with right:
-                data["lease_date"] = _manual_text(
-                    "Lease Date",
-                    f"{prefix}_lease_date",
-                    placeholder="2025-03-01",
-                )
-                data["lease_expiration"] = _manual_text(
-                    "Lease Expiration",
-                    f"{prefix}_lease_expiration",
-                )
-                data["term_years"] = _manual_text(
-                    "Term (Years)",
-                    f"{prefix}_term_years",
-                )
-            lower = st.columns(4)
-            with lower[0]:
-                data["expense_stop_psf"] = _manual_text(
-                    "Expense Stop/SF",
-                    f"{prefix}_expense_stop_psf",
-                )
-            with lower[1]:
-                data["ti_allowance_psf"] = _manual_text(
-                    "TI Allowance/SF",
-                    f"{prefix}_ti_allowance_psf",
-                )
-            with lower[2]:
-                data["free_rent_months"] = _manual_text(
-                    "Free Rent Months",
-                    f"{prefix}_free_rent_months",
-                )
-            with lower[3]:
-                data["escalations"] = _manual_text(
-                    "Escalations",
-                    f"{prefix}_escalations",
-                )
-            data["renewal_options"] = _manual_text(
-                "Renewal Options",
-                f"{prefix}_renewal_options",
+            data["cash_equivalent_price"] = _manual_text(
+                "Cash Equivalent Price",
+                f"{prefix}_cash_equivalent_price",
             )
+            data["adjusted_sale_price"] = _manual_text(
+                "Adjusted Sale Price",
+                f"{prefix}_adjusted_sale_price",
+            )
+            data["sale_date"] = _manual_text(
+                "Sale Date",
+                f"{prefix}_sale_date",
+                placeholder="2025-01-15",
+            )
+        with middle:
+            data["sale_status"] = _manual_select(
+                "Sale Status",
+                f"{prefix}_sale_status",
+                DROPDOWNS["sale_status"],
+            )
+            data["price_per_sf"] = _manual_text(
+                "Source Price/SF",
+                f"{prefix}_price_per_sf",
+            )
+            data["cap_rate"] = _manual_text(
+                "Cap Rate",
+                f"{prefix}_cap_rate",
+                placeholder="8.5%",
+            )
+            data["noi"] = _manual_text("NOI", f"{prefix}_noi")
+        with right:
+            data["property_rights"] = _manual_select(
+                "Property Rights",
+                f"{prefix}_property_rights",
+                DROPDOWNS["property_rights"],
+            )
+            data["conditions_of_sale"] = _manual_select(
+                "Conditions of Sale",
+                f"{prefix}_conditions_of_sale",
+                DROPDOWNS["conditions_of_sale"],
+            )
+            data["financing_terms"] = _manual_select(
+                "Financing Terms",
+                f"{prefix}_financing_terms",
+                DROPDOWNS["financing_terms"],
+            )
+            data["deed_ref"] = _manual_text("Deed Ref", f"{prefix}_deed_ref")
+        data["verification_source"] = _manual_select(
+            "Verification Source",
+            f"{prefix}_verification_source",
+            DROPDOWNS["verification_source"],
+        )
+        data["verification_notes"] = _manual_text(
+            "Verification Notes",
+            f"{prefix}_verification_notes",
+        )
+    else:
+        st.markdown("##### Lease")
+        left, middle, right = st.columns(3)
+        with left:
+            data["tenant_name"] = _manual_text(
+                "Tenant",
+                f"{prefix}_tenant_name",
+            )
+            data["tenant_use"] = _manual_select(
+                "Tenant Use",
+                f"{prefix}_tenant_use",
+                DROPDOWNS["tenant_use"],
+            )
+            data["sf_leased"] = _manual_text(
+                "SF Leased",
+                f"{prefix}_sf_leased",
+            )
+        with middle:
+            data["base_rent_psf"] = _manual_text(
+                "Base Rent/SF",
+                f"{prefix}_base_rent_psf",
+                placeholder="$21.50",
+            )
+            data["base_rent_monthly"] = _manual_text(
+                "Monthly Rent",
+                f"{prefix}_base_rent_monthly",
+            )
+            data["base_rent_annual"] = _manual_text(
+                "Annual Rent",
+                f"{prefix}_base_rent_annual",
+            )
+            data["rent_structure"] = _manual_select(
+                "Rent Structure",
+                f"{prefix}_rent_structure",
+                DROPDOWNS["rent_structure"],
+            )
+        with right:
+            data["lease_date"] = _manual_text(
+                "Lease Date",
+                f"{prefix}_lease_date",
+                placeholder="2025-03-01",
+            )
+            data["commencement_date"] = _manual_text(
+                "Commencement Date",
+                f"{prefix}_commencement_date",
+            )
+            data["lease_expiration"] = _manual_text(
+                "Lease Expiration",
+                f"{prefix}_lease_expiration",
+            )
+            data["term_years"] = _manual_text(
+                "Term (Years)",
+                f"{prefix}_term_years",
+            )
+        lower = st.columns(4)
+        with lower[0]:
+            data["expense_stop_psf"] = _manual_text(
+                "Expense Stop/SF",
+                f"{prefix}_expense_stop_psf",
+            )
+        with lower[1]:
+            data["ti_allowance_psf"] = _manual_text(
+                "TI Allowance/SF",
+                f"{prefix}_ti_allowance_psf",
+            )
+        with lower[2]:
+            data["free_rent_months"] = _manual_text(
+                "Free Rent Months",
+                f"{prefix}_free_rent_months",
+            )
+        with lower[3]:
+            data["escalations"] = _manual_text(
+                "Escalations",
+                f"{prefix}_escalations",
+            )
+        data["renewal_options"] = _manual_text(
+            "Renewal Options",
+            f"{prefix}_renewal_options",
+        )
+        data["verification_source"] = _manual_select(
+            "Verification Source",
+            f"{prefix}_verification_source",
+            DROPDOWNS["verification_source"],
+        )
+        data["verification_notes"] = _manual_text(
+            "Verification Notes",
+            f"{prefix}_verification_notes",
+        )
 
-        data = {key: value for key, value in data.items() if value not in (None, "")}
-        submitted = st.form_submit_button("Add Comp", type="primary")
+    data = {key: value for key, value in data.items() if value not in (None, "")}
+    evaluation = evaluate_manual_comp(record_kind, data, status="confirmed")
+    if _manual_has_input(data):
+        _render_manual_model_feedback(record_kind, evaluation)
+    else:
+        st.info("Start with property type, address, and the core sale or lease facts.")
 
-    if submitted:
+    add_disabled = bool(evaluation.get("errors")) or not _manual_has_input(data)
+    if st.button("Add Confirmed Comp", type="primary", disabled=add_disabled):
+        save_data = dict(evaluation.get("data", data))
+        save_data.update(evaluation.get("calculations", {}))
         try:
-            result = db_module.insert_manual_comparable(record_kind, data)
+            result = db_module.insert_manual_comparable(record_kind, save_data)
         except Exception as exc:
             st.error(f"Could not add comp: {exc}")
         else:
