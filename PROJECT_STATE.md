@@ -68,6 +68,12 @@
   through the same normalization, validation, confirmed-review status,
   identity key, duplicate detection, and reviewed search path used by
   extracted historical comps.
+- **Manual comp calculation/validation layer started on 2026-07-13.**
+  `manual_comp_model.py` defines the starter controlled dropdown/property-type
+  lists, richer manual comp normalization, sale and lease calculated indicators,
+  and draft/confirmed validation results for the future UI to call before save
+  or confirmation. It is intentionally a pure backend layer; the Streamlit form
+  has not yet been redesigned around it.
 
 This file is agent-neutral and describes verified current behavior. Historical
 notes in the parent folder are retained for context but are not authoritative.

@@ -58,6 +58,16 @@
   paths. Verified with bundled Python `py_compile`, `unittest
   tests.test_comp_pipeline` (12 tests), `axiom.py contract`, and
   `git diff --check`.
+- **Manual comp calculation/validation layer started (2026-07-13).**
+  Added `manual_comp_model.py` with controlled property type/dropdown
+  constants, expanded manual normalization, sale indicators (price/SF, price/
+  acre, FAR, land-to-building ratio, PGIM/EGIM, cap rate, NOI/SF/unit, etc.),
+  lease indicators (annual/monthly rent, rent/SF, term, concessions, effective
+  rent), and draft/confirmed validation for hard requirements versus warnings.
+  Added `tests/test_manual_comp_model.py`; verified with bundled Python
+  `py_compile`, `unittest tests.test_comp_pipeline tests.test_manual_comp_model`
+  (18 tests), `axiom.py contract`, and `git diff --check`. The Streamlit UI has
+  not yet been redesigned to consume this layer.
 - **This session (2026-07-13) found and fixed a real defect that had been
   sitting undetected in git history since 2026-07-09/07-10: `ingest.py` and
   `narrative_generator.py` (plus `.gitignore`, this file, `PROJECT_STATE.md`,
