@@ -2,6 +2,63 @@
 
 - Last updated: 2026-07-13
 - Current agent: Claude
+- **Fable adversarial review of the calc-engine rebuild (Phases 1-3c),
+  findings fixed — 2026-07-13 (not yet committed).** Per Derek's request
+  (usage now available in his upgraded plan), spawned a `model: "fable"`
+  agent to independently re-derive the math in all five calc-engine
+  modules (brute-force amortization simulation, manual NPV checks, full
+  grid recomputation) and adversarially probe ~40 edge cases against the
+  live code. **No reversed formulas, off-by-one indexing, or silent
+  wrong-answer bugs found** in the core appraisal math — the rebuild's
+  actual premise held up. Real findings, all fixed:
+  - **High severity, real bug**: `tvm_engine.solve_yield_rate` and
+    `dcf_engine.internal_rate_of_return`'s bisection used an absolute
+    NPV-in-dollars tolerance (`1e-9`) to judge convergence — fails to
+    converge at routine institutional scale (a $5M+ property genuinely
+    raised "did not converge"), and converges too early to a materially
+    wrong rate at very small dollar magnitudes. Fixed by switching to a
+    bisection interval-width tolerance in RATE terms (scale-invariant),
+    dropping the NPV-magnitude check entirely rather than just adding to
+    it (an OR of the two didn't fix the small-scale case — verified this
+    directly before finalizing). Confirmed fixed at both the original
+    failing $5M/$25M scale and a 1e-9-scaled tiny case, both now landing
+    on the exact expected rate.
+  - `sca_engine.unit_price_stats`/`select_unit_of_comparison`: a
+    negative-mean candidate produced a negative CV that silently won
+    `min()`; now rejected with `SCAEngineError`. `Stats.mode` also no
+    longer fabricates a value when nothing actually repeats (a
+    `statistics.mode()` 3.8+ quirk) — returns `None` instead.
+  - `tvm_engine`: `rate <= -1` (meaningless for compounding) now raises
+    instead of producing a raw `ZeroDivisionError` or sign-nonsense
+    result; `periods == 0` now raises regardless of `rate` (previously
+    only guarded inside the `rate == 0` branch).
+  - `direct_cap_engine.compute_egi`: `total_pgi` previously meant
+    different things (with/without `other_income` folded in) depending on
+    `other_income_subject_to_vacancy` — now always consistently means
+    PGI + reimbursements only, matching the textbook's own "Total PGI"
+    line item, in both branches. Also added `vacancy_collection_loss_pct`
+    range validation (0-1).
+  - `direct_cap_engine.py`: added `extract_building_rate_via_residual`
+    (the 16.5 Problem's actual calculation — the existing
+    `test_16_5_problem_building_rate_extraction` test didn't call any
+    engine function at all, it verified the booklet's number against
+    itself; now rewritten to exercise the real function).
+  - `forecast_engine.apply_below_the_line_items`: a non-int year key
+    (e.g. `3.0`) now raises `ForecastEngineError` instead of a raw
+    `TypeError`.
+  - `dcf_engine.dcf_periodic_yield_rate`'s docstring wording was checked
+    against the actual source material and tightened — the formula
+    itself was already correct (independently confirmed by both the
+    review and a direct re-check of the PC404 research notes); the
+    "overstates" claim was ambiguous about which comparison it meant.
+  - 12 new regression tests added across the five test files covering
+    every fix above, including both ends of the convergence-scale bug.
+  Full suite 302 passed (up from 290), contract clean at v1.2.0/220/24.
+  Deferred/not changed: the sign-convention asymmetry between
+  `dcf.internal_rate_of_return` (positive capital outlay) and
+  `tvm.solve_yield_rate` (signed PV) — both already documented, judged
+  low-risk to leave as-is rather than force a matching convention across
+  modules with different natural call patterns.
 - **Calculation-engine rebuild, Phase 3c (cash-flow-pattern forecasting)
   built — 2026-07-13 (not yet committed).** Building on
   `direct_cap_engine.py` (Phase 2) and `dcf_engine.py` (Phase 3b), added

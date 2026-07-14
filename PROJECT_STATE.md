@@ -91,6 +91,18 @@
   representations (level/irregular/compound-growth) produce the
   identical PV. Full suite 290 passed, contract clean. See `HANDOFF.md`
   for full detail.
+- **Fable adversarial review of the calc-engine rebuild (Phases 1-3c),
+  findings fixed 2026-07-13, not yet committed.** Independently re-derived
+  math confirmed no reversed formulas/off-by-one/silent-wrong-answer bugs
+  in the core appraisal math. Real fixes: a bisection convergence bug in
+  `tvm_engine.solve_yield_rate`/`dcf_engine.internal_rate_of_return` that
+  failed on institutional-scale (multi-million-dollar) cash flows (fixed
+  by switching to a scale-invariant interval-width tolerance), plus
+  several fail-loudly/test-integrity gaps (negative-mean unit selection,
+  fabricated statistical mode, `rate <= -1` handling, inconsistent
+  `total_pgi` semantics, a test that didn't call any engine function, a
+  non-int forecast-year key). 12 new regression tests. Full suite 302
+  passed, contract clean. See `HANDOFF.md` for full detail.
 - **Per Derek's explicit direction, Excel is no longer considered the right
   long-term calculation engine for this platform.** The rest of the stack
   (comps, financials, observations) already runs on SQLite + Python +
