@@ -2,6 +2,50 @@
 
 - Last updated: 2026-07-13
 - Current agent: Claude
+- **Calculation-engine rebuild, Phase 3e (lease-interest analysis) built
+  — 2026-07-13 (not yet committed).** Covers Part 11 ("Lease Analysis")
+  of the Appraisal Institute's *General Appraiser Income Approach/Part 2*
+  course. New `lease_interest_engine.py` (pure functions, no I/O,
+  deliberately thin like `mortgage_equity_engine.py` — valuing any single
+  interest's cash flows is done by the caller directly via
+  `dcf_engine`/`tvm_engine`, not re-wrapped here): `net_income_to_interest`
+  (the course's own "rent collected − rent paid" formula, uniform across
+  leased fee/sandwich/subleasehold/fee simple), `overage_rent`
+  (percentage rent), `lease_yield_rate_ordering_is_plausible` (confirmed
+  `Y_LF < Y_LH < Y_SLH` — leased fee lowest-risk/senior, subleasehold
+  highest-risk/residual — documented sanity check only, same pattern as
+  Phase 3d's mortgage-equity ordering check), and
+  `fee_simple_reconciliation_gap` (exposes, doesn't force, whether
+  leased-fee + leasehold-family components sum to fee simple — the
+  source material is explicit that identity only holds in a "perfect
+  market"). The step-up-lease-paid-in-advance case (this course's own 6.4
+  Problem) needed no new code — already implemented and tested via
+  `dcf_engine.present_value_income_in_advance`.
+  - **Independent-verification finding, disclosed in the test itself**:
+    Self-Study Sections 5 & 6 Problem 34's own component summary grid
+    mislabels the sandwich leasehold's discount rate as "11%" (identical
+    in both the "Problems" and "Solutions" printings), but the problem's
+    own question text asks for "a 20% discount rate," and the grid's own
+    printed $7,477 answer only reproduces at i=20 (i=11 gives $9,240,
+    nowhere close). Treated as a booklet transcription error; the test
+    uses the correct 20% rate and discloses the mislabel.
+  - Confirmed and tested: the sum-of-parts reconciliation genuinely does
+    NOT hold in Problem 34 (~$246 gap) even though it holds exactly in
+    Part 12 Practice Test Question 4 (~$0 gap) — `fee_simple_reconciliation_gap`
+    is asserted against both outcomes rather than forcing either.
+  - Explicitly out of scope, confirmed no worked numeric example exists
+    anywhere in the source material: excess rent, deficit rent,
+    effective-rent calculation methods. The property-model leased-fee
+    formula (`R_LF = Y_LF − Δ×(1/S_n)`, seen in Self-Study Problems 13/14)
+    is deferred to the already-roadmapped Ellwood-style property-model
+    phase (Parts 13/15/16) rather than folded in here.
+  - 14 tests in `tests/test_lease_interest_engine.py`, citing Part 12
+    Practice Test Question 4, Self-Study Sections 5 & 6 Problems 33/34,
+    and Self-Study Sections 1 & 2 Problem 34 ("Phone Shak," overage
+    rent) — every fixture independently recomputed in Python. Full suite
+    337 passed (up from 323), `axiom.py contract` clean at v1.2.0/220/24
+    (no registry-facing changes this phase). Not yet wired into
+    `axiom.py`/`fill_engine`/the field registry.
 - **Calculation-engine rebuild, Phase 3d (mortgage/equity-split DCF) built
   — 2026-07-13 (not yet committed).** Building on `tvm_engine.py` (Phase
   3a) and `dcf_engine.py` (Phase 3b), added full leveraged (mortgage-

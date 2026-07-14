@@ -124,6 +124,24 @@
   21 tests in `tests/test_mortgage_equity_engine.py`. Full suite 323
   passed, contract clean at v1.2.0/220/24 (no registry-facing changes).
   See `HANDOFF.md` for full detail.
+- **Calculation-engine rebuild, Phase 3e (lease-interest analysis) built
+  2026-07-13, not yet committed.** New `lease_interest_engine.py` (pure
+  functions, no I/O, deliberately thin — reuses `dcf_engine.py`/
+  `tvm_engine.py` for all actual discounting): `net_income_to_interest`,
+  `overage_rent`, `lease_yield_rate_ordering_is_plausible` (confirmed
+  `Y_LF < Y_LH < Y_SLH`, sanity check only), and
+  `fee_simple_reconciliation_gap` (exposes rather than forces whether
+  leased-fee/leasehold-family values sum to fee simple — confirmed only
+  true in a "perfect market"). One independent-verification finding:
+  Self-Study Sections 5 & 6 Problem 34's own grid mislabels the sandwich
+  leasehold's discount rate as "11%" when the problem text and the
+  grid's own printed answer both use 20% — disclosed in the test, not
+  silently corrected. Excess/deficit/effective rent excluded (no worked
+  example exists); the Ellwood-style property-model leased-fee formula
+  deferred to its own already-roadmapped later phase. 14 tests in
+  `tests/test_lease_interest_engine.py`. Full suite 337 passed, contract
+  clean at v1.2.0/220/24 (no registry-facing changes). See `HANDOFF.md`
+  for full detail.
 - **Per Derek's explicit direction, Excel is no longer considered the right
   long-term calculation engine for this platform.** The rest of the stack
   (comps, financials, observations) already runs on SQLite + Python +
