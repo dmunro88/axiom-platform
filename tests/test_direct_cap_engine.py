@@ -31,6 +31,7 @@ from direct_cap_engine import (
     cap_rate_from_nir_and_egim,
     compute_egi,
     compute_noi,
+    extract_building_rate_via_residual,
     extract_multiplier,
     extract_overall_cap_rate,
     forecast_income,
@@ -70,6 +71,28 @@ class ComputeEGITests(unittest.TestCase):
         with self.assertRaises(DirectCapEngineError):
             compute_egi(pgi=100_000, vacancy_collection_loss_pct=0.05,
                         reimbursements=-1)
+
+    def test_total_pgi_never_includes_other_income(self):
+        """total_pgi must mean PGI + reimbursements only, consistently,
+        regardless of other_income_subject_to_vacancy -- previously the
+        vacancy-subject branch mutated total_pgi to include other_income
+        before returning it, while the other branch didn't, giving the
+        same field two different meanings depending on a flag."""
+        subject_true = compute_egi(pgi=100_000, vacancy_collection_loss_pct=0.05,
+                                    other_income=10_000, other_income_subject_to_vacancy=True)
+        subject_false = compute_egi(pgi=100_000, vacancy_collection_loss_pct=0.05,
+                                     other_income=10_000, other_income_subject_to_vacancy=False)
+        self.assertAlmostEqual(100_000.0, subject_true.total_pgi, places=2)
+        self.assertAlmostEqual(100_000.0, subject_false.total_pgi, places=2)
+        # EGI still correctly differs based on the flag.
+        self.assertAlmostEqual(104_500.0, subject_true.egi, places=2)
+        self.assertAlmostEqual(105_000.0, subject_false.egi, places=2)
+
+    def test_vacancy_pct_out_of_range_rejected(self):
+        with self.assertRaises(DirectCapEngineError):
+            compute_egi(pgi=100_000, vacancy_collection_loss_pct=-0.05)
+        with self.assertRaises(DirectCapEngineError):
+            compute_egi(pgi=100_000, vacancy_collection_loss_pct=1.5)
 
 
 class ComputeNOITests(unittest.TestCase):
@@ -228,14 +251,20 @@ class BuildingResidualTests(unittest.TestCase):
 
     def test_16_5_problem_building_rate_extraction(self):
         """16.5 Problem: total value $1,200,000, NOI $90,000, land value
-        $360,000 @ 6% -> extracted building rate 8.143%. Uses land_residual
-        (building value known: total - land) to derive the building's own
-        income and rate."""
+        $360,000 @ 6% -> extracted building rate 8.143%. Uses
+        extract_building_rate_via_residual (building value known: total -
+        land) to derive the building's own income and rate -- the inverse
+        of building_residual (there, building_rate is given and value is
+        solved for; here, value is given and rate is solved for)."""
         building_value = 1_200_000 - 360_000
-        land_income = 0.06 * 360_000
-        building_income = 90_000 - land_income
-        r_b = building_income / building_value
+        r_b = extract_building_rate_via_residual(
+            noi=90_000, land_value=360_000, land_rate=0.06, building_value=building_value)
         self.assertAlmostEqual(0.081429, r_b, places=6)
+
+    def test_zero_building_value_rejected(self):
+        with self.assertRaises(DirectCapEngineError):
+            extract_building_rate_via_residual(
+                noi=90_000, land_value=360_000, land_rate=0.06, building_value=0)
 
 
 class LandResidualHBUTests(unittest.TestCase):

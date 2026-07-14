@@ -66,12 +66,20 @@ def net_present_value(capital_outlay, cash_flows, reversion, rate):
 
 
 def internal_rate_of_return(capital_outlay, cash_flows, reversion,
-                              tolerance=1e-9, max_iterations=200):
+                              tolerance=1e-12, max_iterations=200):
     """Solves for the yield rate Y at which NPV = 0. The textbook has no
     closed form for this -- it is always solved via calculator iteration,
     exactly like tvm_engine.solve_yield_rate for the simpler level-annuity
     case; this generalizes that same bisection approach to an irregular
     cash-flow vector.
+
+    `tolerance` is a bisection INTERVAL-WIDTH tolerance in RATE terms, not
+    an NPV/dollar tolerance -- an NPV-magnitude check fails to converge
+    for institutional-scale cash flows (float precision near the root is
+    far coarser in dollar terms than a fixed tolerance once outlays reach
+    the millions), and can converge too early (to a materially wrong
+    rate) at very small dollar magnitudes. See tvm_engine.solve_yield_rate's
+    docstring for the full explanation -- this mirrors the same fix.
 
     Caveat, confirmed by the source material: cash-flow patterns with more
     than one sign change can have multiple mathematically valid IRRs. This
@@ -87,15 +95,17 @@ def internal_rate_of_return(capital_outlay, cash_flows, reversion,
     if npv_low * npv_high > 0:
         raise DCFEngineError(
             "internal_rate_of_return could not bracket a root in "
-            "[-99%, 1000%]; check for a cash-flow sign convention issue or "
-            "multiple sign changes (multiple possible IRRs)"
+            "[-99%, 1000%]; this usually indicates a cash-flow sign "
+            "convention issue or multiple sign changes (multiple possible "
+            "IRRs), though a genuinely extreme yield outside this range "
+            "is also possible"
         )
 
     for _ in range(max_iterations):
         mid = (low + high) / 2
-        npv_mid = npv(mid)
-        if abs(npv_mid) < tolerance:
+        if (high - low) < tolerance:
             return mid
+        npv_mid = npv(mid)
         if npv_low * npv_mid < 0:
             high = mid
             npv_high = npv_mid
@@ -167,10 +177,22 @@ def dcf_periodic_yield_rate(annual_yield_rate, periods_per_year):
     NOT the same as tvm_engine.periodic_rate (nominal annual rate divided
     by periods_per_year) -- that conversion is only valid for
     contractually-stated mortgage/loan rates. The source material is
-    explicit that naively dividing a market-derived DCF yield rate by 12
-    overstates value and is a confirmed, named improper practice. The
-    correct conversion preserves present-value equivalence with annual
-    discounting:
+    explicit that switching a DCF to monthly cash flows while naively
+    dividing the annual yield rate by 12 overstates value relative to
+    proper annual discounting of the same property -- primarily because
+    monthly-received income is earned earlier within the year, not
+    because Y/12 itself is "too low" (in fact Y/12 is a slightly HIGHER
+    periodic rate than this function's correct conversion, since
+    compounding more frequently at the same nominal rate always increases
+    the effective annual rate -- confirm this yourself: for Y=10%,
+    Y/12=0.8333% > dcf_periodic_yield_rate(0.10, 12)=0.7974%). The
+    "overstatement" the source material warns about is specifically
+    switching cash-flow timing to monthly WITHOUT correctly re-deriving
+    the periodic rate this function computes -- it is not a claim that
+    Y/12 exceeds the correct rate on the same monthly cash flows (it's the
+    reverse: Y/12 is higher, and a higher rate means LOWER present value
+    for the same flows). The correct conversion preserves present-value
+    equivalence with annual discounting:
 
         periodic_yield_rate = (1 + annual_yield_rate) ** (1/periods_per_year) - 1
 

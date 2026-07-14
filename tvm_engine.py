@@ -45,18 +45,29 @@ class TVMEngineError(Exception):
 # ── Six Functions of a Dollar — factors ─────────────────────────────────────
 
 
+def _validate_rate(rate):
+    """A rate of exactly -100% (or lower) makes (1+rate) zero or negative,
+    which is not a meaningful compounding rate and produces either a
+    division-by-zero or sign-nonsense result -- fail loudly instead."""
+    if rate <= -1:
+        raise TVMEngineError(f"rate must be greater than -1 (-100%), got {rate!r}")
+
+
 def future_value_factor(rate, periods):
     """(1+i)^n -- Future Value of 1."""
+    _validate_rate(rate)
     return (1 + rate) ** periods
 
 
 def present_value_factor(rate, periods):
     """1/(1+i)^n -- Present Value of 1. Reciprocal of future_value_factor."""
+    _validate_rate(rate)
     return 1 / (1 + rate) ** periods
 
 
 def future_value_annuity_factor(rate, periods):
     """[(1+i)^n - 1] / i -- Future Value of an Annuity of 1 (ordinary/arrears)."""
+    _validate_rate(rate)
     if rate == 0:
         return float(periods)
     return ((1 + rate) ** periods - 1) / rate
@@ -65,15 +76,17 @@ def future_value_annuity_factor(rate, periods):
 def sinking_fund_factor(rate, periods):
     """i / [(1+i)^n - 1] -- Sinking Fund Factor. Reciprocal of
     future_value_annuity_factor."""
+    _validate_rate(rate)
+    if periods == 0:
+        raise TVMEngineError("sinking_fund_factor requires periods > 0")
     if rate == 0:
-        if periods == 0:
-            raise TVMEngineError("sinking_fund_factor requires periods > 0")
         return 1.0 / periods
     return rate / ((1 + rate) ** periods - 1)
 
 
 def present_value_annuity_factor(rate, periods):
     """[1 - 1/(1+i)^n] / i -- Present Value of an Annuity of 1 (ordinary/arrears)."""
+    _validate_rate(rate)
     if rate == 0:
         return float(periods)
     return (1 - 1 / (1 + rate) ** periods) / rate
@@ -84,9 +97,10 @@ def installment_to_amortize_factor(rate, periods):
     partial payment factor). Reciprocal of present_value_annuity_factor.
     Confirmed identity: sinking_fund_factor(rate, periods) + rate ==
     installment_to_amortize_factor(rate, periods)."""
+    _validate_rate(rate)
+    if periods == 0:
+        raise TVMEngineError("installment_to_amortize_factor requires periods > 0")
     if rate == 0:
-        if periods == 0:
-            raise TVMEngineError("installment_to_amortize_factor requires periods > 0")
         return 1.0 / periods
     return rate / (1 - 1 / (1 + rate) ** periods)
 
@@ -138,8 +152,12 @@ def loan_balance(loan_amount, rate, total_periods, elapsed_periods):
 
 def present_value_annuity_due(pv_ordinary, rate):
     """Converts a present value computed as an ordinary annuity (payments
-    in arrears) to its annuity-due (payments in advance) equivalent --
-    valid for level annuities only."""
+    in arrears) to its annuity-due (payments in advance) equivalent:
+    PV_due = PV_ordinary * (1+rate). This identity holds for ANY cash-flow
+    shape, not just level annuities -- shifting a sequence forward by
+    exactly one period is a uniform (1+rate) multiplication regardless of
+    shape (see dcf_engine.present_value_income_in_advance, which relies on
+    this same fact for irregular streams)."""
     return pv_ordinary * (1 + rate)
 
 
@@ -175,7 +193,7 @@ def mortgage_capitalization_rate(nominal_annual_rate, periods_per_year, amortiza
 
 
 def solve_yield_rate(present_value_amount, payment, future_value_amount, periods,
-                       tolerance=1e-9, max_iterations=200):
+                       tolerance=1e-12, max_iterations=200):
     """Solves for the periodic yield rate `i` satisfying:
         present_value_amount + payment x PVA_factor(i, periods)
             + future_value_amount x PV_factor(i, periods) = 0
@@ -186,6 +204,19 @@ def solve_yield_rate(present_value_amount, payment, future_value_amount, periods
     just applying a formula -- the textbook itself has no closed form for
     this and teaches it as a black-box financial-calculator solve. Uses
     bisection (no new dependency) since no closed form exists.
+
+    `tolerance` is a bisection INTERVAL-WIDTH tolerance in RATE terms
+    (e.g. 1e-12 of a rate like 0.08), not an NPV/dollar tolerance -- an
+    earlier version judged convergence by NPV magnitude instead, which is
+    the wrong kind of check: for institutional-scale cash flows
+    (multi-million-dollar properties), float granularity near the true
+    root is far coarser than a small fixed dollar tolerance, so it could
+    exhaust max_iterations and fail to converge even though bisection had
+    already narrowed the rate to full precision; conversely, at very
+    small dollar magnitudes, an NPV-magnitude check could trigger early
+    and return a materially wrong rate. Interval width in rate terms is
+    scale-invariant with respect to the cash flows' dollar magnitude, so
+    it converges correctly at any scale.
     """
     def npv(rate):
         return (present_value_amount
@@ -197,15 +228,16 @@ def solve_yield_rate(present_value_amount, payment, future_value_amount, periods
     if npv_low * npv_high > 0:
         raise TVMEngineError(
             "solve_yield_rate could not bracket a root in [-99%, 1000%]; "
-            "check the sign convention of present_value_amount/payment/"
-            "future_value_amount"
+            "this usually indicates a sign-convention issue with "
+            "present_value_amount/payment/future_value_amount, though a "
+            "genuinely extreme yield outside this range is also possible"
         )
 
     for _ in range(max_iterations):
         mid = (low + high) / 2
-        npv_mid = npv(mid)
-        if abs(npv_mid) < tolerance:
+        if (high - low) < tolerance:
             return mid
+        npv_mid = npv(mid)
         if npv_low * npv_mid < 0:
             high = mid
             npv_high = npv_mid

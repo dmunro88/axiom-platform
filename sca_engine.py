@@ -29,6 +29,7 @@ expected to be built.
 """
 
 import statistics
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
@@ -128,7 +129,7 @@ class ComparableResult:
 class Stats:
     mean: float
     median: float
-    mode: float
+    mode: Optional[float]
     range: float
     stdev: float
     cv: float
@@ -232,10 +233,24 @@ def indicated_value(comp: ComparableSale) -> ComparableResult:
 # ── Statistics and unit-of-comparison selection ─────────────────────────────
 
 
+def _mode_or_none(values):
+    """statistics.mode() (Python 3.8+) returns the first-encountered value
+    instead of raising when nothing actually repeats -- a fabricated
+    "mode" that misleads a reader into thinking a real most-frequent value
+    exists. Returns None in that case instead."""
+    counts = Counter(values)
+    if max(counts.values()) == 1:
+        return None
+    return statistics.mode(values)
+
+
 def unit_price_stats(values: Sequence[float]) -> Stats:
     """Mean, median, mode, range, sample standard deviation, and CV for a
     set of unit-price observations. Sample stdev (n-1), not population --
-    the textbook is explicit on this point."""
+    the textbook is explicit on this point. Requires a positive mean --
+    unit prices (price/SF, price/unit, etc.) are always positive in real
+    use, and a non-positive mean would otherwise let a nonsensical
+    negative CV silently win in select_unit_of_comparison below."""
     values = list(values)
     if len(values) < 2:
         raise SCAEngineError(
@@ -243,11 +258,16 @@ def unit_price_stats(values: Sequence[float]) -> Stats:
             "standard deviation"
         )
     mean_value = statistics.mean(values)
+    if mean_value <= 0:
+        raise SCAEngineError(
+            "unit_price_stats requires a positive mean; unit prices should "
+            f"be positive values, got values with mean {mean_value!r}"
+        )
     stdev_value = statistics.stdev(values)
     return Stats(
         mean=mean_value,
         median=statistics.median(values),
-        mode=statistics.mode(values),
+        mode=_mode_or_none(values),
         range=max(values) - min(values),
         stdev=stdev_value,
         cv=stdev_value / mean_value,

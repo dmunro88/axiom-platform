@@ -141,6 +141,13 @@ class BelowTheLineItemsTests(unittest.TestCase):
         with self.assertRaises(ForecastEngineError):
             apply_below_the_line_items([100, 100, 100], {5: 10})
 
+    def test_non_int_year_rejected(self):
+        """Fable adversarial review finding: a float year key (e.g. 3.0)
+        used to raise a raw TypeError from the list-indexing arithmetic
+        instead of ForecastEngineError."""
+        with self.assertRaises(ForecastEngineError):
+            apply_below_the_line_items([100, 100, 100], {3.0: 10})
+
 
 class DeferredMaintenanceTests(unittest.TestCase):
     def test_3_2_problem(self):

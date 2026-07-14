@@ -74,15 +74,25 @@ def compute_egi(pgi, vacancy_collection_loss_pct, reimbursements=0.0,
     not netted against a specific expense line -- confirmed by the 9.11
     Problem worked example). Vacancy and collection loss is applied to
     total PGI (and to other_income too, if other_income_subject_to_vacancy).
+
+    The returned `total_pgi` always means PGI + reimbursements only
+    (matching the textbook's own "Total PGI" line item), regardless of
+    other_income_subject_to_vacancy -- other_income is never folded into
+    it, even internally, so a caller reading total_pgi gets consistent
+    semantics no matter which vacancy-treatment branch was taken.
     """
     if reimbursements < 0:
         raise DirectCapEngineError("reimbursements cannot be negative")
+    if not (0 <= vacancy_collection_loss_pct <= 1):
+        raise DirectCapEngineError(
+            "vacancy_collection_loss_pct must be between 0 and 1"
+        )
 
     total_pgi = pgi + reimbursements
     if other_income_subject_to_vacancy:
-        total_pgi += other_income
-        vacancy_loss = total_pgi * vacancy_collection_loss_pct
-        egi = total_pgi - vacancy_loss
+        vacancy_basis = total_pgi + other_income
+        vacancy_loss = vacancy_basis * vacancy_collection_loss_pct
+        egi = vacancy_basis - vacancy_loss
     else:
         vacancy_loss = total_pgi * vacancy_collection_loss_pct
         egi = total_pgi - vacancy_loss + other_income
@@ -234,6 +244,20 @@ def land_residual(noi, building_value, building_rate, land_rate):
         solved_value=land_value,
         total_value=building_value + land_value,
     )
+
+
+def extract_building_rate_via_residual(noi, land_value, land_rate, building_value):
+    """Extracts (rather than applies) the building capitalization rate via
+    the residual technique, when total NOI, land value, land rate, and
+    building value are all known (16.5 Problem, Part 16 p.309-311) -- the
+    inverse of building_residual: there, building_rate is given and
+    building_value is solved for; here, building_value is given and
+    building_rate is solved for."""
+    if building_value == 0:
+        raise DirectCapEngineError("building_value cannot be zero")
+    land_income = land_rate * land_value
+    building_income = noi - land_income
+    return building_income / building_value
 
 
 def mortgage_equity_residual(noi, mortgage_value, mortgage_rate, equity_rate):

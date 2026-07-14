@@ -89,6 +89,10 @@ def apply_below_the_line_items(noi_series, items):
     mapping, 1-indexed (year 1 is noi_series[0])."""
     result = list(noi_series)
     for year, amount in items.items():
+        if not isinstance(year, int):
+            raise ForecastEngineError(
+                f"below-the-line item year must be an int, got {year!r}"
+            )
         if year < 1 or year > len(result):
             raise ForecastEngineError(
                 f"below-the-line item year {year} is out of range for a "

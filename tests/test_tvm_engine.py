@@ -112,6 +112,29 @@ class SixFunctionFactorTableTests(unittest.TestCase):
                     1.0, future_value_factor(0.06, n) * present_value_factor(0.06, n), places=9
                 )
 
+    def test_rate_at_or_below_negative_one_rejected(self):
+        """A rate of exactly -100% (or lower) makes (1+rate) zero or
+        negative -- not a meaningful compounding rate. Previously this
+        produced a raw ZeroDivisionError or silent sign-nonsense instead
+        of failing loudly."""
+        for factor_fn in (future_value_factor, present_value_factor,
+                           future_value_annuity_factor, present_value_annuity_factor,
+                           sinking_fund_factor, installment_to_amortize_factor):
+            with self.subTest(factor_fn=factor_fn.__name__):
+                with self.assertRaises(TVMEngineError):
+                    factor_fn(-1.0, 5)
+                with self.assertRaises(TVMEngineError):
+                    factor_fn(-1.5, 5)
+
+    def test_zero_periods_rejected_regardless_of_rate(self):
+        """Previously the periods==0 guard only existed inside the
+        rate==0 branch, so a nonzero rate with periods=0 raised a raw
+        ZeroDivisionError instead of TVMEngineError."""
+        with self.assertRaises(TVMEngineError):
+            sinking_fund_factor(0.06, 0)
+        with self.assertRaises(TVMEngineError):
+            installment_to_amortize_factor(0.06, 0)
+
 
 class FutureValueLumpSumTests(unittest.TestCase):
     def test_2_7_1_problem(self):
@@ -248,8 +271,8 @@ class MortgageCapitalizationRateTests(unittest.TestCase):
         r_m = mortgage_capitalization_rate(nominal_annual_rate=0.06,
                                             periods_per_year=12, amortization_years=20)
         self.assertAlmostEqual(0.085972, r_m, places=6)
-        y_m = 0.06
-        self.assertAlmostEqual(0.06, y_m, places=4)
+        # Y_M is simply the nominal rate itself, per the source material --
+        # there is no function to test here, only the fact stated above.
 
 
 class SolveYieldRateTests(unittest.TestCase):
@@ -268,6 +291,25 @@ class SolveYieldRateTests(unittest.TestCase):
         with self.assertRaises(TVMEngineError):
             solve_yield_rate(present_value_amount=100, payment=100,
                               future_value_amount=100, periods=5)
+
+    def test_converges_at_institutional_scale(self):
+        """Fable adversarial review finding: the same Review Quiz Q1 shape
+        scaled up 100x to a routine $5M property used to raise "did not
+        converge" -- an absolute-dollar NPV tolerance is far coarser than
+        float precision at multi-million-dollar magnitudes. Fixed by also
+        checking bisection interval width, not NPV magnitude alone."""
+        i = solve_yield_rate(present_value_amount=-5_000_000, payment=-200_000,
+                              future_value_amount=20_000_000, periods=14)
+        self.assertAlmostEqual(0.082069, i, places=6)
+
+    def test_does_not_converge_early_at_tiny_scale(self):
+        """Converse defect the same review found: an NPV-only tolerance
+        could trigger early at very small dollar magnitudes and return a
+        materially wrong rate. Same shape scaled down 1e9x must still
+        resolve to the correct rate, not a nearby-but-wrong one."""
+        i = solve_yield_rate(present_value_amount=-50e-9, payment=-2e-9,
+                              future_value_amount=200e-9, periods=14)
+        self.assertAlmostEqual(0.082069, i, places=6)
 
 
 if __name__ == "__main__":

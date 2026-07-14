@@ -208,6 +208,23 @@ class UnitPriceStatsTests(unittest.TestCase):
         with self.assertRaises(SCAEngineError):
             unit_price_stats([42.0])
 
+    def test_mode_is_none_when_nothing_repeats(self):
+        """Fable adversarial review finding: Python's statistics.mode()
+        (3.8+) returns the first value instead of raising when nothing
+        actually repeats -- a fabricated "mode" that would mislead a
+        reader into thinking a real most-frequent value exists."""
+        stats = unit_price_stats([10, 12, 14, 22])
+        self.assertIsNone(stats.mode)
+
+    def test_non_positive_mean_rejected(self):
+        """Unit prices should always be positive; a non-positive mean
+        would otherwise let a nonsensical negative CV silently win in
+        select_unit_of_comparison."""
+        with self.assertRaises(SCAEngineError):
+            unit_price_stats([-100, -100, -100, -101])
+        with self.assertRaises(SCAEngineError):
+            unit_price_stats([100, -100, 50, -50])
+
 
 class SelectUnitOfComparisonTests(unittest.TestCase):
     def test_lowest_cv_wins(self):
@@ -223,6 +240,19 @@ class SelectUnitOfComparisonTests(unittest.TestCase):
     def test_empty_candidates_raises(self):
         with self.assertRaises(SCAEngineError):
             select_unit_of_comparison({})
+
+    def test_negative_mean_candidate_rejected_not_silently_selected(self):
+        """Fable adversarial review finding: a candidate unit with a
+        negative mean produces a negative CV, which used to win min()
+        outright regardless of how sane the other candidates were.
+        unit_price_stats now rejects non-positive means, so this raises
+        instead of silently selecting nonsense."""
+        candidates = {
+            "sane": [100, 101, 99, 100],
+            "garbage_negative": [-100, -100, -100, -101],
+        }
+        with self.assertRaises(SCAEngineError):
+            select_unit_of_comparison(candidates)
 
 
 class RankByGrossAdjustmentTests(unittest.TestCase):

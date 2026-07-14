@@ -111,6 +111,18 @@ class IRRTests(unittest.TestCase):
         with self.assertRaises(DCFEngineError):
             internal_rate_of_return(-100, [100, 100, 100], 100)
 
+    def test_converges_at_institutional_scale(self):
+        """Fable adversarial review finding: an irregular cash-flow stream
+        scaled to routine institutional magnitude ($25M outlay) used to
+        raise "did not converge" -- an absolute-dollar NPV tolerance is
+        far coarser than float precision at that scale. Fixed by also
+        checking bisection interval width, not NPV magnitude alone (same
+        fix as tvm_engine.solve_yield_rate)."""
+        cash_flows = [1_800_000 + 50_000 * i for i in range(10)]
+        irr = internal_rate_of_return(25_000_000, cash_flows, 32_500_000)
+        self.assertGreater(irr, 0)
+        self.assertLess(irr, 1.0)
+
 
 class LevelEquivalentAnnuityTests(unittest.TestCase):
     def test_5_8_problem(self):
