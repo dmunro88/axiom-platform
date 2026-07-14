@@ -2,6 +2,42 @@
 
 - Last updated: 2026-07-13
 - Current agent: Claude
+- **Calculation-engine rebuild, Phase 3c (cash-flow-pattern forecasting)
+  built — 2026-07-13 (not yet committed).** Building on
+  `direct_cap_engine.py` (Phase 2) and `dcf_engine.py` (Phase 3b), added
+  the functions that *generate* the cash-flow sequences `dcf_engine.py`
+  consumes as given inputs — grounded in the Appraisal Institute's
+  *General Appraiser Income Approach/Part 2* course, Part 3 ("Forecasting
+  Cash Flows") and Part 14 ("Income Patterns"). New `forecast_engine.py`
+  (pure functions, no I/O, reuses `direct_cap_engine.compute_egi`/
+  `compute_noi` per year rather than re-deriving that math):
+  `compound_growth_series`/`level_series` (confirmed the SAME compound-
+  growth formula covers both multi-year income/expense forecasting and
+  the named "Compound Rate of Change Income Pattern" — not separate
+  implementations), `forecast_noi_series` (full multi-year PGI→EGI→NOI
+  assembly, confirmed fixed/variable expenses conventionally grow at
+  *different* rates than income), `apply_below_the_line_items` (capex/TI/
+  leasing commissions deducted only in their specific forecast year, per
+  DCF convention — contrast with Direct Capitalization's one-time
+  post-processing treatment), `deduct_deferred_maintenance` (confirmed
+  NOT a below-the-line expense — comes out of value, never a year's cash
+  flow), `net_reversion` (expenses-of-sale refinement on Phase 2's
+  `reversion_value`), and the `R = Y − CR` relationship (confirmed valid
+  only under a "frozen rate," perpetual-growth premise — explicitly NOT
+  the same condition as a finite-horizon compound-growth series, a
+  distinction the code's docstrings call out so the two aren't confused).
+  18 tests in `tests/test_forecast_engine.py`, including a genuine
+  integration test spanning this module and `dcf_engine.py`: a level
+  $50,000/yr stream, an irregular stream, and a 2%-compound-growth
+  stream all independently verified to produce the identical PV — the
+  source material's own "level equivalence" demonstration. Full suite 290
+  passed, `axiom.py contract` clean at v1.2.0/220/24. Deferred:
+  tenant-by-tenant lease-schedule-driven forecasting (no closed form
+  exists per the source material — it's hand-assembled and fed through
+  the existing irregular-DCF path), mortgage/equity-split DCF, lease
+  analysis, and the general Ellwood property-model form
+  (`R = Y − Δ×(1/S_n)`) beyond the simple compound-growth case. Not yet
+  wired into `axiom.py`/`fill_engine`/the field registry.
 - **Calculation-engine rebuild, Phase 3b (core DCF) built — 2026-07-13 (not
   yet committed).** Building on Phase 3a's `tvm_engine.py`, added the core
   discounted-cash-flow valuation mechanics, grounded in the Appraisal

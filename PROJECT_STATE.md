@@ -76,6 +76,21 @@
   mechanics only; cash-flow-pattern forecasting, mortgage/equity-split
   DCF, lease analysis, and Ellwood-style property models remain separate,
   unstarted sub-phases. See `HANDOFF.md` for full detail.
+- **Calculation-engine rebuild, Phase 3c (cash-flow-pattern forecasting)
+  built 2026-07-13, not yet committed.** New `forecast_engine.py` (pure
+  functions, no I/O, builds on `direct_cap_engine.py`/`dcf_engine.py`):
+  compound-growth and level cash-flow generators (the same formula
+  covers both multi-year forecasting and the named "Compound Rate of
+  Change Income Pattern"), full multi-year NOI-series assembly,
+  below-the-line item timing, deferred-maintenance handling, a
+  reversion expenses-of-sale refinement, and the `R = Y − CR` relationship
+  (confirmed valid only under a frozen-rate perpetual-growth premise,
+  distinct from finite-horizon compound growth). 18 tests in
+  `tests/test_forecast_engine.py`, including a real integration test
+  against `dcf_engine.py` confirming three different cash-flow
+  representations (level/irregular/compound-growth) produce the
+  identical PV. Full suite 290 passed, contract clean. See `HANDOFF.md`
+  for full detail.
 - **Per Derek's explicit direction, Excel is no longer considered the right
   long-term calculation engine for this platform.** The rest of the stack
   (comps, financials, observations) already runs on SQLite + Python +
