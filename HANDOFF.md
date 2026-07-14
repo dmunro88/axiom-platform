@@ -2,6 +2,65 @@
 
 - Last updated: 2026-07-13
 - Current agent: Claude
+- **Calculation-engine rebuild, Phase 3d (mortgage/equity-split DCF) built
+  — 2026-07-13 (not yet committed).** Building on `tvm_engine.py` (Phase
+  3a) and `dcf_engine.py` (Phase 3b), added full leveraged (mortgage-
+  equity split) DCF analysis, grounded in the Appraisal Institute's
+  *General Appraiser Income Approach/Part 2* course (PC404GCH-N), Parts
+  7-10, and its solutions booklet. New `mortgage_equity_engine.py` (pure
+  functions, no I/O; reuses `tvm_engine`'s amortization functions and
+  `dcf_engine`'s `discounted_cash_flow_value`/`internal_rate_of_return`
+  directly rather than re-deriving discounting math):
+  `debt_coverage_ratio`/`loan_to_value_ratio` (confirmed only these two
+  lender-risk measures exist in this course — no debt yield ratio, no
+  break-even ratio, exhaustively searched), `mortgage_amount_from_dcr`
+  (derives a loan amount from a required DCR), `cash_equivalent_price`
+  (the confirmed 3-step procedure: amortize at the *contract* rate,
+  discount those contract cash flows at the *market* rate, add the cash
+  down payment), and `equity_cash_flows` (splits a property's cash flows
+  into the equity piece via the source material's "four relationships" —
+  `V_O = V_M + V_E`, equity income = NOI − annual debt service, equity
+  reversion = property reversion − mortgage balance at reversion — and
+  returns a dataclass exposing every intermediate value the worked
+  examples print, not just the final split). `V_E`/`Y_E`/`V_O` are
+  deliberately not separate functions: callers feed `equity_cash_flows`'s
+  output straight into `dcf_engine`.
+  - **Confirmed and deliberately NOT implemented**: a yield-rate "band of
+    investment." Unlike the cap-rate version (`direct_cap_engine.
+    band_of_investment_mortgage_equity`, already correct), the source
+    material is explicit that `M × Y_M + (1−M) × Y_E ≠ Y_O` in general —
+    building a function that computes one rate from the other two would
+    invite a confirmed textbook error. Only a documented sanity check,
+    `yield_rate_ordering_is_plausible` (checks `Y_E > Y_O > Y_M`), was
+    added instead.
+  - **Confirmed, tested, and NOT forced to reconcile**: independent
+    unlevered-property and levered-equity DCF value conclusions for the
+    same property can legitimately differ (Self-Study Problem 16: $4.376M
+    vs. $4.712M) — the source material's own reasonableness-check
+    teaching point, not an algebraic identity.
+  - **Independent-verification finding, disclosed in the test itself**:
+    Part 12 Practice Test Question 5's solutions-booklet answer key
+    ($522,588.96) does not check out against its own printed cash-flow
+    table (which discounts to $520,369.24 at 12.5% — reaching the
+    booklet's stated answer requires a reversion $4,000 higher than the
+    table states). Treated as a transcription error in that self-study
+    problem's answer key ; the test asserts the internally-consistent,
+    independently-recomputed value instead.
+  - Explicitly out of scope, confirmed absent from ~500 pages of source
+    material with no formula or worked example anywhere: variable-rate
+    mortgages.
+  - 21 tests in `tests/test_mortgage_equity_engine.py`, citing 8.1, 8.2,
+    8.4, 8.5, 21.2, Self-Study Practice Problems Sections 3 & 4 (#4, #5,
+    #8, #9 cross-checks, #12, #13, #15, #16), and Part 12 Practice Test
+    Questions 1 and 5 — every numeric fixture independently recomputed in
+    Python and, where practical, cross-checked directly against the
+    source PDF's own printed intermediate values (not just its final
+    answers). Full suite 323 passed (up from 302), `axiom.py contract`
+    clean at v1.2.0/220/24 (no registry-facing changes this phase).
+    Deferred: lease-interest analysis (Part 11), Ellwood-style property-
+    model shortcuts (Parts 13/15/16), Phase 4 (Advanced Income
+    Capitalization). Not yet wired into `axiom.py`/`fill_engine`/the
+    field registry.
 - **Fable adversarial review of the calc-engine rebuild (Phases 1-3c),
   findings fixed — 2026-07-13 (not yet committed).** Per Derek's request
   (usage now available in his upgraded plan), spawned a `model: "fable"`

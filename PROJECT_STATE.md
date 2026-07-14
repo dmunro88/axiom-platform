@@ -103,6 +103,27 @@
   `total_pgi` semantics, a test that didn't call any engine function, a
   non-int forecast-year key). 12 new regression tests. Full suite 302
   passed, contract clean. See `HANDOFF.md` for full detail.
+- **Calculation-engine rebuild, Phase 3d (mortgage/equity-split DCF) built
+  2026-07-13, not yet committed.** New `mortgage_equity_engine.py` (pure
+  functions, no I/O, builds on `tvm_engine.py`/`dcf_engine.py`): DCR/LTV,
+  deriving a mortgage amount from a DCR constraint, the 3-step cash-
+  equivalence procedure, and `equity_cash_flows` (splits property cash
+  flows into the equity piece for a leveraged DCF; V_E/Y_E/V_O are
+  computed by feeding its output directly into `dcf_engine`, not
+  separate functions). Confirmed and deliberately not implemented: a
+  yield-rate "band of investment" (`M × Y_M + (1−M) × Y_E ≠ Y_O` in
+  general, unlike the cap-rate version) — only a documented ordering
+  sanity-check exists. Confirmed and tested: independent unlevered vs.
+  levered DCF value conclusions for the same property don't have to
+  reconcile. One independent-verification finding: Part 12 Practice Test
+  Question 5's own solutions-booklet answer ($522,588.96) is internally
+  inconsistent with its own printed cash-flow table ($520,369.24 is the
+  value that actually checks out) — disclosed in the test itself, not
+  silently corrected. Variable-rate mortgages confirmed out of scope (no
+  formula or worked example anywhere in ~500 pages of source material).
+  21 tests in `tests/test_mortgage_equity_engine.py`. Full suite 323
+  passed, contract clean at v1.2.0/220/24 (no registry-facing changes).
+  See `HANDOFF.md` for full detail.
 - **Per Derek's explicit direction, Excel is no longer considered the right
   long-term calculation engine for this platform.** The rest of the stack
   (comps, financials, observations) already runs on SQLite + Python +
