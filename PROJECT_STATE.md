@@ -52,6 +52,18 @@
   problems. Full suite 225 passed, contract clean. Yield capitalization/DCF
   (Phase 3) and Advanced Income Capitalization (Phase 4) are scoped but not
   started. See `HANDOFF.md` for full detail.
+- **Calculation-engine rebuild, Phase 3a (Time Value of Money) built
+  2026-07-13, not yet committed.** New `tvm_engine.py` (pure functions, no
+  I/O): the Six Functions of a Dollar, mortgage payment/loan balance,
+  annuity-due and nominal/effective rate conversions, a combination
+  level-annuity+reversion helper, mortgage capitalization rate derived
+  from loan terms (closes a gap Phase 2 left open in
+  `direct_cap_engine.py`'s band-of-investment function, not yet wired in),
+  and a bisection-based yield-rate solver. 28 tests in
+  `tests/test_tvm_engine.py`, including full parametrization against the
+  textbook's complete printed factor table. Full suite 253 passed,
+  contract clean. This is the foundation for Phase 3b (DCF/yield
+  capitalization, not started). See `HANDOFF.md` for full detail.
 - **Per Derek's explicit direction, Excel is no longer considered the right
   long-term calculation engine for this platform.** The rest of the stack
   (comps, financials, observations) already runs on SQLite + Python +

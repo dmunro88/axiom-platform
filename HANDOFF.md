@@ -2,6 +2,37 @@
 
 - Last updated: 2026-07-13
 - Current agent: Claude
+- **Calculation-engine rebuild, Phase 3a (Time Value of Money) built —
+  2026-07-13 (not yet committed).** Following Phase 2 (Direct
+  Capitalization), Phase 2's own plan had explicitly deferred all TVM/
+  annuity math as "a separate foundational module... build later if/when
+  DCF (Phase 3) needs it." Derek confirmed: build that foundation first
+  (Phase 3a) before the actual DCF/yield-capitalization content (Phase 3b,
+  *Income Approach/Part 2*, PC404GCH-N, not yet started). Source: the same
+  *General Appraiser Income Approach/Part 1* course used for Phase 2, but
+  its Parts 2-4 ("Time Value of Money and Related Concepts", "Tables,
+  Six-Function Summary") instead of Parts 6-21. New `tvm_engine.py` (pure
+  functions, no I/O): the Six Functions of a Dollar (future/present value
+  of 1, future/present value of an annuity of 1, sinking fund factor,
+  installment to amortize 1), applied convenience wrappers (mortgage
+  payment, loan balance, annuity-due conversion, nominal/effective rate
+  conversion, combination level-annuity+reversion, mortgage capitalization
+  rate), and a bisection-based yield-rate solver (the textbook has no
+  closed form for this, confirmed). **Closes a real gap Phase 2 left
+  open**: `mortgage_capitalization_rate` derives the band-of-investment
+  mortgage rate directly from loan terms, rather than requiring it as a
+  raw input — not yet wired into `direct_cap_engine.py`, a deliberate
+  separate decision. 28 tests in `tests/test_tvm_engine.py`, including a
+  fully parametrized test against the textbook's own complete printed
+  6%/n=1-30 factor table (30 rows × 6 factors, all independently
+  recomputed). One fixture (mortgage cap rate, 4.6 Problem) is explicitly
+  disclosed as reverse-engineered — the solutions booklet states only the
+  final R_M/Y_M answer, not the underlying loan term, so the term was found
+  by numeric match rather than transcribed. Full suite 253 passed,
+  `axiom.py contract` clean at v1.2.0/220/24. Solving for an unknown term
+  (n) is explicitly deferred — no verified worked example was found to
+  test it against. Next: Phase 3b, the actual DCF/yield-capitalization
+  content, built on top of this foundation.
 - **Calculation-engine rebuild, Phase 2 (Direct Capitalization) built —
   2026-07-13 (not yet committed).** Following Phase 1 (SCA), planned and
   built the Direct Capitalization piece of the Income Approach, grounded in
