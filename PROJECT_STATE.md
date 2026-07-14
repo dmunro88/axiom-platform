@@ -64,6 +64,18 @@
   textbook's complete printed factor table. Full suite 253 passed,
   contract clean. This is the foundation for Phase 3b (DCF/yield
   capitalization, not started). See `HANDOFF.md` for full detail.
+- **Calculation-engine rebuild, Phase 3b (core DCF) built 2026-07-13, not
+  yet committed.** New `dcf_engine.py` (pure functions, no I/O, builds on
+  `tvm_engine.py`): the general DCF formula, NPV, IRR (bisection), level-
+  equivalent annuity, split-rate discounting, income-in-advance handling,
+  a DCF-specific periodic-yield-rate conversion (confirmed distinct from
+  `tvm_engine.periodic_rate`'s mortgage-rate convention), and a
+  reasonableness-check helper. 19 tests in `tests/test_dcf_engine.py`,
+  citing Appraisal Institute *Income Approach/Part 2* solutions-booklet
+  problems. Full suite 272 passed, contract clean. Scoped to core DCF
+  mechanics only; cash-flow-pattern forecasting, mortgage/equity-split
+  DCF, lease analysis, and Ellwood-style property models remain separate,
+  unstarted sub-phases. See `HANDOFF.md` for full detail.
 - **Per Derek's explicit direction, Excel is no longer considered the right
   long-term calculation engine for this platform.** The rest of the stack
   (comps, financials, observations) already runs on SQLite + Python +

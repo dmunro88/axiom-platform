@@ -2,6 +2,37 @@
 
 - Last updated: 2026-07-13
 - Current agent: Claude
+- **Calculation-engine rebuild, Phase 3b (core DCF) built — 2026-07-13 (not
+  yet committed).** Building on Phase 3a's `tvm_engine.py`, added the core
+  discounted-cash-flow valuation mechanics, grounded in the Appraisal
+  Institute's *General Appraiser Income Approach/Part 2* course
+  (PC404GCH-N, Parts 1/2/4-6 only — cash-flow-pattern forecasting,
+  mortgage/equity-split DCF, lease analysis, and Ellwood-style property
+  models are separate, later sub-phases) and its solutions booklet
+  (PC404GSB-N). New `dcf_engine.py` (pure functions, no I/O, imports
+  `tvm_engine`'s factor functions rather than re-deriving them): the
+  general DCF formula (with reversion combined into the final period
+  automatically — the single most common DCF error the source material
+  catalogs is putting it in its own extra period), NPV, IRR (bisection,
+  generalizing `tvm_engine.solve_yield_rate` to irregular cash flows),
+  level-equivalent annuity, split-rate discounting, income-in-advance
+  handling (confirmed only the income component gets the (1+Y) advance
+  multiplier, never a reversion — verified this holds for any cash-flow
+  shape via direct derivation, not just level annuities), a DCF-specific
+  periodic-yield-rate conversion (confirmed **not** the same as
+  `tvm_engine.periodic_rate`'s nominal/z convention — naively dividing a
+  market yield rate by 12 is a confirmed, named improper practice that
+  overstates value), and the course's own explicit reasonableness-check
+  step (implied overall rate vs. terminal cap rate). 19 tests in
+  `tests/test_dcf_engine.py`, citing specific solutions-booklet problems,
+  including the intricate step-up-ground-lease income-in-advance case
+  independently re-derived and verified before being hardcoded. Full suite
+  272 passed, `axiom.py contract` clean at v1.2.0/220/24. Deferred within
+  DCF/yield-cap: cash-flow-pattern forecasting (Part 3/14),
+  mortgage/equity-split DCF (Parts 7-10), lease-interest analysis (Part
+  11), Ellwood-style property-model shortcuts (Parts 13/15/16) — each a
+  separate future sub-phase. Not yet wired into
+  `axiom.py`/`fill_engine`/the field registry, same as every prior phase.
 - **Calculation-engine rebuild, Phase 3a (Time Value of Money) built —
   2026-07-13 (not yet committed).** Following Phase 2 (Direct
   Capitalization), Phase 2's own plan had explicitly deferred all TVM/
