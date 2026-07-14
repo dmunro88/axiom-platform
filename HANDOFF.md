@@ -2,6 +2,38 @@
 
 - Last updated: 2026-07-13
 - Current agent: Claude
+- **Calculation-engine rebuild, Phase 2 (Direct Capitalization) built —
+  2026-07-13 (not yet committed).** Following Phase 1 (SCA), planned and
+  built the Direct Capitalization piece of the Income Approach, grounded in
+  the Appraisal Institute's *General Appraiser Income Approach/Part 1*
+  course (PC403GCH-M) and its solutions booklet (PC403GSB-M) — Derek's own
+  materials. Scope decisions made with Derek before planning: cover both
+  Direct Cap (this phase) and DCF/yield capitalization (Part 2, next
+  phase) eventually, sequenced Direct Cap first; also roadmap *Advanced
+  Income Capitalization* (PC501GDCHI) as a further future phase, not
+  started. New `direct_cap_engine.py` (pure functions, no I/O, same
+  pattern as `sca_engine.py`/`dilmore.py`): PGI→EGI→NOI reconstruction,
+  overall-cap-rate/multiplier extraction-and-application, band of
+  investment (mortgage-equity and land-building, both directions),
+  underwriter's method, land/building and mortgage/equity residual
+  techniques, reversion via terminal cap rate, and the platform's
+  previously-orphaned `noi_adj` comp-adjustment formula (confirmed correct
+  with Derek — not a page-cited textbook technique, a derived extension of
+  the textbook's own rate-extraction principle). 26 tests in
+  `tests/test_direct_cap_engine.py`, all citing specific solutions-booklet
+  problems with values independently recomputed in Python before being
+  hardcoded (matching Phase 1's fixture standard) — including a 4-scenario
+  highest-and-best-use land-residual test where one scenario correctly
+  resolves to a negative value (infeasible use), not an error. Full suite
+  225 passed, `axiom.py contract` clean at v1.2.0/220/24. Explicitly
+  deferred within this phase: leasehold/leased-fee residual (belongs with
+  DCF, Phase 3, per the textbook's own guidance), property-tax cap-rate
+  "loading" (no verified worked example found), and any time-value-of-money/
+  loan-amortization math (a separate foundational module neither this nor
+  the future DCF phase has built yet — mortgage-equity functions take
+  mortgage value as a given input, not derived from loan terms). Not yet
+  wired into `axiom.py`/`fill_engine`/the field registry — same integration
+  deferral as Phase 1. See the plan file for full detail.
 - **Calculation-engine rebuild, Phase 1 (SCA) merged to `main` — 2026-07-13.**
   Following the decision above to replace Excel as the calculation engine,
   the Sales Comparison Approach plan was refined via a remote Ultraplan

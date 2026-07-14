@@ -38,6 +38,20 @@
   `axiom.py`/`fill_engine`/the field registry and does not yet retire any
   of Excel's staleness-tracking machinery** — it exists standalone,
   verified by `pytest` alone. See `HANDOFF.md` for the full account.
+- **Calculation-engine rebuild, Phase 2 (Direct Capitalization) built
+  2026-07-13, not yet committed.** New `direct_cap_engine.py` (pure
+  functions, no I/O), grounded in the Appraisal Institute's *General
+  Appraiser Income Approach/Part 1* course: PGI/EGI/NOI reconstruction,
+  overall-cap-rate and multiplier extraction/application (confirmed
+  `R_O = NOI / Sale Price`, fixing the direction the platform's old
+  `cap_rates` formula had backwards), band of investment, underwriter's
+  method, land/building and mortgage/equity residual techniques, reversion
+  via terminal cap rate, and a derived (Derek-confirmed) formula for the
+  previously-orphaned `noi_adj` sheet. 26 tests in
+  `tests/test_direct_cap_engine.py`, all citing specific solutions-booklet
+  problems. Full suite 225 passed, contract clean. Yield capitalization/DCF
+  (Phase 3) and Advanced Income Capitalization (Phase 4) are scoped but not
+  started. See `HANDOFF.md` for full detail.
 - **Per Derek's explicit direction, Excel is no longer considered the right
   long-term calculation engine for this platform.** The rest of the stack
   (comps, financials, observations) already runs on SQLite + Python +
